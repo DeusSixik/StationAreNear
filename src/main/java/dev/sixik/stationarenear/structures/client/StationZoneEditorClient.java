@@ -213,6 +213,7 @@ public final class StationZoneEditorClient {
             TextField pool = field(tag.getString(StationStructureToolItem.KEY_POOL), "stationarenear:space_station");
             TextField weight = field(Integer.toString(tag.getInt(StationStructureToolItem.KEY_WEIGHT)), "1");
             TextField floors = field(Integer.toString(tag.getInt(StationStructureToolItem.KEY_FLOOR_SPAN)), "1");
+            ComboBox exteriorSide = combo(exteriorSideNames(), tag.getString(StationStructureToolItem.KEY_EXTERIOR_SIDE));
             ToggleButton startPiece = new ToggleButton("Docking/start piece").silentChecked(tag.getBoolean(StationStructureToolItem.KEY_START_PIECE));
             ToggleButton showHandles = new ToggleButton("Render POS handles").silentChecked(!tag.contains(StationStructureEditorStick.KEY_SHOW_HANDLES) || tag.getBoolean(StationStructureEditorStick.KEY_SHOW_HANDLES));
             ToggleButton showRootText = new ToggleButton("Render Root label").silentChecked(!tag.contains(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT) || tag.getBoolean(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT));
@@ -221,6 +222,7 @@ public final class StationZoneEditorClient {
             row("Pool", pool);
             row("Weight", weight);
             row("Floors", floors);
+            row("Exterior Side", exteriorSide);
             inspector.addChild(startPiece);
             inspector.addChild(showHandles);
             inspector.addChild(showRootText);
@@ -241,6 +243,7 @@ public final class StationZoneEditorClient {
             bind(pool, value -> tag.putString(StationStructureToolItem.KEY_POOL, value));
             bind(weight, value -> tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, parseInt(value, 1))));
             bind(floors, value -> tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, parseInt(value, 1))));
+            exteriorSide.onSelectionChanged(event -> { tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, comboSelectedItem(exteriorSide, event)); syncEditorState(); });
             startPiece.onCheckedChanged(event -> { tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, event.newValue()); syncEditorState(); });
             showHandles.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_HANDLES, event.newValue()); syncEditorState(); });
             showRootText.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT, event.newValue()); syncEditorState(); });
@@ -928,6 +931,10 @@ public final class StationZoneEditorClient {
 
         private String localPosText(BlockPos worldPos) {
             return posText(toLocal(worldPos));
+        }
+
+        private String[] exteriorSideNames() {
+            return new String[]{"none", "north", "east", "south", "west", "up", "down"};
         }
 
         private String[] directionNames() {

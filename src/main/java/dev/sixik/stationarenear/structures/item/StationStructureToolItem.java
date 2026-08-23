@@ -49,6 +49,7 @@ public class StationStructureToolItem extends Item {
     public static final String KEY_START_PIECE = "startPiece";
     public static final String KEY_WEIGHT = "weight";
     public static final String KEY_FLOOR_SPAN = "floorSpan";
+    public static final String KEY_EXTERIOR_SIDE = "exteriorSide";
 
     public StationStructureToolItem(Properties properties) {
         super(properties);
@@ -181,6 +182,7 @@ public class StationStructureToolItem extends Item {
                 max.subtract(min),
                 Math.max(1, tag.contains(KEY_FLOOR_SPAN) ? tag.getInt(KEY_FLOOR_SPAN) : detectFloorSpan(max.subtract(min))),
                 Math.max(1, tag.contains(KEY_WEIGHT) ? tag.getInt(KEY_WEIGHT) : 1),
+                exteriorSide(tag),
                 0.0F,
                 1.0F
         );
@@ -189,6 +191,13 @@ public class StationStructureToolItem extends Item {
         dev.sixik.stationarenear.structures.network.StationStructureNetwork.syncTemplateSelections(level);
         player.displayClientMessage(Component.literal("Saved station piece " + templateId + " into pool " + poolId), false);
         return true;
+    }
+
+    private static Direction exteriorSide(CompoundTag tag) {
+        if (!tag.contains(KEY_EXTERIOR_SIDE) || tag.getString(KEY_EXTERIOR_SIDE).isBlank() || tag.getString(KEY_EXTERIOR_SIDE).equalsIgnoreCase("none")) {
+            return null;
+        }
+        return Direction.byName(tag.getString(KEY_EXTERIOR_SIDE));
     }
 
     private static int detectFloorSpan(BlockPos localMax) {

@@ -49,19 +49,21 @@ public final class StationTemplateSelectionManager {
 
     public static List<TemplateSelectionEntry> collect(ServerLevel level) {
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
-        Map<ResourceLocation, TemplateSelectionEntry> entries = new Object2ObjectLinkedOpenHashMap<>();
+        Map<ResourceLocation, TemplateSelectionEntry> templateDefinitions = new Object2ObjectLinkedOpenHashMap<>();
         for (StationPieceDefinition piece : library.pieces()) {
-            entries.put(piece.template(), new TemplateSelectionEntry(piece.template(), "library", false, null));
+            templateDefinitions.put(piece.template(), new TemplateSelectionEntry(piece.template(), "library", false, null));
         }
         for (Map.Entry<ResourceLocation, BoundingBox> entry : library.savedTemplateSelections().entrySet()) {
-            entries.put(entry.getKey(), new TemplateSelectionEntry(entry.getKey(), "saved", true, entry.getValue()));
+            templateDefinitions.put(entry.getKey(), new TemplateSelectionEntry(entry.getKey(), "saved", true, entry.getValue()));
         }
+
+        List<TemplateSelectionEntry> entries = new ObjectArrayList<>(templateDefinitions.values());
         StationSavedData.get(level).stations().forEach(station -> {
             for (PlacedStationPiece piece : station.pieces()) {
-                entries.put(piece.template(), new TemplateSelectionEntry(piece.template(), "generated", true, piece.selectionBounds()));
+                entries.add(new TemplateSelectionEntry(piece.template(), "generated", true, piece.selectionBounds()));
             }
         });
-        return new ObjectArrayList<>(entries.values());
+        return entries;
     }
 
     public static Optional<TemplateSelectionEntry> find(ServerLevel level, ResourceLocation template) {

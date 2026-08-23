@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.structures.data;
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -21,6 +22,7 @@ public record StationPieceDefinition(
         BlockPos selectionMax,
         int floorSpan,
         int weight,
+        Direction exteriorSide,
         float minDanger,
         float maxDanger
 ) {
@@ -45,6 +47,9 @@ public record StationPieceDefinition(
         tag.put("selectionMin", NbtPos.save(selectionMin));
         tag.put("selectionMax", NbtPos.save(selectionMax));
         tag.putInt("floorSpan", Math.max(1, floorSpan));
+        if (exteriorSide != null) {
+            tag.putString("exteriorSide", exteriorSide.getSerializedName());
+        }
         tag.putFloat("minDanger", minDanger);
         tag.putFloat("maxDanger", maxDanger);
 
@@ -96,6 +101,7 @@ public record StationPieceDefinition(
                 selectionMax,
                 tag.contains("floorSpan") ? Math.max(1, tag.getInt("floorSpan")) : detectedFloorSpan,
                 Math.max(1, tag.getInt("weight")),
+                tag.contains("exteriorSide") ? Direction.byName(tag.getString("exteriorSide")) : null,
                 tag.contains("minDanger") ? tag.getFloat("minDanger") : 0.0F,
                 tag.contains("maxDanger") ? tag.getFloat("maxDanger") : 1.0F
         );

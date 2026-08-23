@@ -44,6 +44,7 @@ public final class StationStructureEditorStick {
         tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, false);
         tag.putInt(StationStructureToolItem.KEY_WEIGHT, 1);
         tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, 1);
+        tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, "none");
         tag.putString(KEY_EDITOR_MODE, StationEditorWandMode.ZONE_SELECTION.name());
         tag.putBoolean(KEY_SHOW_HANDLES, true);
         tag.putBoolean(KEY_SHOW_ROOT_TEXT, true);
@@ -97,6 +98,7 @@ public final class StationStructureEditorStick {
         editor.putBoolean(StationStructureToolItem.KEY_START_PIECE, source.getBoolean(StationStructureToolItem.KEY_START_PIECE));
         editor.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, source.contains(StationStructureToolItem.KEY_WEIGHT) ? source.getInt(StationStructureToolItem.KEY_WEIGHT) : 1));
         editor.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, source.contains(StationStructureToolItem.KEY_FLOOR_SPAN) ? source.getInt(StationStructureToolItem.KEY_FLOOR_SPAN) : detectFloorSpan(editor)));
+        editor.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, normalizeExteriorSide(source.getString(StationStructureToolItem.KEY_EXTERIOR_SIDE)));
         editor.putString(KEY_EDITOR_MODE, parseMode(source.getString(KEY_EDITOR_MODE)).name());
         editor.putString(KEY_SELECTED_NODE, defaultString(source.getString(KEY_SELECTED_NODE), "root"));
         editor.putBoolean(KEY_SHOW_HANDLES, !source.contains(KEY_SHOW_HANDLES) || source.getBoolean(KEY_SHOW_HANDLES));
@@ -142,6 +144,7 @@ public final class StationStructureEditorStick {
         tag.remove(StationStructureToolItem.KEY_START_PIECE);
         tag.remove(StationStructureToolItem.KEY_WEIGHT);
         tag.remove(StationStructureToolItem.KEY_FLOOR_SPAN);
+        tag.remove(StationStructureToolItem.KEY_EXTERIOR_SIDE);
         tag.remove(KEY_SELECTED_NODE);
         tag.remove(KEY_TRIGGER_DRAFT_POS_1);
         tag.remove(KEY_TRIGGER_DRAFT_POS_2);
@@ -175,6 +178,7 @@ public final class StationStructureEditorStick {
         target.putBoolean(StationStructureToolItem.KEY_START_PIECE, normalized.getBoolean(StationStructureToolItem.KEY_START_PIECE));
         target.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, normalized.getInt(StationStructureToolItem.KEY_WEIGHT)));
         target.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, normalized.getInt(StationStructureToolItem.KEY_FLOOR_SPAN)));
+        target.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, normalizeExteriorSide(normalized.getString(StationStructureToolItem.KEY_EXTERIOR_SIDE)));
         target.putString(KEY_EDITOR_MODE, parseMode(normalized.getString(KEY_EDITOR_MODE)).name());
         target.putString(KEY_SELECTED_NODE, defaultString(normalized.getString(KEY_SELECTED_NODE), "root"));
         target.putBoolean(KEY_SHOW_HANDLES, !normalized.contains(KEY_SHOW_HANDLES) || normalized.getBoolean(KEY_SHOW_HANDLES));
@@ -202,6 +206,7 @@ public final class StationStructureEditorStick {
         tag.putString(StationStructureToolItem.KEY_POOL, pool.toString());
         tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, tag.contains(StationStructureToolItem.KEY_WEIGHT) ? tag.getInt(StationStructureToolItem.KEY_WEIGHT) : 1));
         tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, tag.contains(StationStructureToolItem.KEY_FLOOR_SPAN) ? tag.getInt(StationStructureToolItem.KEY_FLOOR_SPAN) : detectFloorSpan(tag)));
+        tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, normalizeExteriorSide(tag.getString(StationStructureToolItem.KEY_EXTERIOR_SIDE)));
         tag.putString(KEY_EDITOR_MODE, parseMode(tag.getString(KEY_EDITOR_MODE)).name());
         tag.putString(KEY_SELECTED_NODE, defaultString(tag.getString(KEY_SELECTED_NODE), "root"));
         if (!tag.contains(KEY_SHOW_HANDLES)) {
@@ -330,6 +335,11 @@ public final class StationStructureEditorStick {
         } else {
             target.remove(key);
         }
+    }
+
+    private static String normalizeExteriorSide(String value) {
+        Direction direction = Direction.byName(value == null ? "" : value);
+        return direction == null ? "none" : direction.getSerializedName();
     }
 
     private static String defaultString(String value, String fallback) {

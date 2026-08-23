@@ -49,11 +49,16 @@ public final class StationStructureWorldRenderer {
         poseStack.pushPose();
         poseStack.translate(-camX, -camY, -camZ);
 
-        for (TemplateSelectionEntry entry : StationEditorClientState.templateSelections()) {
-            if (entry.hasBounds() && StationEditorClientState.templateSelectionVisible(entry.template())) {
-                AABB templateBox = boxFromBounds(entry.bounds()).inflate(0.018D);
-                renderBox(poseStack, buffers, templateBox, 0.65F, 0.15F, 1.0F, 0.10F, 0.9F, false);
-                renderBoxText(poseStack, camera, minecraft.font, buffers, templateBox, "Template: " + entry.template().getPath(), 0xFFCC88FF);
+        if (canRenderTemplateSelections(minecraft)) {
+            for (TemplateSelectionEntry entry : StationEditorClientState.templateSelections()) {
+                if (entry.hasBounds() && StationEditorClientState.templateSelectionVisible(entry.template())) {
+                    AABB templateBox = boxFromBounds(entry.bounds()).inflate(0.018D);
+                    if (!isTemplateSelectionInLoadedView(minecraft, camera, templateBox)) {
+                        continue;
+                    }
+                    renderBox(poseStack, buffers, templateBox, 0.65F, 0.15F, 1.0F, 0.10F, 0.9F, false);
+                    renderBoxText(poseStack, camera, minecraft.font, buffers, templateBox, "Template: " + entry.template().getPath(), 0xFFCC88FF);
+                }
             }
         }
 
@@ -138,6 +143,32 @@ public final class StationStructureWorldRenderer {
 
     private static AABB boxFromBounds(net.minecraft.world.level.levelgen.structure.BoundingBox bounds) {
         return new AABB(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX() + 1.0D, bounds.maxY() + 1.0D, bounds.maxZ() + 1.0D);
+    }
+
+    private static boolean canRenderTemplateSelections(Minecraft minecraft) {
+        return minecraft.player != null && (minecraft.player.isCreative() || minecraft.player.isSpectator());
+    }
+
+    private static boolean isTemplateSelectionInLoadedView(Minecraft minecraft, Camera camera, AABB box) {
+        if (minecraft.level == null) {
+            return false;
+        }
+
+        BlockPos center = BlockPos.containing((box.minX + box.maxX) * 0.5D, (box.minY + box.maxY) * 0.5D, (box.minZ + box.maxZ) * 0.5D);
+        if (!minecraft.level.isLoaded(center)) {
+            return false;
+        }
+
+        double renderDistance = Math.max(16.0D, minecraft.options.getEffectiveRenderDistance() * 16.0D);
+        double closestX = clamp(camera.getPosition().x, box.minX, box.maxX);
+        double closestZ = clamp(camera.getPosition().z, box.minZ, box.maxZ);
+        double deltaX = camera.getPosition().x - closestX;
+        double deltaZ = camera.getPosition().z - closestZ;
+        return deltaX * deltaX + deltaZ * deltaZ <= renderDistance * renderDistance;
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static TriggerRenderColor triggerColor(String nodeTypeName) {

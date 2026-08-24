@@ -1,8 +1,8 @@
 package dev.sixik.stationarenear.navigation.network.packet;
 
 import dev.sixik.stationarenear.navigation.SolarNavigationConfig;
-import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
+import dev.sixik.stationarenear.navigation.ship.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
@@ -25,7 +25,6 @@ import java.util.function.Supplier;
 public record DockSolarStationPacket(BlockPos terminalPos, String stationName, long stationSeed, boolean quest, float stationX, float stationY) {
 
     private static final ResourceLocation DEFAULT_POOL = StationStructureIds.pool("space_station");
-    private static final int DOOR_OFFSET_BLOCKS = 3;
     private static final int MIN_ROOMS = 10;
     private static final int MAX_FLOORS = 1;
 
@@ -72,8 +71,9 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
 
         int clearedOldStations = SolarNavigationStationCleaner.clearByTerminal(level, packet.terminalPos());
 
-        Direction stationDirection = state.getValue(SolarNavigationTerminalBlock.FACING);
-        BlockPos doorCenter = packet.terminalPos().relative(stationDirection, DOOR_OFFSET_BLOCKS);
+        ShipDockingAnchorResolver.ResolvedDockingAnchor dockingAnchor = ShipDockingAnchorResolver.resolve(level, packet.terminalPos(), state);
+        Direction stationDirection = dockingAnchor.stationDirection();
+        BlockPos doorCenter = dockingAnchor.doorCenter();
         long generationSeed = packet.stationSeed() ^ level.getSeed() ^ Mth.getSeed(packet.terminalPos());
         float missionDanger = packet.quest() ? 0.55F : 0.35F;
 
@@ -96,6 +96,8 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
             station.customData().putString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_NAME, packet.stationName());
             station.customData().putFloat(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_X, packet.stationX());
             station.customData().putFloat(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_Y, packet.stationY());
+            station.customData().putBoolean("navigationShipAnchorBound", dockingAnchor.boundToShip());
+            station.customData().putString("navigationShipConnection", dockingAnchor.connectionName());
             dev.sixik.stationarenear.structures.world.StationSavedData.get(level).addStation(station);
         });
         int pieces = result.station().map(station -> station.pieces().size()).orElse(0);

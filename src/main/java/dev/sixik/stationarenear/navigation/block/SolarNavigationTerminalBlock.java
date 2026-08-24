@@ -81,7 +81,7 @@ public class SolarNavigationTerminalBlock extends HorizontalDirectionalBlock {
         builder.add(FACING);
     }
 
-    private static long terminalSeed(ServerLevel level, BlockPos pos) {
+    public static long terminalSeed(ServerLevel level, BlockPos pos) {
         return level.getSeed() ^ Mth.getSeed(pos) ^ TERMINAL_SEED_SALT;
     }
 }

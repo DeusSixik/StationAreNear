@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.navigation.network.packet;
 
+import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
 import net.minecraft.core.BlockPos;
@@ -12,10 +13,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers) {
+public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> dockedStations) {
 
     public OpenSolarNavigationPacket {
         questMarkers = List.copyOf(questMarkers);
+        dockedStations = List.copyOf(dockedStations);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -25,6 +27,10 @@ public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNa
         buffer.writeVarInt(questMarkers.size());
         for (SolarNavigationQuestMarker marker : questMarkers) {
             marker.encode(buffer);
+        }
+        buffer.writeVarInt(dockedStations.size());
+        for (SolarNavigationDockedStation station : dockedStations) {
+            station.encode(buffer);
         }
     }
 
@@ -37,13 +43,18 @@ public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNa
         for (int i = 0; i < markerCount; i++) {
             questMarkers.add(SolarNavigationQuestMarker.decode(buffer));
         }
-        return new OpenSolarNavigationPacket(seed, terminalPos, shipState, questMarkers);
+        int dockedStationCount = buffer.readVarInt();
+        List<SolarNavigationDockedStation> dockedStations = new ArrayList<>(dockedStationCount);
+        for (int i = 0; i < dockedStationCount; i++) {
+            dockedStations.add(SolarNavigationDockedStation.decode(buffer));
+        }
+        return new OpenSolarNavigationPacket(seed, terminalPos, shipState, questMarkers, dockedStations);
     }
 
     public static void handle(OpenSolarNavigationPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                dev.sixik.stationarenear.navigation.SolarNavigationScreen.openGui(packet.seed(), packet.terminalPos(), packet.shipState(), packet.questMarkers())
+                dev.sixik.stationarenear.navigation.SolarNavigationScreen.openGui(packet.seed(), packet.terminalPos(), packet.shipState(), packet.questMarkers(), packet.dockedStations())
         ));
         context.setPacketHandled(true);
     }

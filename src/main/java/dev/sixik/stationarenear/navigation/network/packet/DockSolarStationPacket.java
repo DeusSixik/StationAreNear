@@ -2,7 +2,9 @@ package dev.sixik.stationarenear.navigation.network.packet;
 
 import dev.sixik.stationarenear.navigation.SolarNavigationConfig;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
+import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
+import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
@@ -69,7 +71,17 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
             return;
         }
 
+        if (SolarNavigationStationCleaner.hasDockedStation(level, packet.terminalPos(), packet.stationSeed())) {
+            SolarNavigationControlManager.forceStop(level, packet.terminalPos());
+            ShipManager.setDocking(level, packet.terminalPos(), true);
+            player.displayClientMessage(Component.literal("Already docked with " + packet.stationName() + "."), false);
+            return;
+        }
+
         int clearedOldStations = SolarNavigationStationCleaner.clearByTerminal(level, packet.terminalPos());
+        if (clearedOldStations > 0) {
+            ShipManager.setDocking(level, packet.terminalPos(), false);
+        }
 
         ShipDockingAnchorResolver.ResolvedDockingAnchor dockingAnchor = ShipDockingAnchorResolver.resolve(level, packet.terminalPos(), state);
         Direction stationDirection = dockingAnchor.stationDirection();
@@ -100,6 +112,9 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
             station.customData().putString("navigationShipConnection", dockingAnchor.connectionName());
             dev.sixik.stationarenear.structures.world.StationSavedData.get(level).addStation(station);
         });
+        SolarNavigationControlManager.forceStop(level, packet.terminalPos());
+        ShipManager.setDocking(level, packet.terminalPos(), true);
+
         int pieces = result.station().map(station -> station.pieces().size()).orElse(0);
         String cleanupMessage = clearedOldStations > 0 ? " cleared old=" + clearedOldStations : "";
         player.displayClientMessage(Component.literal("Docked with " + packet.stationName() + ": generated " + pieces + " station pieces." + cleanupMessage), false);

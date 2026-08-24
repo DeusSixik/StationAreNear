@@ -1,6 +1,5 @@
 package dev.sixik.stationarenear.terminal.network.packet;
 
-import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -12,37 +11,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public record OpenTerminalPacket(BlockPos terminalPos, ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> history) {
+public record SyncTerminalHistoryPacket(BlockPos terminalPos, List<TerminalHistoryLine> history) {
 
-    public OpenTerminalPacket {
-        snapshot = snapshot == null ? ShipTerminalSnapshot.EMPTY : snapshot;
+    public SyncTerminalHistoryPacket {
         history = List.copyOf(history == null ? List.of() : history);
     }
 
     public void encode(FriendlyByteBuf buffer) {
         buffer.writeBlockPos(terminalPos);
-        snapshot.encode(buffer);
         buffer.writeVarInt(history.size());
         for (TerminalHistoryLine line : history) {
             line.encode(buffer);
         }
     }
 
-    public static OpenTerminalPacket decode(FriendlyByteBuf buffer) {
+    public static SyncTerminalHistoryPacket decode(FriendlyByteBuf buffer) {
         BlockPos terminalPos = buffer.readBlockPos();
-        ShipTerminalSnapshot snapshot = ShipTerminalSnapshot.decode(buffer);
         int count = buffer.readVarInt();
         List<TerminalHistoryLine> history = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             history.add(TerminalHistoryLine.decode(buffer));
         }
-        return new OpenTerminalPacket(terminalPos, snapshot, history);
+        return new SyncTerminalHistoryPacket(terminalPos, history);
     }
 
-    public static void handle(OpenTerminalPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+    public static void handle(SyncTerminalHistoryPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                dev.sixik.stationarenear.terminal.client.RetroTerminalScreen.open(packet.terminalPos(), packet.snapshot(), packet.history())
+                dev.sixik.stationarenear.terminal.client.RetroTerminalScreen.syncHistory(packet.terminalPos(), packet.history())
         ));
         context.setPacketHandled(true);
     }

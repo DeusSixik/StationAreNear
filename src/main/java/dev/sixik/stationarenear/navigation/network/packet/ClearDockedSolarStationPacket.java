@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.navigation.network.packet;
 import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -52,6 +53,7 @@ public record ClearDockedSolarStationPacket(BlockPos terminalPos, String station
 
         int cleared = SolarNavigationStationCleaner.clearByNavigationSeed(level, packet.stationSeed());
         if (cleared > 0) {
+            ShipManager.setDocking(level, packet.terminalPos(), false);
             player.displayClientMessage(Component.literal("Undocked from " + packet.stationName() + ": cleared generated station."), false);
         }
     }

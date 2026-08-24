@@ -8,6 +8,7 @@ import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
@@ -60,6 +61,20 @@ public final class SolarNavigationControlManager {
         session.level = player.serverLevel();
         session.viewers.put(player.getUUID(), player);
         session.inputs.put(player.getUUID(), new PlayerInput(inputMask, player.serverLevel().getGameTime()));
+    }
+
+    public static SolarNavigationShipState forceStop(ServerLevel level, BlockPos terminalPos) {
+        SolarNavigationShipState savedState = SolarNavigationSavedData.get(level).shipState(terminalPos);
+        SolarNavigationShipState stoppedState = new SolarNavigationShipState(savedState.shipX(), savedState.shipY(), 0.0F, 0.0F, savedState.angle());
+        SolarNavigationSavedData.get(level).shipState(terminalPos, stoppedState);
+
+        Session session = SESSIONS.get(new TerminalKey(level.dimension(), terminalPos.asLong()));
+        if (session != null) {
+            session.level = level;
+            session.state = stoppedState;
+            session.sync();
+        }
+        return stoppedState;
     }
 
     public static void tick(TickEvent.ServerTickEvent event) {
@@ -154,7 +169,10 @@ public final class SolarNavigationControlManager {
             int turnAxis = axis(UpdateMasks.RIGHT, UpdateMasks.LEFT, inputs.values());
             simulate(thrustAxis, turnAxis);
             SolarNavigationSavedData.get(level).shipState(terminalPos, state);
-            SolarNavigationStationCleaner.clearFarFromShip(level, terminalPos, state, SolarNavigationConfig.STATION_UNLOAD_DISTANCE.get().floatValue());
+            int clearedStations = SolarNavigationStationCleaner.clearFarFromShip(level, terminalPos, state, SolarNavigationConfig.STATION_UNLOAD_DISTANCE.get().floatValue());
+            if (clearedStations > 0) {
+                ShipManager.setDocking(level, terminalPos, false);
+            }
             sync();
         }
 

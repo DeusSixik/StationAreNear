@@ -12,6 +12,7 @@ import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationI
 import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationStatePacket;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
+import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -88,7 +89,8 @@ public final class SolarNavigationNetwork {
                 seed,
                 terminalPos,
                 state,
-                List.copyOf(data.questMarkers())
+                List.copyOf(data.questMarkers()),
+                SolarNavigationStationCleaner.dockedStations(player.serverLevel(), terminalPos)
         ));
     }
 

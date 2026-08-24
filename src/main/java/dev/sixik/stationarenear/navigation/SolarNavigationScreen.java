@@ -19,6 +19,7 @@ import dev.sixik.unigui.backend.minecraft.MinecraftFonts;
 import dev.sixik.unigui.backend.minecraft.MinecraftWidgetScreen;
 import dev.sixik.unigui.impl.core.DefaultUIContext;
 import dev.sixik.unigui.widgets.world.WorldCanvas;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
 import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
@@ -56,14 +57,14 @@ public final class SolarNavigationScreen {
     }
 
     public static void openGui() {
-        openGui(0x5EED_51A7L, BlockPos.ZERO, SolarNavigationShipState.DEFAULT, List.of());
+        openGui(0x5EED_51A7L, BlockPos.ZERO, SolarNavigationShipState.DEFAULT, List.of(), List.of());
     }
 
     public static void openGui(long seed, BlockPos terminalPos) {
-        openGui(seed, terminalPos, SolarNavigationShipState.DEFAULT, List.of());
+        openGui(seed, terminalPos, SolarNavigationShipState.DEFAULT, List.of(), List.of());
     }
 
-    public static void openGui(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers) {
+    public static void openGui(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations) {
         DefaultUIContext context = new DefaultUIContext(new MinecraftClipboardService())
                 .scaleProvider(new UnityLikeUIScaleProvider()
                         .referenceResolution(1920.0f, 1080.0f)
@@ -72,7 +73,7 @@ public final class SolarNavigationScreen {
 
 //        context.debugFlags(DebugFlags.ALL);
 
-        SolarNavigationCanvas canvas = new SolarNavigationCanvas(seed, terminalPos, shipState, questMarkers);
+        SolarNavigationCanvas canvas = new SolarNavigationCanvas(seed, terminalPos, shipState, questMarkers, restoredDockedStations);
         currentCanvas = canvas;
         canvas.layout(style -> style
                 .align(Alignment.STRETCH, Alignment.STRETCH)
@@ -111,6 +112,7 @@ public final class SolarNavigationScreen {
         private static final float VELOCITY_SMOOTHING = 16.0f;
         private static final float ANGLE_SMOOTHING = 22.0f;
         private static final float SNAP_DISTANCE = 900.0f;
+        private static final float DOCK_HOLD_SECONDS = 5.0f;
 
         private static final MutableColor BACKGROUND_TOP = MutableColor.fromHex("#050814");
         private static final MutableColor BACKGROUND_BOTTOM = MutableColor.fromHex("#10172A");
@@ -164,11 +166,18 @@ public final class SolarNavigationScreen {
         private float asteroidCollisionEventCooldown;
         private float dockMessageSeconds;
         private String dockMessage = "Find the quest station";
+        private float dockingProgressSeconds;
+        private long dockingTargetSeed = Long.MIN_VALUE;
+        private String dockingTargetName = "";
 
-        private SolarNavigationCanvas(long seed, BlockPos terminalPos, SolarNavigationShipState initialState, List<SolarNavigationQuestMarker> questMarkers) {
+        private SolarNavigationCanvas(long seed, BlockPos terminalPos, SolarNavigationShipState initialState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations) {
             this.seed = seed;
             this.terminalPos = terminalPos;
             this.questMarkers.addAll(questMarkers);
+            for (SolarNavigationDockedStation station : restoredDockedStations) {
+                dockedStations.add(station.seed());
+                activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.x(), station.y()));
+            }
             shipX = initialState.shipX();
             shipY = initialState.shipY();
             velocityX = initialState.velocityX();
@@ -193,9 +202,7 @@ public final class SolarNavigationScreen {
             timeSeconds += frameDelta;
 
             KeyboardState keyboard = uiContext() == null ? KeyboardState.NONE : uiContext().keyboard();
-            if (keyboard.wasPressed(KeyCodes.SPACE)) {
-                tryDock();
-            }
+            updateDockingProgress(keyboard, frameDelta);
             syncInput(keyboard, frameDelta);
             updateRenderState(frameDelta);
 
@@ -372,21 +379,23 @@ public final class SolarNavigationScreen {
                         asteroidSeed));
             }
 
-            random = new Random(sectorSeed(sectorX, sectorY, 0xD06E_57A7_10DEL));
-            if (random.nextDouble() <= SolarNavigationConfig.RANDOM_STATION_CHANCE.get()) {
-                long stationSeed = random.nextLong() ^ seed ^ sectorSeed(sectorX, sectorY, 0x57A7_10DEL);
-                float stationRadius = randomRange(random, SolarNavigationConfig.STATION_MIN_RADIUS.get().floatValue(), SolarNavigationConfig.STATION_MAX_RADIUS.get().floatValue());
-                stations.add(new Station(
-                        minX + randomRange(random, sectorSize * 0.18f, sectorSize * 0.82f),
-                        minY + randomRange(random, sectorSize * 0.18f, sectorSize * 0.82f),
-                        randomStationName(random),
-                        stationRadius,
-                        false,
-                        stationSeed,
-                        createDungeonRooms(stationSeed, false),
-                        0xFF8AE6FF
-                ));
-            }
+            SolarNavigationProceduralMap.randomStation(
+                    seed,
+                    new SolarNavigationShipState(shipX, shipY, velocityX, velocityY, angle),
+                    sectorX,
+                    sectorY,
+                    sectorSize,
+                    Float.MAX_VALUE
+            ).ifPresent(station -> stations.add(new Station(
+                    station.x(),
+                    station.y(),
+                    station.name(),
+                    station.radius(),
+                    false,
+                    station.seed(),
+                    createDungeonRooms(station.seed(), false),
+                    station.color()
+            )));
         }
 
         private void updateInput(KeyboardState keyboard, float delta) {
@@ -491,7 +500,45 @@ public final class SolarNavigationScreen {
                     CAMERA_ZOOM);
         }
 
-        private void tryDock() {
+        private void updateDockingProgress(KeyboardState keyboard, float delta) {
+            if (!keyboard.isDown(KeyCodes.SPACE)) {
+                resetDockingProgress();
+                return;
+            }
+
+            Station nearest = nearestDockingTarget();
+            if (nearest == null) {
+                resetDockingProgress();
+                if (keyboard.wasPressed(KeyCodes.SPACE)) {
+                    dockMessage = "No docking target in range";
+                    dockMessageSeconds = 1.5f;
+                }
+                return;
+            }
+
+            if (dockedStations.contains(nearest.seed())) {
+                resetDockingProgress();
+                if (keyboard.wasPressed(KeyCodes.SPACE)) {
+                    dockMessage = "Already docked: " + nearest.name();
+                    dockMessageSeconds = 1.8f;
+                }
+                return;
+            }
+
+            if (dockingTargetSeed != nearest.seed()) {
+                dockingTargetSeed = nearest.seed();
+                dockingTargetName = nearest.name();
+                dockingProgressSeconds = 0.0f;
+            }
+
+            dockingProgressSeconds = Math.min(DOCK_HOLD_SECONDS, dockingProgressSeconds + delta);
+            if (dockingProgressSeconds >= DOCK_HOLD_SECONDS) {
+                completeDock(nearest);
+                resetDockingProgress();
+            }
+        }
+
+        private Station nearestDockingTarget() {
             Station nearest = null;
             float nearestDistanceSq = Float.MAX_VALUE;
             for (Station station : stations) {
@@ -502,28 +549,27 @@ public final class SolarNavigationScreen {
                     nearestDistanceSq = distanceSq;
                 }
             }
+            return nearest;
+        }
 
-            if (nearest == null) {
-                dockMessage = "No docking target in range";
-                dockMessageSeconds = 1.5f;
-                return;
-            }
-
-            if (dockedStations.contains(nearest.seed())) {
-                dockMessage = "Already docked: " + nearest.name();
-                dockMessageSeconds = 1.8f;
-                return;
-            }
-
-            dockedStations.add(nearest.seed());
-            activeDockedStations.add(new DockedStation(nearest.seed(), nearest.name(), nearest.x(), nearest.y()));
-            SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, nearest.name(), nearest.seed(), nearest.quest(), nearest.x(), nearest.y()));
-            dockMessage = nearest.quest()
-                    ? "Docking request sent: " + nearest.name() + " / quest route"
-                    : "Docking request sent: " + nearest.name();
+        private void completeDock(Station station) {
+            dockedStations.add(station.seed());
+            activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.x(), station.y()));
+            SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, station.name(), station.seed(), station.quest(), station.x(), station.y()));
+            dockMessage = station.quest()
+                    ? "Docking request sent: " + station.name() + " / quest route"
+                    : "Docking request sent: " + station.name();
             dockMessageSeconds = 3.0f;
-            velocityX *= 0.25f;
-            velocityY *= 0.25f;
+            velocityX = 0.0f;
+            velocityY = 0.0f;
+            renderVelocityX = 0.0f;
+            renderVelocityY = 0.0f;
+        }
+
+        private void resetDockingProgress() {
+            dockingProgressSeconds = 0.0f;
+            dockingTargetSeed = Long.MIN_VALUE;
+            dockingTargetName = "";
         }
 
         private void renderScene(WorldCanvas canvas, DrawScope draw) {
@@ -539,8 +585,10 @@ public final class SolarNavigationScreen {
             drawStars(canvas, draw);
             drawAsteroids(canvas, draw);
             drawStations(canvas, draw);
+            drawQuestEdgeMarkers(canvas, draw, x, y, w, h);
             drawShip(canvas, draw);
-            drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
+            drawHud(draw, x, y, w, h);
+            drawDockingProgress(draw, x, y, w, h);
         }
 
         private void drawGrid(WorldCanvas canvas, DrawScope draw, float x, float y, float w, float h) {
@@ -698,9 +746,9 @@ public final class SolarNavigationScreen {
         }
 
         private void drawHud(DrawScope draw, float x, float y, float w, float h) {
-            float panelX = x + 22.0f;
-            float panelY = y + 18.0f;
             float panelW = 390.0f;
+            float panelX = x + (w - panelW) * 0.5f;
+            float panelY = y + 18.0f;
             float panelH = dockMessageSeconds > 0.0f ? 134.0f : 112.0f;
             draw.addRectFilled(panelX, panelY, panelW, panelH, 8.0f, HUD_BG);
             draw.addRect(panelX, panelY, panelW, panelH, 8.0f, HUD_BORDER, 1.25f);
@@ -708,8 +756,7 @@ public final class SolarNavigationScreen {
 
             float speed = (float) Math.sqrt(renderVelocityX * renderVelocityX + renderVelocityY * renderVelocityY);
             text(draw, "W/S thrust   A/D rotate   SPACE dock   ESC close", panelX + 16.0f, panelY + 38.0f, panelW - 32.0f, 18.0f, 11.0f, MUTED);
-            text(draw, "POS " + Math.round(renderShipX) + ", " + Math.round(renderShipY)
-                            + "    SPD " + Math.round(speed)
+            text(draw, "SPD " + Math.round(speed)
                             + "    SEED " + Long.toHexString(seed).toUpperCase(),
                     panelX + 16.0f, panelY + 62.0f, panelW - 32.0f, 18.0f, 11.0f, WHITE);
 
@@ -725,6 +772,32 @@ public final class SolarNavigationScreen {
             }
 
             drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
+        }
+
+        private void drawDockingProgress(DrawScope draw, float x, float y, float w, float h) {
+            if (dockingTargetSeed == Long.MIN_VALUE || dockingProgressSeconds <= 0.0f) {
+                return;
+            }
+
+            float progress = clamp(dockingProgressSeconds / DOCK_HOLD_SECONDS, 0.0f, 1.0f);
+            float barW = Math.min(560.0f, Math.max(220.0f, w - 96.0f));
+            float barH = 22.0f;
+            float barX = x + (w - barW) * 0.5f;
+            float barY = y + h - 48.0f;
+            float fillW = Math.max(0.0f, (barW - 6.0f) * progress);
+
+            draw.addRectFilled(barX, barY, barW, barH, 6.0f, MutableColor.rgba(0.015f, 0.025f, 0.045f, 0.86f));
+            draw.addRect(barX, barY, barW, barH, 6.0f, HUD_BORDER, 1.25f);
+            draw.addRectFilled(barX + 3.0f, barY + 3.0f, fillW, barH - 6.0f, 4.0f,
+                    progress >= 1.0f ? CYAN : AMBER);
+            text(draw,
+                    "DOCKING " + dockingTargetName + " / HOLD SPACE " + Math.round(progress * 100.0f) + "%",
+                    barX + 10.0f,
+                    barY + 4.0f,
+                    barW - 20.0f,
+                    16.0f,
+                    11.0f,
+                    WHITE);
         }
 
         private float radarSize(float w, float h) {

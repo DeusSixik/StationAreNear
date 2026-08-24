@@ -12,7 +12,6 @@ import dev.sixik.unigui.api.math.MutableColor;
 import dev.sixik.unigui.api.math.RectView;
 import dev.sixik.unigui.api.posteffect.UiPostEffectChain;
 import dev.sixik.unigui.api.posteffect.UiPostEffectPass;
-import dev.sixik.unigui.api.render.Paint;
 import dev.sixik.unigui.api.render.UiRenderPolicy;
 import dev.sixik.unigui.api.text.Fonts;
 import dev.sixik.unigui.api.text.RichText;
@@ -33,20 +32,33 @@ import dev.sixik.unigui.widgets.feedback.Popup;
 import dev.sixik.unigui.widgets.interaction.AdminCommandRegistry;
 import dev.sixik.unigui.widgets.interaction.AdminConsole;
 import dev.sixik.unigui.widgets.interaction.Button;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationStationInfo;
+import dev.sixik.stationarenear.ship.data.ShipSystemModule;
+import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
+import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
+import dev.sixik.stationarenear.terminal.data.TerminalCommandDefinition;
+import dev.sixik.stationarenear.terminal.data.TerminalHistoryKind;
+import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
+import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
+import net.minecraft.core.BlockPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Locale;
 
 public final class RetroTerminalScreen {
-private static final List<String> SAMPLE_PLAYERS = List.of("Steve", "Alex", "Sixik", "Engineer", "Navigator");
-    private static final List<String> COORDINATES = List.of("0", "64", "128", "-128", "256", "~", "~-1", "~1");
+    private static RetroConsole currentConsole;
 
     private RetroTerminalScreen() {
     }
 
     public static void open() {
+        open(BlockPos.ZERO, ShipTerminalSnapshot.EMPTY, List.of());
+    }
+
+    public static void open(BlockPos terminalPos, ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> history) {
         Minecraft minecraft = Minecraft.getInstance();
         Screen previous = minecraft.screen;
 
@@ -59,11 +71,15 @@ private static final List<String> SAMPLE_PLAYERS = List.of("Steve", "Alex", "Six
         context.scaleProvider(scaleProvider);
 //        context.debugFlags(DebugFlags.ALL);
 
-        RetroConsole console = new RetroConsole();
+        RetroConsole console = new RetroConsole(terminalPos, snapshot, history);
+        currentConsole = console;
         Widget root = root(console);
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Station Terminal"), root, context) {
             @Override
             public void onClose() {
+                if (currentConsole == console) {
+                    currentConsole = null;
+                }
                 Minecraft.getInstance().setScreen(previous);
             }
         };
@@ -74,6 +90,13 @@ private static final List<String> SAMPLE_PLAYERS = List.of("Steve", "Alex", "Six
         screen.renderPolicy(UiRenderPolicy.continuous());
         screen.postEffect(retroEffect(scaleProvider));
         minecraft.setScreen(screen);
+    }
+
+
+    public static void syncHistory(BlockPos terminalPos, List<TerminalHistoryLine> history) {
+        if (currentConsole != null && currentConsole.terminalPos.equals(terminalPos)) {
+            currentConsole.applyServerHistory(history);
+        }
     }
 
     private static Widget root(RetroConsole console) {
@@ -159,14 +182,68 @@ private static final List<String> SAMPLE_PLAYERS = List.of("Steve", "Alex", "Six
         private static final MutableColor ERROR = MutableColor.rgba(1.00f, 0.36f, 0.28f, 1.00f);
         private static final MutableColor WARNING = MutableColor.rgba(1.00f, 0.82f, 0.36f, 1.00f);
 
-        private RetroConsole() {
+        private final BlockPos terminalPos;
+        private final ShipTerminalSnapshot snapshot;
+
+        private RetroConsole(BlockPos terminalPos, ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> history) {
             super();
+            this.terminalPos = terminalPos;
+            this.snapshot = snapshot == null ? ShipTerminalSnapshot.EMPTY : snapshot;
             title("STATION TERMINAL / COMMAND CONSOLE");
             prompt("/");
             font(MinecraftFonts.defaultFace(), 18.0f);
             maxOutputLines(512);
             registerTerminalCommands();
-            appendInfo("Type / or press Tab to show available commands.");
+            appendInfo("Type / or press Tab to show commands: " + TerminalCommandCatalog.summary() + ".");
+            applyServerHistory(history);
+        }
+
+        @Override
+        protected boolean registerBuiltInCommandsByDefault() {
+            return false;
+        }
+
+        @Override
+        protected void executeInput() {
+            String command = inputText().trim();
+            if (command.isBlank()) {
+                return;
+            }
+            while (command.startsWith("/")) {
+                command = command.substring(1).trim();
+            }
+            if (command.isBlank()) {
+                inputText("");
+                return;
+            }
+
+            if (history.isEmpty() || !history.get(history.size() - 1).equals(command)) {
+                history.add(command);
+            }
+            historyIndex = history.size();
+            inputText("");
+            clearCompletions();
+            TerminalNetwork.sendCommand(terminalPos, command);
+        }
+
+        private void applyServerHistory(List<TerminalHistoryLine> serverHistory) {
+            super.clearOutput();
+            for (TerminalHistoryLine line : serverHistory) {
+                appendOutput(line.text(), toConsoleKind(line.kind()));
+            }
+            syncOutputScrollMetrics();
+            outputScroll.scrollTo(0.0f, realOutputMaxScrollY());
+            pendingOutputScrollToEnd = false;
+        }
+
+        private LineKind toConsoleKind(TerminalHistoryKind kind) {
+            return switch (kind) {
+                case COMMAND -> LineKind.COMMAND;
+                case INFO -> LineKind.INFO;
+                case WARNING -> LineKind.WARNING;
+                case ERROR -> LineKind.ERROR;
+                case OUTPUT -> LineKind.OUTPUT;
+            };
         }
 
         @Override
@@ -356,33 +433,99 @@ private static final List<String> SAMPLE_PLAYERS = List.of("Steve", "Alex", "Six
         }
 
         private void registerTerminalCommands() {
-            registerCommand("status", "Print ship and terminal status", (console, call) -> {
-                console.appendInfo("Power: NOMINAL / Link: STABLE / Command bus: READY");
-                console.appendOutput("CPU 18% | BUS 04 | HEAP OK | SIGNAL 91%", LineKind.OUTPUT);
+            this.registerCommand("help", "List registered commands", (console, invocation) -> {
+                console.appendInfo("Registered commands:");
+
+                for(AdminCommandRegistry.CommandDefinition command : this.commandRegistry.commands()) {
+                    console.appendOutput("  " + command.signatureWithDescription(), AdminConsole.LineKind.OUTPUT);
+                }
+
             });
-            registerCommand("scan", "Scan nearby objects", (console, call) -> {
-                console.appendInfo("Scan result:");
-                console.appendOutput("  STATION A-17     distance  4200m    dock: yes", LineKind.OUTPUT);
-                console.appendOutput("  ASTEROID FIELD   distance  1730m    hazard: medium", LineKind.WARNING);
-                console.appendOutput("  BEACON ECHO      distance  6200m    quest marker", LineKind.OUTPUT);
-            });
-            registerCommand("players", "List known player targets", (console, call) ->
-                    console.appendOutput(String.join(", ", SAMPLE_PLAYERS), LineKind.OUTPUT));
-            registerCommand(AdminCommandRegistry.command("teleport", "Teleport player to coordinates")
-                    .argument("player", "Known player", () -> SAMPLE_PLAYERS)
-                    .customArgument("x", "X coordinate", COORDINATES)
-                    .customArgument("y", "Y coordinate", COORDINATES)
-                    .customArgument("z", "Z coordinate", COORDINATES)
-                    .executor((console, call) -> {
-                        List<String> args = call.arguments();
-                        if (args.size() < 4) {
-                            console.appendError("Usage: teleport <player> <x> <y> <z>");
-                            return;
-                        }
-                        console.appendInfo("Teleport queued: " + args.get(0) + " -> "
-                                + args.get(1) + " " + args.get(2) + " " + args.get(3));
-                    })
-                    .build());
+
+            this.registerCommand("clear", "Clear console output", (console, invocation) -> console.clearOutput());
+
+            for (TerminalCommandDefinition command : TerminalCommandCatalog.COMMANDS) {
+                registerCommand(command.command(), command.description(), switch (command.command()) {
+                    case "help" -> (console, call) -> appendHelp(console);
+                    case "status" -> (console, call) -> appendStatus(console);
+                    case "modules" -> (console, call) -> appendModules(console);
+                    case "stations", "scan" -> (console, call) -> appendStations(console);
+                    case "clear", "cls" -> (console, call) -> clearOutput();
+                    default -> (console, call) -> console.appendError("Unknown command: " + command.command());
+                });
+            }
+        }
+
+        private void appendHelp(AdminConsole console) {
+            console.appendInfo("Available terminal commands:");
+            for (TerminalCommandDefinition command : TerminalCommandCatalog.COMMANDS) {
+                console.appendOutput(String.format(Locale.ROOT, "  %-8s - %s", command.command(), command.description()), LineKind.OUTPUT);
+            }
+        }
+
+        private void appendStatus(AdminConsole console) {
+            float hp = snapshot.shipState().hp();
+            float maxHp = snapshot.shipState().maxHp();
+            console.appendOutput("Hull HP: " + formatNumber(hp) + " / " + formatNumber(maxHp) + " (" + formatPercent(snapshot.shipState().hpPercent()) + ")",
+                    hp <= maxHp * 0.25F ? LineKind.ERROR : hp <= maxHp * 0.55F ? LineKind.WARNING : LineKind.OUTPUT);
+            console.appendOutput("Integrity: " + integrityText(), snapshot.shipState().decompressed() ? LineKind.ERROR : LineKind.OUTPUT);
+            console.appendOutput("Ship Mode: " + (snapshot.shipState().isDocking() ? "DOCKED" : "FLIGHT"), snapshot.shipState().isDocking() ? LineKind.INFO : LineKind.OUTPUT);
+            console.appendOutput("Docking: " + (snapshot.docked() ? "DOCKED" : "IN SPACE")
+                    + " / Door: " + (snapshot.doorOpen() ? "OPEN" : "SEALED")
+                    + " / Hull breach: " + (snapshot.hullBreach() ? "YES" : "NO"),
+                    snapshot.hullBreach() || snapshot.doorOpen() && !snapshot.docked() ? LineKind.WARNING : LineKind.OUTPUT);
+            console.appendOutput("Solar speed: " + formatNumber(speed()), LineKind.OUTPUT);
+        }
+
+        private void appendModules(AdminConsole console) {
+            console.appendInfo("Ship modules:");
+            for (ShipSystemModule module : snapshot.shipState().modules()) {
+                float durabilityRatio = module.maxDurability() <= 0.0F ? 0.0F : module.durability() / module.maxDurability();
+                LineKind kind = durabilityRatio <= 0.25F ? LineKind.ERROR : durabilityRatio <= 0.55F ? LineKind.WARNING : LineKind.OUTPUT;
+                console.appendOutput("  " + module.type().displayName()
+                        + " | Lv." + module.level()
+                        + " | DUR " + formatNumber(module.durability()) + "/" + formatNumber(module.maxDurability())
+                        + " (" + formatPercent(durabilityRatio) + ")", kind);
+            }
+        }
+
+        private void appendStations(AdminConsole console) {
+            if (snapshot.nearbyStations().isEmpty()) {
+                console.appendInfo("No known stations near current solar position.");
+                return;
+            }
+
+            console.appendInfo("Nearby stations around solar position:");
+            for (SolarNavigationStationInfo station : snapshot.nearbyStations()) {
+                console.appendOutput("  " + station.name()
+                        + (station.quest() ? " | QUEST" : "")
+                        + " | distance " + formatNumber(station.distance()),
+                        station.quest() ? LineKind.WARNING : LineKind.OUTPUT);
+            }
+        }
+
+        private String integrityText() {
+            if (!snapshot.boundToShip()) {
+                return "SHIP NOT BOUND";
+            }
+            if (snapshot.shipState().decompressed()) {
+                return "DECOMPRESSED / " + snapshot.shipState().decompressionReason();
+            }
+            return "SEALED";
+        }
+
+        private float speed() {
+            float x = snapshot.navigationState().velocityX();
+            float y = snapshot.navigationState().velocityY();
+            return (float) Math.sqrt(x * x + y * y);
+        }
+
+        private static String formatNumber(float value) {
+            return String.format(Locale.ROOT, "%.1f", value);
+        }
+
+        private static String formatPercent(float value) {
+            return String.format(Locale.ROOT, "%.0f%%", Math.max(0.0F, Math.min(1.0F, value)) * 100.0F);
         }
 
         private MutableColor colorFor(LineKind kind) {

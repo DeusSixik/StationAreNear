@@ -1,12 +1,18 @@
 package dev.sixik.stationarenear.navigation.api;
 
+import dev.sixik.stationarenear.navigation.SolarNavigationProceduralMap;
+import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationStationInfo;
 import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public final class SolarNavigationApi {
@@ -36,6 +42,26 @@ public final class SolarNavigationApi {
 
     public static Optional<SolarNavigationQuestMarker> questDungeon(ServerLevel level, String id) {
         return SolarNavigationSavedData.get(level).questMarker(id);
+    }
+
+
+    public static SolarNavigationShipState shipState(ServerLevel level, BlockPos terminalPos) {
+        return SolarNavigationSavedData.get(level).shipState(terminalPos);
+    }
+
+    public static List<SolarNavigationStationInfo> nearbyStations(ServerLevel level, BlockPos terminalPos, float radius, int limit) {
+        SolarNavigationSavedData data = SolarNavigationSavedData.get(level);
+        return nearbyStations(level, terminalPos, data.shipState(terminalPos), radius, limit);
+    }
+
+    public static List<SolarNavigationStationInfo> nearbyStations(ServerLevel level, BlockPos terminalPos, SolarNavigationShipState shipState, float radius, int limit) {
+        return SolarNavigationProceduralMap.nearbyStations(
+                SolarNavigationTerminalBlock.terminalSeed(level, terminalPos),
+                shipState,
+                SolarNavigationSavedData.get(level).questMarkers(),
+                radius,
+                limit
+        );
     }
 
     public static Collection<SolarNavigationQuestMarker> questDungeons(ServerLevel level) {

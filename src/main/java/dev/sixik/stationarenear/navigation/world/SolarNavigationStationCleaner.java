@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.navigation.world;
 import dev.sixik.stationarenear.structures.data.StationInstance;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -43,6 +44,41 @@ public final class SolarNavigationStationCleaner {
             }
         }
         return clearStations(level, data, targets);
+    }
+
+    public static List<SolarNavigationDockedStation> dockedStations(ServerLevel level, BlockPos terminalPos) {
+        StationSavedData data = StationSavedData.get(level);
+        List<SolarNavigationDockedStation> stations = new ArrayList<>();
+        for (StationInstance station : data.stations()) {
+            if (!station.customData().contains(KEY_NAVIGATION_TERMINAL_POS)
+                    || station.customData().getLong(KEY_NAVIGATION_TERMINAL_POS) != terminalPos.asLong()
+                    || !station.customData().contains(KEY_NAVIGATION_STATION_SEED)
+                    || !station.customData().contains(KEY_NAVIGATION_STATION_X)
+                    || !station.customData().contains(KEY_NAVIGATION_STATION_Y)) {
+                continue;
+            }
+
+            stations.add(new SolarNavigationDockedStation(
+                    station.customData().getLong(KEY_NAVIGATION_STATION_SEED),
+                    station.customData().contains(KEY_NAVIGATION_STATION_NAME) ? station.customData().getString(KEY_NAVIGATION_STATION_NAME) : "Unknown Station",
+                    station.customData().getFloat(KEY_NAVIGATION_STATION_X),
+                    station.customData().getFloat(KEY_NAVIGATION_STATION_Y)
+            ));
+        }
+        return List.copyOf(stations);
+    }
+
+    public static boolean hasDockedStation(ServerLevel level, BlockPos terminalPos, long navigationStationSeed) {
+        StationSavedData data = StationSavedData.get(level);
+        for (StationInstance station : data.stations()) {
+            if (station.customData().contains(KEY_NAVIGATION_TERMINAL_POS)
+                    && station.customData().getLong(KEY_NAVIGATION_TERMINAL_POS) == terminalPos.asLong()
+                    && station.customData().contains(KEY_NAVIGATION_STATION_SEED)
+                    && station.customData().getLong(KEY_NAVIGATION_STATION_SEED) == navigationStationSeed) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static int clearByTerminal(ServerLevel level, BlockPos terminalPos) {

@@ -13,12 +13,10 @@ import dev.sixik.unigui.api.render.DrawPoint;
 import dev.sixik.unigui.api.render.DrawScope;
 import dev.sixik.unigui.api.render.UiRenderPolicy;
 import dev.sixik.unigui.api.text.RichText;
-import dev.sixik.unigui.api.widget.Widget;
 import dev.sixik.unigui.backend.minecraft.MinecraftClipboardService;
 import dev.sixik.unigui.backend.minecraft.MinecraftFonts;
 import dev.sixik.unigui.backend.minecraft.MinecraftWidgetScreen;
 import dev.sixik.unigui.impl.core.DefaultUIContext;
-import dev.sixik.unigui.widgets.feedback.OverlayLayer;
 import dev.sixik.unigui.widgets.world.WorldCanvas;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
@@ -80,7 +78,7 @@ public final class SolarNavigationScreen {
 
 
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(
-                Component.literal("Solar Navigation Terminal"), new OverlayLayer(canvas), context) {
+                Component.literal("Solar Navigation Terminal"), canvas, context) {
             @Override
             public boolean isPauseScreen() {
                 return false;
@@ -88,6 +86,7 @@ public final class SolarNavigationScreen {
         };
         screen.renderPolicy(UiRenderPolicy.vsync());
         screen.scaleWithMinecraftGui(false);
+        screen.postEffect(SolarNavigationPostEffects.terminalContent());
         Minecraft.getInstance().setScreen(screen);
 
     }
@@ -538,8 +537,7 @@ public final class SolarNavigationScreen {
             drawAsteroids(canvas, draw);
             drawStations(canvas, draw);
             drawShip(canvas, draw);
-            drawQuestEdgeMarkers(canvas, draw, x, y, w, h);
-            drawHud(draw, x, y, w, h);
+            drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
         }
 
         private void drawGrid(WorldCanvas canvas, DrawScope draw, float x, float y, float w, float h) {
@@ -723,10 +721,19 @@ public final class SolarNavigationScreen {
                         dockMessage.contains("impact") || dockMessage.contains("No ") ? RED : ORANGE);
             }
 
-            float radarSize = Math.min(170.0f, Math.max(120.0f, Math.min(w, h) * 0.18f));
-            float radarX = x + w - radarSize - 26.0f;
-            float radarY = y + 22.0f;
-            drawRadar(draw, radarX, radarY, radarSize);
+            drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
+        }
+
+        private float radarSize(float w, float h) {
+            return Math.min(170.0f, Math.max(120.0f, Math.min(w, h) * 0.18f));
+        }
+
+        private float radarX(float x, float w, float h) {
+            return x + w - radarSize(w, h) - 26.0f;
+        }
+
+        private float radarY(float y) {
+            return y + 22.0f;
         }
 
         private void drawRadar(DrawScope draw, float x, float y, float size) {

@@ -2,6 +2,7 @@ package dev.sixik.stationarenear;
 
 import com.mojang.logging.LogUtils;
 import dev.sixik.stationarenear.navigation.SolarNavigationModule;
+import dev.sixik.stationarenear.sam.SamModule;
 import dev.sixik.stationarenear.structures.StationStructureModule;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -21,6 +22,7 @@ public class StationAreNear {
         modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         StationStructureModule.register(modEventBus);
         SolarNavigationModule.register(modEventBus);
+        SamModule.register(modEventBus);
     }
 
     @NotNull

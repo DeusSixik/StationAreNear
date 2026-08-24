@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.navigation;
 
+import dev.sixik.stationarenear.navigation.event.SolarNavigationAsteroidCollisionEvent;
 import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -18,5 +19,11 @@ public final class SolarNavigationModule {
         SolarNavigationNetwork.register();
         SolarNavigationBlocks.register(modEventBus);
         MinecraftForge.EVENT_BUS.addListener(SolarNavigationControlManager::tick);
+//        MinecraftForge.EVENT_BUS.addListener(SolarNavigationModule::test);
     }
+
+
+//    private static void test(SolarNavigationAsteroidCollisionEvent event) {
+//        System.out.println("Мы вьебались со скоростью: " +   event.impactSpeed());
+//    }
 }

@@ -92,10 +92,6 @@ public final class SolarNavigationScreen {
 
     }
 
-    /**
-     * WorldCanvas-РЎРѓРЎвЂ Р ВµР Р…Р В°: Р Р†РЎРѓРЎРЏ РЎРѓР С‘Р СРЎС“Р В»РЎРЏРЎвЂ Р С‘РЎРЏ РЎвЂ¦РЎР‚Р В°Р Р…Р С‘РЎвЂљРЎРѓРЎРЏ Р Р† world-space, Р В° UI-Р С•РЎвЂљРЎР‚Р С‘РЎРѓР С•Р Р†Р С”Р В°
-     * Р С”Р В°Р В¶Р Т‘РЎвЂ№Р в„– Р С”Р В°Р Т‘РЎР‚ Р С—РЎР‚Р С•Р ВµРЎвЂ Р С‘РЎР‚РЎС“Р ВµРЎвЂљ Р С•Р В±РЎР‰Р ВµР С”РЎвЂљРЎвЂ№ Р Р† root-space РЎвЂЎР ВµРЎР‚Р ВµР В· Р СР ВµРЎвЂљР С•Р Т‘РЎвЂ№ canvas'Р В°.
-     */
     private static final class SolarNavigationCanvas extends WorldCanvas {
         private static final float WORLD_LIMIT = 1_000_000.0f;
         private static final float SHIP_RADIUS = 18.0f;

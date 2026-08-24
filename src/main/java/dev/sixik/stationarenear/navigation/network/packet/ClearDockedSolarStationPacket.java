@@ -15,16 +15,17 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
-public record ClearDockedSolarStationPacket(BlockPos terminalPos, String stationName, long stationSeed) {
+public record ClearDockedSolarStationPacket(BlockPos terminalPos, String stationName, String stationCode, long stationSeed) {
 
     public void encode(FriendlyByteBuf buffer) {
         buffer.writeBlockPos(terminalPos);
-        buffer.writeUtf(stationName, 64);
+        buffer.writeUtf(stationName, 128);
+        buffer.writeUtf(stationCode, 32);
         buffer.writeLong(stationSeed);
     }
 
     public static ClearDockedSolarStationPacket decode(FriendlyByteBuf buffer) {
-        return new ClearDockedSolarStationPacket(buffer.readBlockPos(), buffer.readUtf(64), buffer.readLong());
+        return new ClearDockedSolarStationPacket(buffer.readBlockPos(), buffer.readUtf(128), buffer.readUtf(32), buffer.readLong());
     }
 
     public static void handle(ClearDockedSolarStationPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
@@ -54,7 +55,7 @@ public record ClearDockedSolarStationPacket(BlockPos terminalPos, String station
         int cleared = SolarNavigationStationCleaner.clearByNavigationSeed(level, packet.stationSeed());
         if (cleared > 0) {
             ShipManager.setDocking(level, packet.terminalPos(), false);
-            player.displayClientMessage(Component.literal("Undocked from " + packet.stationName() + ": cleared generated station."), false);
+            player.displayClientMessage(Component.literal("Undocked from " + packet.stationCode() + ": cleared generated station."), false);
         }
     }
 }

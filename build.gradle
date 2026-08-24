@@ -19,6 +19,8 @@ apply plugin: 'org.spongepowered.mixin'
 group = mod_group_id
 version = mod_version
 
+jarJar.enable()
+
 base {
     archivesName = mod_id
 }
@@ -108,8 +110,9 @@ dependencies {
     implementation fg.deobf("curse.maven:architectury-api-419699:5137938")
 
     // Анимированыеп мобы будут через Geckolib, кто бы сомневался ?
-//    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
-//    implementation("com.eliotlash.mclib:mclib:20")
+    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
+    jarJar("software.bernie.geckolib:geckolib-forge-${minecraft_version}:[${geckolib_version},)")
+    implementation("com.eliotlash.mclib:mclib:20")
 
     // Либа для 2D графики. Кстати очень крутая 😊
 //    compileOnly fg.deobf("com.github.DeusSixik.UniGUI:unigui-common-${minecraft_version}:${unigui_version}")

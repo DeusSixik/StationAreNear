@@ -97,7 +97,7 @@ public class TerminalSavedData extends SavedData {
     private static List<TerminalHistoryLine> defaultHistory() {
         List<TerminalHistoryLine> history = new ArrayList<>();
         history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "The service is provided by Helicorp"));
-        history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Type / or press Tab to show commands: status, modules, stations, scan."));
+        history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Type / or press Tab to show commands: status, modules, stations, scan <id>."));
         return history;
     }
 

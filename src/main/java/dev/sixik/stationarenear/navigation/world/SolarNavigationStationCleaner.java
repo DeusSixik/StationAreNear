@@ -18,6 +18,7 @@ public final class SolarNavigationStationCleaner {
     public static final String KEY_NAVIGATION_TERMINAL_POS = "solarNavigationTerminalPos";
     public static final String KEY_NAVIGATION_STATION_SEED = "solarNavigationStationSeed";
     public static final String KEY_NAVIGATION_STATION_NAME = "solarNavigationStationName";
+    public static final String KEY_NAVIGATION_STATION_CODE = "solarNavigationStationCode";
     public static final String KEY_NAVIGATION_STATION_X = "solarNavigationStationX";
     public static final String KEY_NAVIGATION_STATION_Y = "solarNavigationStationY";
 
@@ -58,11 +59,15 @@ public final class SolarNavigationStationCleaner {
                 continue;
             }
 
+            long stationSeed = station.customData().getLong(KEY_NAVIGATION_STATION_SEED);
+            float stationX = station.customData().getFloat(KEY_NAVIGATION_STATION_X);
+            float stationY = station.customData().getFloat(KEY_NAVIGATION_STATION_Y);
             stations.add(new SolarNavigationDockedStation(
-                    station.customData().getLong(KEY_NAVIGATION_STATION_SEED),
+                    stationSeed,
                     station.customData().contains(KEY_NAVIGATION_STATION_NAME) ? station.customData().getString(KEY_NAVIGATION_STATION_NAME) : "Unknown Station",
-                    station.customData().getFloat(KEY_NAVIGATION_STATION_X),
-                    station.customData().getFloat(KEY_NAVIGATION_STATION_Y)
+                    station.customData().contains(KEY_NAVIGATION_STATION_CODE) ? station.customData().getString(KEY_NAVIGATION_STATION_CODE) : dev.sixik.stationarenear.navigation.StationCodeGenerator.code(stationSeed, stationX, stationY),
+                    stationX,
+                    stationY
             ));
         }
         return List.copyOf(stations);

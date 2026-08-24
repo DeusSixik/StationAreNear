@@ -1,7 +1,16 @@
 package dev.sixik.stationarenear.terminal.server;
 
+import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
+import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
+import dev.sixik.stationarenear.navigation.StationCodeGenerator;
+import dev.sixik.stationarenear.navigation.SolarNavigationProceduralMap;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationStationInfo;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
+import dev.sixik.stationarenear.quest.data.QuestStationState;
+import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.ship.data.ShipSystemModule;
+import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
 import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryKind;
@@ -11,18 +20,23 @@ import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
 import dev.sixik.stationarenear.terminal.registry.TerminalBlocks;
 import dev.sixik.stationarenear.terminal.world.TerminalSavedData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 public final class TerminalCommandProcessor {
 
     private static final double MAX_TERMINAL_DISTANCE_SQ = 256.0D;
+    private static final float TARGET_SCAN_RADIUS = 12000.0F;
 
     private TerminalCommandProcessor() {
     }
@@ -58,12 +72,22 @@ public final class TerminalCommandProcessor {
 
     private static void execute(ServerLevel level, BlockPos terminalPos, String command, List<TerminalHistoryLine> output) {
         ShipTerminalSnapshot snapshot = TerminalSnapshotFactory.create(level, terminalPos);
-        String root = command.split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        String[] parts = command.split("\\s+", 2);
+        String root = parts[0].toLowerCase(Locale.ROOT);
+        String argument = parts.length > 1 ? parts[1].trim() : "";
         switch (root) {
             case "help" -> appendHelp(output);
             case "status" -> appendStatus(snapshot, output);
             case "modules" -> appendModules(snapshot, output);
-            case "stations", "scan" -> appendStations(snapshot, output);
+            case "objectives", "objective", "tasks" -> appendObjectives(level, output);
+            case "stations" -> appendStations(snapshot, output);
+            case "scan" -> {
+                if (argument.isBlank()) {
+                    appendStations(snapshot, output);
+                } else {
+                    appendStationScan(level, snapshot, argument, output);
+                }
+            }
             default -> output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Unknown command: " + command + " / use help"));
         }
     }
@@ -105,19 +129,78 @@ public final class TerminalCommandProcessor {
         }
     }
 
+    private static void appendObjectives(ServerLevel level, List<TerminalHistoryLine> output) {
+        QuestSavedData questData = QuestSavedData.get(level);
+        if (questData.currentStationId().isEmpty() || questData.currentStation().isEmpty()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No active mission."));
+            return;
+        }
+
+        QuestStationState station = questData.currentStation().get();
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Current mission station: " + stationDisplayId(level, station.stationId())));
+        if (station.hasTimer()) {
+            output.add(new TerminalHistoryLine(station.timerExpired() ? TerminalHistoryKind.ERROR : TerminalHistoryKind.OUTPUT,
+                    station.timerExpired() ? "Time left: EXPIRED" : "Time left: " + formatDuration(station.timerRemainingMillis())));
+        }
+        if (station.objectives().isEmpty()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No objectives assigned."));
+            return;
+        }
+
+        int index = 1;
+        for (QuestObjectiveState objective : station.objectives()) {
+            TerminalHistoryKind kind = objective.completed() ? TerminalHistoryKind.INFO : TerminalHistoryKind.OUTPUT;
+            output.add(new TerminalHistoryLine(kind,
+                    "  " + index + ". " + objective.text() + " [" + objectiveProgress(objective) + "]"));
+            index++;
+        }
+    }
+
     private static void appendStations(ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> output) {
         if (snapshot.nearbyStations().isEmpty()) {
             output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No known stations near current solar position."));
             return;
         }
 
-        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Nearby stations around solar position:"));
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Nearby station IDs around solar position:"));
         for (SolarNavigationStationInfo station : snapshot.nearbyStations()) {
             output.add(new TerminalHistoryLine(station.quest() ? TerminalHistoryKind.WARNING : TerminalHistoryKind.OUTPUT,
-                    "  " + station.name()
+                    "  " + station.code()
                             + (station.quest() ? " | QUEST" : "")
                             + " | distance " + formatNumber(station.distance())));
         }
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Use: scan <station_id>"));
+    }
+
+    private static void appendStationScan(ServerLevel level, ShipTerminalSnapshot snapshot, String stationId, List<TerminalHistoryLine> output) {
+        List<SolarNavigationStationInfo> matches = SolarNavigationProceduralMap.nearbyStations(
+                        SolarNavigationTerminalBlock.terminalSeed(level, snapshot.navigationTerminalPos()),
+                        snapshot.navigationState(),
+                        SolarNavigationSavedData.get(level).questMarkers(),
+                        TARGET_SCAN_RADIUS,
+                        0
+                )
+                .stream()
+                .filter(station -> StationCodeGenerator.matches(stationId, station.code()))
+                .sorted(Comparator.comparingDouble(SolarNavigationStationInfo::distance))
+                .toList();
+
+        if (matches.isEmpty()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING,
+                    "Scan failed: station " + stationId.toUpperCase(Locale.ROOT) + " is outside scanner range or unknown."));
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                    "Scanner range: " + formatNumber(TARGET_SCAN_RADIUS) + ". Move closer or check station ID."));
+            return;
+        }
+
+        for (SolarNavigationStationInfo station : matches) {
+            output.add(new TerminalHistoryLine(station.quest() ? TerminalHistoryKind.WARNING : TerminalHistoryKind.OUTPUT,
+                    "Scan " + station.code()
+                            + (station.quest() ? " | QUEST" : "")
+                            + " | distance " + formatNumber(station.distance())
+                            + " | signal " + signalText(station.distance())));
+        }
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Direction guidance requires a future navigation module."));
     }
 
     private static boolean isValidTerminal(ServerPlayer player, BlockPos terminalPos) {
@@ -155,6 +238,60 @@ public final class TerminalCommandProcessor {
         float x = snapshot.navigationState().velocityX();
         float y = snapshot.navigationState().velocityY();
         return (float) Math.sqrt(x * x + y * y);
+    }
+
+    private static String stationDisplayId(ServerLevel level, UUID stationId) {
+        return StationSavedData.get(level)
+                .station(stationId)
+                .map(station -> station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE))
+                .filter(code -> code != null && !code.isBlank())
+                .orElseGet(() -> StationCodeGenerator.code(stationId));
+    }
+
+    private static String objectiveProgress(QuestObjectiveState objective) {
+        if (objective.completed()) {
+            return "DONE";
+        }
+        if (objective.targetCount() <= 1) {
+            return "PENDING";
+        }
+        return Math.min(progressCount(objective.progress()), objective.targetCount()) + "/" + objective.targetCount();
+    }
+
+    private static int progressCount(CompoundTag progress) {
+        if (progress.contains("value", Tag.TAG_INT)) {
+            return progress.getInt("value");
+        }
+        if (progress.contains("value", Tag.TAG_LONG)) {
+            return (int) Math.min(Integer.MAX_VALUE, progress.getLong("value"));
+        }
+        if (progress.contains("value", Tag.TAG_FLOAT)) {
+            return Math.round(progress.getFloat("value"));
+        }
+        if (progress.contains("value", Tag.TAG_DOUBLE)) {
+            return (int) Math.round(progress.getDouble("value"));
+        }
+        return 0;
+    }
+
+    private static String signalText(float distance) {
+        if (distance <= 500.0F) {
+            return "CLOSE";
+        }
+        if (distance <= 1800.0F) {
+            return "MEDIUM";
+        }
+        if (distance <= 4200.0F) {
+            return "FAR";
+        }
+        return "FAINT";
+    }
+
+    private static String formatDuration(long millis) {
+        long totalSeconds = millis <= 0L ? 0L : (millis + 999L) / 1000L;
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        return minutes + "m " + seconds + "s";
     }
 
     private static String formatNumber(float value) {

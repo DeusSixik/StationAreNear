@@ -9,8 +9,9 @@ public final class TerminalCommandCatalog {
             new TerminalCommandDefinition("help", "available terminal commands"),
             new TerminalCommandDefinition("status", "ship HP, sealing and navigation speed"),
             new TerminalCommandDefinition("modules", "installed ship modules"),
-            new TerminalCommandDefinition("stations", "stations near current solar position"),
-            new TerminalCommandDefinition("scan", "alias for stations"),
+            new TerminalCommandDefinition("objectives", "current mission objectives"),
+            new TerminalCommandDefinition("stations", "known station IDs near current solar position"),
+            new TerminalCommandDefinition("scan", "scan <station_id> and show distance"),
             new TerminalCommandDefinition("clear", "clear shared terminal history"),
             new TerminalCommandDefinition("cls", "alias for clear")
     );

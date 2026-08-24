@@ -24,7 +24,7 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
-public record DockSolarStationPacket(BlockPos terminalPos, String stationName, long stationSeed, boolean quest, float stationX, float stationY) {
+public record DockSolarStationPacket(BlockPos terminalPos, String stationName, String stationCode, long stationSeed, boolean quest, float stationX, float stationY) {
 
     private static final ResourceLocation DEFAULT_POOL = StationStructureIds.pool("space_station");
     private static final int MIN_ROOMS = 10;
@@ -32,7 +32,8 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
 
     public void encode(FriendlyByteBuf buffer) {
         buffer.writeBlockPos(terminalPos);
-        buffer.writeUtf(stationName, 64);
+        buffer.writeUtf(stationName, 128);
+        buffer.writeUtf(stationCode, 32);
         buffer.writeLong(stationSeed);
         buffer.writeBoolean(quest);
         buffer.writeFloat(stationX);
@@ -40,7 +41,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
     }
 
     public static DockSolarStationPacket decode(FriendlyByteBuf buffer) {
-        return new DockSolarStationPacket(buffer.readBlockPos(), buffer.readUtf(64), buffer.readLong(), buffer.readBoolean(), buffer.readFloat(), buffer.readFloat());
+        return new DockSolarStationPacket(buffer.readBlockPos(), buffer.readUtf(128), buffer.readUtf(32), buffer.readLong(), buffer.readBoolean(), buffer.readFloat(), buffer.readFloat());
     }
 
     public static void handle(DockSolarStationPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
@@ -98,7 +99,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
         );
 
         if (!result.success()) {
-            player.displayClientMessage(Component.literal("Dock failed with " + packet.stationName() + ": " + result.message()), false);
+            player.displayClientMessage(Component.literal("Dock failed with " + packet.stationCode() + ": " + result.message()), false);
             return;
         }
 
@@ -106,6 +107,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
             station.customData().putLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS, packet.terminalPos().asLong());
             station.customData().putLong(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_SEED, packet.stationSeed());
             station.customData().putString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_NAME, packet.stationName());
+            station.customData().putString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE, packet.stationCode());
             station.customData().putFloat(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_X, packet.stationX());
             station.customData().putFloat(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_Y, packet.stationY());
             station.customData().putBoolean("navigationShipAnchorBound", dockingAnchor.boundToShip());
@@ -117,6 +119,6 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, l
 
         int pieces = result.station().map(station -> station.pieces().size()).orElse(0);
         String cleanupMessage = clearedOldStations > 0 ? " cleared old=" + clearedOldStations : "";
-        player.displayClientMessage(Component.literal("Docked with " + packet.stationName() + ": generated " + pieces + " station pieces." + cleanupMessage), false);
+        player.displayClientMessage(Component.literal("Docked with " + packet.stationCode() + ": generated " + pieces + " station pieces." + cleanupMessage), false);
     }
 }

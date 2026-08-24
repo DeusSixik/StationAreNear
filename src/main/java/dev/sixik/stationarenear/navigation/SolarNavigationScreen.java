@@ -19,6 +19,7 @@ import dev.sixik.unigui.backend.minecraft.MinecraftFonts;
 import dev.sixik.unigui.backend.minecraft.MinecraftWidgetScreen;
 import dev.sixik.unigui.impl.core.DefaultUIContext;
 import dev.sixik.unigui.widgets.world.WorldCanvas;
+import dev.sixik.stationarenear.navigation.StationCodeGenerator;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
@@ -176,7 +177,7 @@ public final class SolarNavigationScreen {
             this.questMarkers.addAll(questMarkers);
             for (SolarNavigationDockedStation station : restoredDockedStations) {
                 dockedStations.add(station.seed());
-                activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.x(), station.y()));
+                activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.code(), station.x(), station.y()));
             }
             shipX = initialState.shipX();
             shipY = initialState.shipY();
@@ -322,6 +323,7 @@ public final class SolarNavigationScreen {
                         marker.x(),
                         marker.y(),
                         marker.name(),
+                        StationCodeGenerator.code(marker.seed(), marker.x(), marker.y()),
                         marker.radius(),
                         true,
                         marker.seed(),
@@ -390,6 +392,7 @@ public final class SolarNavigationScreen {
                     station.x(),
                     station.y(),
                     station.name(),
+                    station.code(),
                     station.radius(),
                     false,
                     station.seed(),
@@ -486,7 +489,7 @@ public final class SolarNavigationScreen {
                 if (distanceSquared(shipX, shipY, station.x(), station.y()) <= unloadDistanceSq) {
                     continue;
                 }
-                SolarNavigationNetwork.sendClearDockedStation(new ClearDockedSolarStationPacket(terminalPos, station.name(), station.seed()));
+                SolarNavigationNetwork.sendClearDockedStation(new ClearDockedSolarStationPacket(terminalPos, station.name(), station.code(), station.seed()));
                 dockedStations.remove(station.seed());
                 iterator.remove();
             }
@@ -554,11 +557,11 @@ public final class SolarNavigationScreen {
 
         private void completeDock(Station station) {
             dockedStations.add(station.seed());
-            activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.x(), station.y()));
-            SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, station.name(), station.seed(), station.quest(), station.x(), station.y()));
+            activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.code(), station.x(), station.y()));
+            SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, station.name(), station.code(), station.seed(), station.quest(), station.x(), station.y()));
             dockMessage = station.quest()
-                    ? "Docking request sent: " + station.name() + " / quest route"
-                    : "Docking request sent: " + station.name();
+                    ? "Docking request sent: " + station.code() + " / quest route"
+                    : "Docking request sent: " + station.code();
             dockMessageSeconds = 3.0f;
             velocityX = 0.0f;
             velocityY = 0.0f;
@@ -655,7 +658,7 @@ public final class SolarNavigationScreen {
                 draw.addCircleFilled(sx, sy, Math.max(4.0f, r * 0.22f), STATION_FILL, 18);
                 draw.addCircle(sx, sy, Math.max(6.0f, r * 0.30f), ring, 24, station.quest() ? 2.2f : 1.35f);
 
-                text(draw, station.name(), sx - 120.0f, sy - r - 36.0f, 240.0f, 20.0f, 13.0f,
+                text(draw, station.code(), sx - 120.0f, sy - r - 36.0f, 240.0f, 20.0f, 13.0f,
                         station.quest() ? ring : WHITE);
             }
         }
@@ -993,13 +996,13 @@ public final class SolarNavigationScreen {
         private record Asteroid(float x, float y, float radius, float rotation, int segments, long seed) {
         }
 
-        private record DockedStation(long seed, String name, float x, float y) {
+        private record DockedStation(long seed, String name, String code, float x, float y) {
         }
 
         private record SectorRange(int minX, int maxX, int minY, int maxY) {
         }
 
-        private record Station(float x, float y, String name, float radius, boolean quest, long seed, List<DungeonRoom> dungeonRooms, int color) {
+        private record Station(float x, float y, String name, String code, float radius, boolean quest, long seed, List<DungeonRoom> dungeonRooms, int color) {
         }
 
         private record DungeonRoom(float x, float y, float width, float height, boolean core) {

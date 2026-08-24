@@ -33,7 +33,7 @@ public final class SolarNavigationProceduralMap {
         for (SolarNavigationQuestMarker marker : questMarkers) {
             float distance = distance(shipState.shipX(), shipState.shipY(), marker.x(), marker.y());
             if (distance <= radius + marker.radius()) {
-                stations.add(new SolarNavigationStationInfo(marker.name(), marker.x(), marker.y(), marker.radius(), true, marker.seed(), marker.color(), distance));
+                stations.add(new SolarNavigationStationInfo(marker.name(), StationCodeGenerator.code(marker.seed(), marker.x(), marker.y()), marker.x(), marker.y(), marker.radius(), true, marker.seed(), marker.color(), distance));
             }
         }
 
@@ -60,7 +60,7 @@ public final class SolarNavigationProceduralMap {
         if (distance * distance > maxDistanceSq) {
             return Optional.empty();
         }
-        return Optional.of(new SolarNavigationStationInfo(randomStationName(random), x, y, stationRadius, false, stationSeed, 0xFF8AE6FF, distance));
+        return Optional.of(new SolarNavigationStationInfo(randomStationName(random), StationCodeGenerator.code(stationSeed, x, y), x, y, stationRadius, false, stationSeed, 0xFF8AE6FF, distance));
     }
 
     public static String randomStationName(Random random) {

@@ -2,6 +2,7 @@ package dev.sixik.stationarenear;
 
 import com.mojang.logging.LogUtils;
 import dev.sixik.stationarenear.navigation.SolarNavigationModule;
+import dev.sixik.stationarenear.quest.QuestModule;
 import dev.sixik.stationarenear.sam.SamModule;
 import dev.sixik.stationarenear.ship.ShipModule;
 import dev.sixik.stationarenear.structures.StationStructureModule;
@@ -24,6 +25,7 @@ public class StationAreNear {
         modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         StationStructureModule.register(modEventBus);
         ShipModule.register(modEventBus);
+        QuestModule.register(modEventBus);
         SolarNavigationModule.register(modEventBus);
         TerminalModule.register(modEventBus);
         SamModule.register(modEventBus);

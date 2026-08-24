@@ -82,6 +82,11 @@ public final class RetroTerminalScreen {
                 }
                 Minecraft.getInstance().setScreen(previous);
             }
+
+            @Override
+            public boolean isPauseScreen() {
+                return false;
+            }
         };
         console.onCloseRequested(event -> screen.onClose());
 
@@ -449,6 +454,7 @@ public final class RetroTerminalScreen {
                     case "help" -> (console, call) -> appendHelp(console);
                     case "status" -> (console, call) -> appendStatus(console);
                     case "modules" -> (console, call) -> appendModules(console);
+                    case "objectives" -> (console, call) -> console.appendInfo("Submit /objectives to refresh current mission objectives.");
                     case "stations", "scan" -> (console, call) -> appendStations(console);
                     case "clear", "cls" -> (console, call) -> clearOutput();
                     default -> (console, call) -> console.appendError("Unknown command: " + command.command());
@@ -495,9 +501,9 @@ public final class RetroTerminalScreen {
                 return;
             }
 
-            console.appendInfo("Nearby stations around solar position:");
+            console.appendInfo("Nearby station IDs around solar position:");
             for (SolarNavigationStationInfo station : snapshot.nearbyStations()) {
-                console.appendOutput("  " + station.name()
+                console.appendOutput("  " + station.code()
                         + (station.quest() ? " | QUEST" : "")
                         + " | distance " + formatNumber(station.distance()),
                         station.quest() ? LineKind.WARNING : LineKind.OUTPUT);

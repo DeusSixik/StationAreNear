@@ -24,6 +24,7 @@ import static org.lwjgl.openal.AL10.AL_FALSE;
 import static org.lwjgl.openal.AL10.AL_FORMAT_MONO8;
 import static org.lwjgl.openal.AL10.AL_GAIN;
 import static org.lwjgl.openal.AL10.AL_MAX_DISTANCE;
+import static org.lwjgl.openal.AL10.AL_PAUSED;
 import static org.lwjgl.openal.AL10.AL_PLAYING;
 import static org.lwjgl.openal.AL10.AL_POSITION;
 import static org.lwjgl.openal.AL10.AL_REFERENCE_DISTANCE;
@@ -39,7 +40,9 @@ import static org.lwjgl.openal.AL10.alGetSourcei;
 import static org.lwjgl.openal.AL10.alSource3f;
 import static org.lwjgl.openal.AL10.alSourcef;
 import static org.lwjgl.openal.AL10.alSourcei;
+import static org.lwjgl.openal.AL10.alSourcePause;
 import static org.lwjgl.openal.AL10.alSourcePlay;
+import static org.lwjgl.openal.AL10.alSourceStop;
 
 public final class SamClientAudio {
     private static final ExecutorService SYNTHESIS_EXECUTOR = Executors.newSingleThreadExecutor(task -> {
@@ -51,6 +54,7 @@ public final class SamClientAudio {
 
     private static SamSynthesizer synthesizer;
     private static boolean registered;
+    private static boolean pausedByMinecraft;
 
     private SamClientAudio() {
     }
@@ -102,7 +106,7 @@ public final class SamClientAudio {
     }
 
     private static void playPcm(byte[] pcm, Vec3 position) {
-        if (pcm == null || pcm.length == 0) {
+        if (pcm == null || pcm.length == 0 || Minecraft.getInstance().level == null) {
             return;
         }
         try {
@@ -130,16 +134,60 @@ public final class SamClientAudio {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            stopAllSources();
+            pausedByMinecraft = false;
+            return;
+        }
+
+        syncPauseState(minecraft.isPaused());
+        cleanupFinishedSources();
+    }
+
+    private static void syncPauseState(boolean shouldPause) {
+        if (shouldPause == pausedByMinecraft) {
+            return;
+        }
+
+        pausedByMinecraft = shouldPause;
+        for (PlayingSource source : PLAYING_SOURCES) {
+            int state = alGetSourcei(source.source(), AL_SOURCE_STATE);
+            if (shouldPause && state == AL_PLAYING) {
+                alSourcePause(source.source());
+            } else if (!shouldPause && state == AL_PAUSED) {
+                alSourcePlay(source.source());
+            }
+        }
+    }
+
+    private static void cleanupFinishedSources() {
         Iterator<PlayingSource> iterator = PLAYING_SOURCES.iterator();
         while (iterator.hasNext()) {
             PlayingSource source = iterator.next();
-            if (alGetSourcei(source.source(), AL_SOURCE_STATE) == AL_PLAYING) {
+            int state = alGetSourcei(source.source(), AL_SOURCE_STATE);
+            if (state == AL_PLAYING || state == AL_PAUSED) {
                 continue;
             }
-            alDeleteSources(source.source());
-            alDeleteBuffers(source.buffer());
+            deleteSource(source);
             iterator.remove();
         }
+    }
+
+    private static void stopAllSources() {
+        Iterator<PlayingSource> iterator = PLAYING_SOURCES.iterator();
+        while (iterator.hasNext()) {
+            PlayingSource source = iterator.next();
+            alSourceStop(source.source());
+            deleteSource(source);
+            iterator.remove();
+        }
+    }
+
+    private static void deleteSource(PlayingSource source) {
+        alDeleteSources(source.source());
+        alDeleteBuffers(source.buffer());
     }
 
     private record PlayingSource(int source, int buffer) {

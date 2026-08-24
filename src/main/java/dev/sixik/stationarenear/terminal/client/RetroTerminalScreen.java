@@ -44,12 +44,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Locale;
 
 public final class RetroTerminalScreen {
     private static RetroConsole currentConsole;
+    private static final double BLOCK_UI_MAX_DISTANCE_SQ = 16.0D;
 
     private RetroTerminalScreen() {
     }
@@ -76,6 +78,14 @@ public final class RetroTerminalScreen {
         Widget root = root(console);
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Station Terminal"), root, context) {
             @Override
+            public void tick() {
+                super.tick();
+                if (shouldCloseBecauseTooFar(terminalPos)) {
+                    onClose();
+                }
+            }
+
+            @Override
             public void onClose() {
                 if (currentConsole == console) {
                     currentConsole = null;
@@ -97,6 +107,18 @@ public final class RetroTerminalScreen {
         minecraft.setScreen(screen);
     }
 
+    private static boolean shouldCloseBecauseTooFar(BlockPos terminalPos) {
+        if (terminalPos.equals(BlockPos.ZERO)) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null) {
+            return true;
+        }
+
+        return minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) > BLOCK_UI_MAX_DISTANCE_SQ;
+    }
 
     public static void syncHistory(BlockPos terminalPos, List<TerminalHistoryLine> history) {
         if (currentConsole != null && currentConsole.terminalPos.equals(terminalPos)) {
@@ -454,6 +476,7 @@ public final class RetroTerminalScreen {
                     case "help" -> (console, call) -> appendHelp(console);
                     case "status" -> (console, call) -> appendStatus(console);
                     case "modules" -> (console, call) -> appendModules(console);
+                    case "door" -> (console, call) -> console.appendInfo("Submit /door open or /door close to control the pressure door.");
                     case "objectives" -> (console, call) -> console.appendInfo("Submit /objectives to refresh current mission objectives.");
                     case "stations", "scan" -> (console, call) -> appendStations(console);
                     case "clear", "cls" -> (console, call) -> clearOutput();

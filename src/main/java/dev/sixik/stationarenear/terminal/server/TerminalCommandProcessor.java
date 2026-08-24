@@ -10,6 +10,7 @@ import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.ship.data.ShipSystemModule;
+import dev.sixik.stationarenear.ship.runtime.ShipDoorController;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
 import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
@@ -79,6 +80,7 @@ public final class TerminalCommandProcessor {
             case "help" -> appendHelp(output);
             case "status" -> appendStatus(snapshot, output);
             case "modules" -> appendModules(snapshot, output);
+            case "door" -> appendDoorCommand(level, terminalPos, argument, output);
             case "objectives", "objective", "tasks" -> appendObjectives(level, output);
             case "stations" -> appendStations(snapshot, output);
             case "scan" -> {
@@ -127,6 +129,25 @@ public final class TerminalCommandProcessor {
                     + " | DUR " + formatNumber(module.durability()) + "/" + formatNumber(module.maxDurability())
                     + " (" + formatPercent(durabilityRatio) + ")"));
         }
+    }
+
+    private static void appendDoorCommand(ServerLevel level, BlockPos terminalPos, String argument, List<TerminalHistoryLine> output) {
+        String action = argument.isBlank() ? "status" : argument.split("\\s+")[0].toLowerCase(Locale.ROOT);
+        ShipDoorController.DoorControlResult result;
+        switch (action) {
+            case "open" -> result = ShipDoorController.setOpen(level, terminalPos, true);
+            case "close", "seal" -> result = ShipDoorController.setOpen(level, terminalPos, false);
+            case "status" -> result = ShipDoorController.status(level, terminalPos);
+            default -> {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Usage: door open | door close | door status"));
+                return;
+            }
+        }
+
+        TerminalHistoryKind kind = result.success()
+                ? result.open() ? TerminalHistoryKind.WARNING : result.changed() ? TerminalHistoryKind.INFO : TerminalHistoryKind.OUTPUT
+                : TerminalHistoryKind.ERROR;
+        output.add(new TerminalHistoryLine(kind, result.message()));
     }
 
     private static void appendObjectives(ServerLevel level, List<TerminalHistoryLine> output) {

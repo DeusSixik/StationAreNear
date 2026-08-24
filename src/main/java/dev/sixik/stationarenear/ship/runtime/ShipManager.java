@@ -114,6 +114,7 @@ public final class ShipManager {
 
         ShipState newState = oldState.withDocking(docking);
         data.ship(stateTerminal, newState);
+        updateDecompression(level, stateTerminal);
         return newState;
     }
 

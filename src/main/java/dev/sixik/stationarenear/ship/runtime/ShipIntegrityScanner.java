@@ -2,6 +2,7 @@ package dev.sixik.stationarenear.ship.runtime;
 
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
@@ -35,16 +36,16 @@ public final class ShipIntegrityScanner {
         }
 
         ShipDockingAnchor value = anchor.get();
-        boolean docked = isDocked(level, terminalPos, value);
+        boolean docked = isDocked(level, terminalPos, value) || ShipManager.state(level, terminalPos).isDocking();
         boolean doorOpen = isDoorOpen(level, value);
         BlockPos navigationTerminal = navigationTerminal(level, terminalPos, value);
-        ClosureResult closure = closedSystem(level, value, navigationTerminal, docked);
-        boolean hullBreach = !closure.sealed();
+        ClosureResult closure = docked ? ClosureResult.closedResult() : closedSystem(level, value, navigationTerminal, false);
+        boolean decompressed = !closure.sealed();
         String reason = closure.sealed() ? "sealed" : closure.reason();
-        if (hullBreach && doorOpen && !docked) {
+        if (decompressed && doorOpen) {
             reason = "door_open_to_space";
         }
-        return new IntegrityReport(hullBreach, hullBreach, doorOpen, docked, reason);
+        return new IntegrityReport(decompressed, decompressed, doorOpen, docked, reason);
     }
 
     public static boolean containsShipBlock(ServerLevel level, BlockPos blockPos) {
@@ -104,6 +105,9 @@ public final class ShipIntegrityScanner {
 
     private static boolean isOpenSpace(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof PressureTightDoorBlock) {
+            return PressureTightDoorBlock.isOpen(state);
+        }
         return state.isAir();
     }
 
@@ -122,7 +126,14 @@ public final class ShipIntegrityScanner {
 
     private static boolean isDoorOpen(ServerLevel level, ShipDockingAnchor anchor) {
         for (BlockPos pos : dockingAperture(anchor)) {
-            if (level.getBlockState(pos).isAir()) {
+            BlockState state = level.getBlockState(pos);
+            if (state.getBlock() instanceof PressureTightDoorBlock) {
+                if (PressureTightDoorBlock.isOpen(state)) {
+                    return true;
+                }
+                continue;
+            }
+            if (state.isAir()) {
                 return true;
             }
         }

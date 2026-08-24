@@ -1,0 +1,81 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"1": {
+			"loop": true
+		},
+		"2": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1.2,
+			"bones": {
+				"door_1": {
+					"position": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.72": {
+							"vector": [-19, 0, 0],
+							"easing": "easeInCubic"
+						},
+						"1.2": {
+							"vector": [-17, 0, 0],
+							"easing": "easeOutCubic"
+						}
+					}
+				},
+				"door_2": {
+					"position": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.72": {
+							"vector": [21.25, 0, 0],
+							"easing": "easeInCubic"
+						},
+						"1.2": {
+							"vector": [19.25, 0, 0],
+							"easing": "easeOutCubic"
+						}
+					}
+				}
+			}
+		},
+		"3": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1.2,
+			"bones": {
+				"door_1": {
+					"position": {
+						"0.0": {
+							"vector": [-17, 0, 0],
+							"easing": "easeOutCubic"
+						},
+						"0.72": {
+							"vector": [0.25, 0, 0],
+							"easing": "easeInCubic"
+						},
+						"1.2": {
+							"vector": [0, 0, 0]
+						}
+					}
+				},
+				"door_2": {
+					"position": {
+						"0.0": {
+							"vector": [19.25, 0, 0],
+							"easing": "easeOutCubic"
+						},
+						"0.72": {
+							"vector": [-0.25, 0, 0],
+							"easing": "easeInCubic"
+						},
+						"1.2": {
+							"vector": [0, 0, 0]
+						}
+					}
+				}
+			}
+		}
+	},
+	"geckolib_format_version": 2
+}

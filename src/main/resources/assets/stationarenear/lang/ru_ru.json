@@ -2,5 +2,7 @@
   "block.stationarenear.solar_navigation_terminal": "Терминал солнечной навигации",
   "item.stationarenear.solar_navigation_terminal": "Терминал солнечной навигации",
   "block.stationarenear.terminal": "Терминал",
-  "item.stationarenear.terminal": "Терминал"
+  "item.stationarenear.terminal": "Терминал",
+  "block.stationarenear.pressure_tight_door": "Герметичная дверь",
+  "item.stationarenear.pressure_tight_door": "Герметичная дверь"
 }

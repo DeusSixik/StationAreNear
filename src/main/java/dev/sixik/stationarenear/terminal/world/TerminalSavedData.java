@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.terminal.world;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryKind;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryText;
@@ -97,7 +98,7 @@ public class TerminalSavedData extends SavedData {
     private static List<TerminalHistoryLine> defaultHistory() {
         List<TerminalHistoryLine> history = new ArrayList<>();
         history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "The service is provided by Helicorp"));
-        history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Type / or press Tab to show commands: status, modules, stations, scan <id>."));
+        history.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Type / or press Tab to show commands: " + TerminalCommandCatalog.summary() + "."));
         return history;
     }
 

@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
+import dev.sixik.stationarenear.ship.runtime.ShipDecompressionEffects;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
@@ -61,7 +62,30 @@ public final class ShipCommands {
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("ship")
                         .then(spawnSpaceShipCommand())
+                        .then(decompressionCommand())
                         .then(shipAnchorCommand())));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> decompressionCommand() {
+        return Commands.literal("decompression")
+                .then(Commands.literal("status")
+                        .executes(context -> showDecompressionEffects(context.getSource())))
+                .then(Commands.literal("enable")
+                        .executes(context -> setDecompressionEffects(context.getSource(), true)))
+                .then(Commands.literal("disable")
+                        .executes(context -> setDecompressionEffects(context.getSource(), false)));
+    }
+
+    private static int showDecompressionEffects(CommandSourceStack source) {
+        boolean enabled = ShipDecompressionEffects.enabled(source.getLevel());
+        source.sendSuccess(() -> Component.literal("Ship decompression effects are " + (enabled ? "enabled" : "disabled") + "."), false);
+        return enabled ? 1 : 0;
+    }
+
+    private static int setDecompressionEffects(CommandSourceStack source, boolean enabled) {
+        ShipDecompressionEffects.enabled(source.getLevel(), enabled);
+        source.sendSuccess(() -> Component.literal("Ship decompression effects " + (enabled ? "enabled" : "disabled") + "."), true);
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> spawnSpaceShipCommand() {

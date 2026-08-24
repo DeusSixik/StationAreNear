@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "stationarenear:block/pressure_tight_door"
+      }
+    }
+  ]
+}

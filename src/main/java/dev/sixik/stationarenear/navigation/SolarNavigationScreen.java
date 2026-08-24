@@ -31,6 +31,7 @@ import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationI
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -41,6 +42,7 @@ import java.util.Set;
 
 public final class SolarNavigationScreen {
     private static SolarNavigationCanvas currentCanvas;
+    private static final double BLOCK_UI_MAX_DISTANCE_SQ = 16.0D;
 
     private SolarNavigationScreen() {
     }
@@ -85,6 +87,22 @@ public final class SolarNavigationScreen {
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(
                 Component.literal("Solar Navigation Terminal"), canvas, context) {
             @Override
+            public void tick() {
+                super.tick();
+                if (shouldCloseBecauseTooFar(terminalPos)) {
+                    onClose();
+                }
+            }
+
+            @Override
+            public void onClose() {
+                if (currentCanvas == canvas) {
+                    currentCanvas = null;
+                }
+                super.onClose();
+            }
+
+            @Override
             public boolean isPauseScreen() {
                 return false;
             }
@@ -94,6 +112,18 @@ public final class SolarNavigationScreen {
         screen.postEffect(SolarNavigationPostEffects.terminalContent());
         Minecraft.getInstance().setScreen(screen);
 
+    }
+    private static boolean shouldCloseBecauseTooFar(BlockPos terminalPos) {
+        if (terminalPos.equals(BlockPos.ZERO)) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null) {
+            return true;
+        }
+
+        return minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) > BLOCK_UI_MAX_DISTANCE_SQ;
     }
 
     private static final class SolarNavigationCanvas extends WorldCanvas {

@@ -2,5 +2,7 @@
   "block.stationarenear.solar_navigation_terminal": "Solar Navigation Terminal",
   "item.stationarenear.solar_navigation_terminal": "Solar Navigation Terminal",
   "block.stationarenear.terminal": "Terminal",
-  "item.stationarenear.terminal": "Terminal"
+  "item.stationarenear.terminal": "Terminal",
+  "block.stationarenear.pressure_tight_door": "Pressure-Tight Door",
+  "item.stationarenear.pressure_tight_door": "Pressure-Tight Door"
 }

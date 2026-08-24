@@ -9,6 +9,7 @@ public final class TerminalCommandCatalog {
             new TerminalCommandDefinition("help", "available terminal commands"),
             new TerminalCommandDefinition("status", "ship HP, sealing and navigation speed"),
             new TerminalCommandDefinition("modules", "installed ship modules"),
+            new TerminalCommandDefinition("door", "door open|close pressure-tight door"),
             new TerminalCommandDefinition("objectives", "current mission objectives"),
             new TerminalCommandDefinition("stations", "known station IDs near current solar position"),
             new TerminalCommandDefinition("scan", "scan <station_id> and show distance"),

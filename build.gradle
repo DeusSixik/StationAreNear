@@ -114,6 +114,7 @@ dependencies {
     // Либа для 2D графики. Кстати очень крутая 😊
 //    compileOnly fg.deobf("com.github.DeusSixik.UniGUI:unigui-common-${minecraft_version}:${unigui_version}")
     implementation fg.deobf("com.github.DeusSixik.UniGUI:unigui-forge-${minecraft_version}:${unigui_version}")
+    jarJar("com.github.DeusSixik.UniGUI:unigui-forge-${minecraft_version}:[${unigui_version},)")
 }
 
 tasks.named('processResources', ProcessResources).configure {

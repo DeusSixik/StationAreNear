@@ -2,7 +2,7 @@ package dev.sixik.stationarenear.navigation.network.packet;
 
 import dev.sixik.stationarenear.navigation.SolarNavigationConfig;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
-import dev.sixik.stationarenear.navigation.ship.ShipDockingAnchorResolver;
+import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;

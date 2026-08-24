@@ -1,4 +1,4 @@
-package dev.sixik.stationarenear.navigation.ship;
+package dev.sixik.stationarenear.ship.docking;
 
 import dev.sixik.stationarenear.StationAreNear;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;

@@ -4,6 +4,7 @@ import dev.sixik.unigui.api.core.FrameContext;
 import dev.sixik.unigui.api.core.InvalidationFlags;
 import dev.sixik.unigui.api.core.UIContext;
 import dev.sixik.unigui.api.core.UnityLikeUIScaleProvider;
+import dev.sixik.unigui.api.debug.DebugFlags;
 import dev.sixik.unigui.api.input.KeyCodes;
 import dev.sixik.unigui.api.input.KeyboardState;
 import dev.sixik.unigui.api.layout.Alignment;
@@ -69,6 +70,8 @@ public final class SolarNavigationScreen {
                         .matchBalanced()
                         .scaleRange(0.60f, 2.50f));
 
+//        context.debugFlags(DebugFlags.ALL);
+
         SolarNavigationCanvas canvas = new SolarNavigationCanvas(seed, terminalPos, shipState, questMarkers);
         currentCanvas = canvas;
         canvas.layout(style -> style
@@ -84,7 +87,7 @@ public final class SolarNavigationScreen {
                 return false;
             }
         };
-        screen.renderPolicy(UiRenderPolicy.vsync());
+        screen.renderPolicy(UiRenderPolicy.continuous());
         screen.scaleWithMinecraftGui(false);
         screen.postEffect(SolarNavigationPostEffects.terminalContent());
         Minecraft.getInstance().setScreen(screen);

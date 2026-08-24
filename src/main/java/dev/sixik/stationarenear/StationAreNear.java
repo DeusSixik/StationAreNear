@@ -3,7 +3,9 @@ package dev.sixik.stationarenear;
 import com.mojang.logging.LogUtils;
 import dev.sixik.stationarenear.navigation.SolarNavigationModule;
 import dev.sixik.stationarenear.sam.SamModule;
+import dev.sixik.stationarenear.ship.ShipModule;
 import dev.sixik.stationarenear.structures.StationStructureModule;
+import dev.sixik.stationarenear.terminal.TerminalModule;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -21,7 +23,9 @@ public class StationAreNear {
     public StationAreNear() {
         modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         StationStructureModule.register(modEventBus);
+        ShipModule.register(modEventBus);
         SolarNavigationModule.register(modEventBus);
+        TerminalModule.register(modEventBus);
         SamModule.register(modEventBus);
     }
 

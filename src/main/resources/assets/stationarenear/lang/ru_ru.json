@@ -1,4 +1,6 @@
-﻿{
+{
   "block.stationarenear.solar_navigation_terminal": "Терминал солнечной навигации",
-  "item.stationarenear.solar_navigation_terminal": "Терминал солнечной навигации"
+  "item.stationarenear.solar_navigation_terminal": "Терминал солнечной навигации",
+  "block.stationarenear.terminal": "Терминал",
+  "item.stationarenear.terminal": "Терминал"
 }

@@ -1,4 +1,4 @@
-package dev.sixik.stationarenear.navigation.ship;
+package dev.sixik.stationarenear.ship.docking;
 
 import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.structures.data.StationConnector;

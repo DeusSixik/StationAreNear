@@ -1,4 +1,4 @@
-package dev.sixik.stationarenear.navigation.ship;
+package dev.sixik.stationarenear.ship.docking;
 
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import net.minecraft.core.BlockPos;

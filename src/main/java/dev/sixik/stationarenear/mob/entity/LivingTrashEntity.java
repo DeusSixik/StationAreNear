@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -24,6 +25,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -154,19 +156,19 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
         if (hideCooldown > 0) {
             hideCooldown--;
         }
-        Player nearestPlayer = nearestScaryPlayer();
+        LivingEntity nearestThreat = nearestThreat();
         if (panicRunTicks > 0) {
             panicRunTicks--;
             if (panicRunTicks <= 0) {
                 panicAwayFrom = null;
             }
         }
-        if (nearestPlayer == null && panicRunTicks <= 0 && sprintStaminaTicks < MAX_SPRINT_STAMINA_TICKS) {
+        if (nearestThreat == null && panicRunTicks <= 0 && sprintStaminaTicks < MAX_SPRINT_STAMINA_TICKS) {
             sprintStaminaTicks++;
         }
-        if (nearestPlayer != null && hideCooldown <= 0) {
+        if (nearestThreat != null && hideCooldown <= 0) {
             tryHideInNearbyContainer(true);
-        } else if (nearestPlayer == null && hideCooldown <= 0 && random.nextInt(IDLE_CONTAINER_HIDE_CHANCE) == 0) {
+        } else if (nearestThreat == null && hideCooldown <= 0 && random.nextInt(IDLE_CONTAINER_HIDE_CHANCE) == 0) {
             tryHideInNearbyContainer(false);
         }
     }
@@ -342,6 +344,11 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
         foundContainerAvoidTicks = FOUND_CONTAINER_AVOID_TICKS;
     }
 
+    private void forgetAndAvoidContainer(BlockPos containerPos) {
+        rememberedContainers.remove(containerPos);
+        avoidFoundContainer(containerPos);
+    }
+
     private void tickFoundContainerAvoid() {
         if (foundContainerAvoidTicks <= 0) {
             foundContainerToAvoid = null;
@@ -387,6 +394,7 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
         }
         hiddenNoNearbyPlayerTicks++;
         if (hiddenNoNearbyPlayerTicks >= HIDDEN_EMPTY_AREA_RELEASE_TICKS) {
+            forgetAndAvoidContainer(containerPos);
             releaseFromContainer();
         }
     }
@@ -534,7 +542,11 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
     }
 
     private void rememberContainer(BlockPos pos, Container inventory) {
-        rememberedContainers.put(pos.immutable(), hasLoot(inventory));
+        BlockPos immutable = pos.immutable();
+        if (isFoundContainerAvoided(immutable)) {
+            return;
+        }
+        rememberedContainers.put(immutable, hasLoot(inventory));
     }
 
     private boolean hasLoot(Container inventory) {
@@ -649,7 +661,7 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
                 origin.offset(CONTAINER_SEARCH_RADIUS, 2, CONTAINER_SEARCH_RADIUS))) {
             BlockPos immutable = pos.immutable();
             double distance = distanceToSqr(Vec3.atCenterOf(immutable));
-            if (isFoundContainerAvoided(immutable) || distance > CONTAINER_HIDE_REACH_SQR || !isContainer(immutable)) {
+            if (isFoundContainerAvoided(immutable) || distance > CONTAINER_HIDE_REACH_SQR || !isContainer(immutable) || !canReachContainer(immutable)) {
                 continue;
             }
             BlockEntity blockEntity = level().getBlockEntity(immutable);
@@ -687,7 +699,7 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
                 continue;
             }
             double distance = distanceToSqr(Vec3.atCenterOf(pos));
-            if (onlyReachable && distance > REMEMBERED_CONTAINER_PATH_REACH_SQR) {
+            if (onlyReachable && (distance > REMEMBERED_CONTAINER_PATH_REACH_SQR || !canReachContainer(pos))) {
                 continue;
             }
             if (distance < bestDistance) {
@@ -699,22 +711,56 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
         return best;
     }
 
+
+    private boolean canReachContainer(BlockPos containerPos) {
+        if (isHiding()) {
+            return true;
+        }
+        Path path = getNavigation().createPath(containerPos, 1);
+        return path != null && path.canReach();
+    }
+
     private boolean isContainer(BlockPos pos) {
         BlockEntity blockEntity = level().getBlockEntity(pos);
         return blockEntity instanceof Container;
     }
 
     private Player nearestScaryPlayer() {
-        return level().getNearestPlayer(this, PLAYER_DETECT_RANGE);
+        Player player = level().getNearestPlayer(this, PLAYER_DETECT_RANGE);
+        return isScary(player) ? player : null;
+    }
+
+    private CadaverEntity nearestCadaverThreat() {
+        AABB area = getBoundingBox().inflate(PLAYER_DETECT_RANGE);
+        return level().getEntitiesOfClass(CadaverEntity.class, area, LivingEntity::isAlive)
+                .stream()
+                .min((first, second) -> Double.compare(distanceToSqr(first), distanceToSqr(second)))
+                .orElse(null);
+    }
+
+    private LivingEntity nearestThreat() {
+        Player player = nearestScaryPlayer();
+        CadaverEntity cadaver = nearestCadaverThreat();
+        if (player == null) {
+            return cadaver;
+        }
+        if (cadaver == null) {
+            return player;
+        }
+        return distanceToSqr(player) <= distanceToSqr(cadaver) ? player : cadaver;
     }
 
     private static boolean isScary(Player player) {
         return player != null && !player.isCreative() && !player.isSpectator();
     }
 
+    private static boolean isScaryThreat(LivingEntity entity) {
+        return entity instanceof CadaverEntity && entity.isAlive() || entity instanceof Player player && isScary(player);
+    }
+
     private static final class FleePlayerGoal extends Goal {
         private final LivingTrashEntity trash;
-        private Player threat;
+        private LivingEntity threat;
 
         private FleePlayerGoal(LivingTrashEntity trash) {
             this.trash = trash;
@@ -726,27 +772,27 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
             if (trash.isHiding()) {
                 return false;
             }
-            threat = trash.nearestScaryPlayer();
-            return isScary(threat) || trash.hasPanicRun();
+            threat = trash.nearestThreat();
+            return isScaryThreat(threat) || trash.hasPanicRun();
         }
 
         @Override
         public boolean canContinueToUse() {
             return !trash.isHiding()
                     && (trash.hasPanicRun()
-                    || isScary(threat) && threat.distanceToSqr(trash) < 14.0D * 14.0D);
+                    || isScaryThreat(threat) && threat.distanceToSqr(trash) < 14.0D * 14.0D);
         }
 
         @Override
         public void tick() {
-            if (!isScary(threat)) {
-                threat = trash.nearestScaryPlayer();
+            if (!isScaryThreat(threat)) {
+                threat = trash.nearestThreat();
             }
-            Vec3 awayFrom = isScary(threat) ? threat.position() : trash.panicAwayFrom;
+            Vec3 awayFrom = isScaryThreat(threat) ? threat.position() : trash.panicAwayFrom;
             if (awayFrom == null) {
                 return;
             }
-            if (isScary(threat)) {
+            if (isScaryThreat(threat)) {
                 trash.getLookControl().setLookAt(threat, 30.0F, 30.0F);
                 if (trash.hideCooldown <= 0 && trash.tickCount % 5 == 0) {
                     trash.tryHideInNearbyContainer(true);
@@ -759,7 +805,7 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
             if (!trash.getNavigation().isDone() && trash.tickCount % 10 != 0) {
                 return;
             }
-            BlockPos rememberedContainer = trash.nearestRememberedContainer(true, false);
+            BlockPos rememberedContainer = trash.nearestRememberedContainer(true, true);
             Vec3 target = rememberedContainer != null
                     ? Vec3.atCenterOf(rememberedContainer)
                     : DefaultRandomPos.getPosAway(trash, 10, 5, awayFrom);
@@ -779,7 +825,7 @@ public class LivingTrashEntity extends PathfinderMob implements GeoEntity {
 
         @Override
         public boolean canUse() {
-            return !trash.isHiding() && !trash.hasPanicRun() && trash.nearestScaryPlayer() == null;
+            return !trash.isHiding() && !trash.hasPanicRun() && trash.nearestThreat() == null;
         }
 
         @Override

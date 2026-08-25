@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.mob.registry;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.mob.entity.CadaverEntity;
 import dev.sixik.stationarenear.mob.entity.LivingTrashEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -28,9 +29,23 @@ public final class StationMobEntities {
                     .build(StationAreNear.MODID + ":living_trash")
     );
 
+    public static final RegistryObject<EntityType<CadaverEntity>> CADAVER = ENTITIES.register(
+            "cadaver",
+            () -> EntityType.Builder.of(CadaverEntity::new, MobCategory.MONSTER)
+                    .sized(0.65F, 1.95F)
+                    .clientTrackingRange(8)
+                    .updateInterval(2)
+                    .build(StationAreNear.MODID + ":cadaver")
+    );
+
     public static final RegistryObject<Item> LIVING_TRASH_SPAWN_EGG = ITEMS.register(
             "living_trash_spawn_egg",
             () -> new ForgeSpawnEggItem(LIVING_TRASH, 0x6B4E2E, 0xA68B63, new Item.Properties())
+    );
+
+    public static final RegistryObject<Item> CADAVER_SPAWN_EGG = ITEMS.register(
+            "cadaver_spawn_egg",
+            () -> new ForgeSpawnEggItem(CADAVER, 0x4C3F38, 0x8E1F1F, new Item.Properties())
     );
 
     private StationMobEntities() {
@@ -44,11 +59,13 @@ public final class StationMobEntities {
 
     public static void registerAttributes(EntityAttributeCreationEvent event) {
         event.put(LIVING_TRASH.get(), LivingTrashEntity.createAttributes().build());
+        event.put(CADAVER.get(), CadaverEntity.createAttributes().build());
     }
 
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(LIVING_TRASH_SPAWN_EGG.get());
+            event.accept(CADAVER_SPAWN_EGG.get());
         }
     }
 }

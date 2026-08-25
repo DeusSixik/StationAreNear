@@ -5,6 +5,8 @@
   "item.stationarenear.terminal": "Терминал",
   "block.stationarenear.pressure_tight_door": "Герметичная дверь",
   "item.stationarenear.pressure_tight_door": "Герметичная дверь",
-  "entity.stationarenear.living_trash": "????? ?????",
-  "item.stationarenear.living_trash_spawn_egg": "???? ??????? ?????? ??????"
+  "entity.stationarenear.living_trash": "Живой мусор",
+  "item.stationarenear.living_trash_spawn_egg": "Яйцо призыва живого мусора",
+  "entity.stationarenear.cadaver": "Кадавр",
+  "item.stationarenear.cadaver_spawn_egg": "Яйцо призыва кадавра"
 }

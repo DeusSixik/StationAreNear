@@ -6,5 +6,7 @@
   "block.stationarenear.pressure_tight_door": "Pressure-Tight Door",
   "item.stationarenear.pressure_tight_door": "Pressure-Tight Door",
   "entity.stationarenear.living_trash": "Living Trash",
-  "item.stationarenear.living_trash_spawn_egg": "Living Trash Spawn Egg"
+  "item.stationarenear.living_trash_spawn_egg": "Living Trash Spawn Egg",
+  "entity.stationarenear.cadaver": "Cadaver",
+  "item.stationarenear.cadaver_spawn_egg": "Cadaver Spawn Egg"
 }

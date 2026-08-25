@@ -43,7 +43,10 @@ public final class StationMobClientEvents {
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> EntityRenderers.register(StationMobEntities.LIVING_TRASH.get(), LivingTrashRenderer::new));
+        event.enqueueWork(() -> {
+            EntityRenderers.register(StationMobEntities.LIVING_TRASH.get(), LivingTrashRenderer::new);
+            EntityRenderers.register(StationMobEntities.CADAVER.get(), CadaverRenderer::new);
+        });
     }
 
     private static void onClientTick(TickEvent.ClientTickEvent event) {

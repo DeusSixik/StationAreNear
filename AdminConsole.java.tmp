@@ -1,0 +1,1532 @@
+package dev.sixik.unigui.widgets.interaction;
+
+import dev.sixik.unigui.api.core.FrameContext;
+import dev.sixik.unigui.api.core.InvalidationFlags;
+import dev.sixik.unigui.api.core.UIContext;
+import dev.sixik.unigui.api.event.AdminConsoleCloseRequestedEvent;
+import dev.sixik.unigui.api.event.AdminConsoleCommandSubmittedEvent;
+import dev.sixik.unigui.api.event.AdminConsoleCompletionSelectedEvent;
+import dev.sixik.unigui.api.event.Event;
+import dev.sixik.unigui.api.event.EventListener;
+import dev.sixik.unigui.api.event.EventPhase;
+import dev.sixik.unigui.api.event.EventSubscription;
+import dev.sixik.unigui.api.event.KeyPressedEvent;
+import dev.sixik.unigui.api.event.PointerEnteredEvent;
+import dev.sixik.unigui.api.event.PointerExitedEvent;
+import dev.sixik.unigui.api.event.PointerEvent;
+import dev.sixik.unigui.api.event.PointerPressedEvent;
+import dev.sixik.unigui.api.event.PointerReleasedEvent;
+import dev.sixik.unigui.api.input.KeyCodes;
+import dev.sixik.unigui.api.input.MouseCursor;
+import dev.sixik.unigui.api.input.PointerButton;
+import dev.sixik.unigui.api.input.TextEditorModel;
+import dev.sixik.unigui.api.layout.Align;
+import dev.sixik.unigui.api.layout.EdgeInsets;
+import dev.sixik.unigui.api.layout.LayoutConstraints;
+import dev.sixik.unigui.api.layout.Overflow;
+import dev.sixik.unigui.api.math.MutableColor;
+import dev.sixik.unigui.api.math.RectView;
+import dev.sixik.unigui.api.text.FontFace;
+import dev.sixik.unigui.api.text.Fonts;
+import dev.sixik.unigui.api.text.RichText;
+import dev.sixik.unigui.api.text.TextOverflowMode;
+import dev.sixik.unigui.api.widget.Visibility;
+import dev.sixik.unigui.api.widget.Widget;
+import dev.sixik.unigui.api.xml.XmlWidgetName;
+import dev.sixik.unigui.widgets.containers.Box;
+import dev.sixik.unigui.widgets.containers.HBox;
+import dev.sixik.unigui.widgets.containers.ScrollView;
+import dev.sixik.unigui.widgets.containers.VBox;
+import dev.sixik.unigui.widgets.display.Label;
+import dev.sixik.unigui.widgets.feedback.Popup;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Виджет административной консоли с историей вывода, строкой ввода команд и popup-меню автодополнения.
+ *
+ * <p>Консоль рассчитана на runtime-инструменты, отладочные панели, игровые admin UI и любые экраны,
+ * где нужно выполнять текстовые команды. Команды хранятся в {@link AdminCommandRegistry}: у команды может
+ * быть описание, executor и набор аргументов с фиксированными или динамическими подсказками.</p>
+ *
+ * <p>Базовый сценарий использования:</p>
+ *
+ * <pre>{@code
+ * AdminConsole console = new AdminConsole()
+ *         .title("Server Console")
+ *         .prompt("/")
+ *         .registerCommand("reload", "Reload config", (ui, call) -> ui.appendInfo("Reloaded"));
+ * }</pre>
+ *
+ * <p>Класс специально сделан расширяемым. Для кастомной консоли обычно достаточно переопределить
+ * {@link #registerBuiltInCommandsByDefault()}, {@link #initialOutputLine()},
+ * {@link #configureInputField(ConsoleInputField)}, {@link #completionRow(int, CompletionItem)} или
+ * {@link #defaultCompletions(AdminConsole, String)}. Если нужно полностью изменить композицию виджетов,
+ * можно переопределить {@link #buildUi()} или более мелкие configure/factory-методы.</p>
+ *
+ * @see AdminCommandRegistry
+ * @see CompletionItem
+ * @see CommandInvocation
+ */
+@XmlWidgetName("AdminConsole")
+public class AdminConsole extends Box {
+    protected static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+    protected static final int DEFAULT_MAX_OUTPUT_LINES = 256;
+    protected static final int MAX_COMPLETIONS = 8;
+    protected static final float ROW_HEIGHT = 18.0f;
+    protected static final float COMPLETION_ROW_HEIGHT = 22.0f;
+    protected static final MutableColor COLOR_BACKGROUND = MutableColor.rgba(0.025f, 0.030f, 0.038f, 0.96f);
+    protected static final MutableColor COLOR_PANEL = MutableColor.rgba(0.045f, 0.055f, 0.070f, 0.96f);
+    protected static final MutableColor COLOR_INPUT = MutableColor.rgba(0.010f, 0.014f, 0.018f, 0.95f);
+    protected static final MutableColor COLOR_BORDER = MutableColor.rgba(0.28f, 0.36f, 0.44f, 0.82f);
+    protected static final MutableColor COLOR_ACCENT = MutableColor.rgba(0.30f, 0.72f, 1.00f, 1.00f);
+    protected static final MutableColor COLOR_TEXT = MutableColor.rgba(0.82f, 0.92f, 1.00f, 1.00f);
+    protected static final MutableColor COLOR_MUTED = MutableColor.rgba(0.48f, 0.56f, 0.66f, 1.00f);
+    protected static final MutableColor COLOR_SUCCESS = MutableColor.rgba(0.35f, 1.00f, 0.56f, 1.00f);
+    protected static final MutableColor COLOR_WARNING = MutableColor.rgba(1.00f, 0.72f, 0.30f, 1.00f);
+    protected static final MutableColor COLOR_ERROR = MutableColor.rgba(1.00f, 0.34f, 0.38f, 1.00f);
+    protected static final MutableColor COLOR_COMMAND = MutableColor.rgba(0.62f, 0.82f, 1.00f, 1.00f);
+    protected static final MutableColor COLOR_SELECTION = MutableColor.rgba(0.16f, 0.34f, 0.48f, 0.92f);
+    protected static final MutableColor COLOR_COMPLETION_IDLE = MutableColor.rgba(0.050f, 0.060f, 0.075f, 0.82f);
+    protected static final MutableColor COLOR_COMPLETION_HOVER = MutableColor.rgba(0.085f, 0.110f, 0.135f, 0.92f);
+    protected static final MutableColor COLOR_COMPLETION_PRESSED = MutableColor.rgba(0.115f, 0.150f, 0.185f, 0.96f);
+
+    protected final AdminCommandRegistry commandRegistry = new AdminCommandRegistry();
+    protected final ObjectList<ConsoleLine> lines = new ObjectArrayList<>();
+    protected final ObjectList<String> history = new ObjectArrayList<>();
+    protected final ObjectList<CompletionItem> completions = new ObjectArrayList<>();
+    protected final ObjectList<CompletionRow> completionRows = new ObjectArrayList<>();
+    protected final VBox body = new VBox();
+    protected HBox header;
+    protected HBox inputRow;
+    protected Button closeButton;
+    protected final Label titleLabel = new Label();
+    protected final Label promptLabel = new Label();
+    protected final ConsoleInputField inputField = createInputField();
+    protected final VBox outputList = new VBox();
+    protected final ScrollView outputScroll = new ScrollView(outputList);
+    protected final Box completionPanel = new Box();
+    protected final VBox completionList = new VBox();
+    protected final ScrollView completionScroll = new ScrollView(completionList);
+    protected final Popup completionPopup = new Popup();
+
+    protected CompletionProvider completionProvider = this::defaultCompletions;
+    protected CommandExecutor fallbackExecutor;
+    protected FontFace font = Fonts.defaultFace();
+    protected String prompt = ">";
+    protected String title = "Admin Console";
+    protected RichText promptRichText = RichText.resolve(prompt);
+    protected RichText titleRichText = RichText.resolve(title);
+    protected float fontSize = 11.0f;
+    protected int maxOutputLines = DEFAULT_MAX_OUTPUT_LINES;
+    protected int historyIndex = -1;
+    protected int completionIndex;
+    protected boolean suppressHistoryReset;
+    protected boolean pendingOutputScrollToEnd;
+
+    /**
+     * Создаёт консоль с базовой тёмной темой, стандартными командами и стартовой строкой вывода.
+     *
+     * <p>Конструктор вызывает protected hooks в фиксированном порядке: сначала {@link #configureRoot()},
+     * затем {@link #buildUi()}, {@link #configureBehavior()}, регистрация встроенных команд и добавление
+     * {@link #initialOutputLine()}.</p>
+     */
+    public AdminConsole() {
+        configureRoot();
+        buildUi();
+        configureBehavior();
+        if (registerBuiltInCommandsByDefault()) {
+            registerBuiltInCommands();
+        }
+        String initialLine = initialOutputLine();
+        if (initialLine != null && !initialLine.isBlank()) {
+            appendOutput(initialLine, LineKind.INFO);
+        }
+    }
+
+    /**
+     * Настраивает корневой контейнер консоли: фон, рамку, радиус, размер и overflow.
+     *
+     * <p>Переопределяйте этот метод, если нужна другая базовая геометрия или внешний вид окна.</p>
+     */
+    protected void configureRoot() {
+        backgroundVisible(true);
+        borderVisible(true);
+        radius(6.0f);
+        background().set(COLOR_BACKGROUND);
+        borderColor().set(COLOR_BORDER);
+        layout(style -> style.size(520.0f, 320.0f).padding(EdgeInsets.all(10.0f)).overflow(Overflow.VISIBLE));
+    }
+
+    /**
+     * Подключает внутренние слушатели консоли.
+     *
+     * <p>По умолчанию изменение реестра и текста ввода пересобирает список подсказок. При переопределении
+     * обычно стоит вызвать {@code super.configureBehavior()}, иначе автодополнение перестанет обновляться.</p>
+     */
+    protected void configureBehavior() {
+        commandRegistry.onChanged(() -> refreshCompletions(false));
+        inputField.onTextChanged(event -> {
+            if (!suppressHistoryReset) historyIndex = -1;
+            refreshCompletions(false);
+        });
+    }
+
+    /**
+     * Создаёт поле ввода команд.
+     *
+     * @return поле ввода, связанное с этой консолью
+     */
+    protected ConsoleInputField createInputField() {
+        return new ConsoleInputField(this);
+    }
+
+    /**
+     * Определяет, нужно ли регистрировать встроенные команды {@code help}, {@code clear}, {@code echo} и {@code time}.
+     *
+     * @return {@code true}, если консоль должна добавить базовые команды в конструкторе
+     */
+    protected boolean registerBuiltInCommandsByDefault() {
+        return true;
+    }
+
+    /**
+     * Возвращает стартовую строку, которая добавляется в вывод после сборки консоли.
+     *
+     * @return текст стартовой строки или {@code null}/пустая строка, если стартовый вывод не нужен
+     */
+    protected String initialOutputLine() {
+        return "AdminConsole ready. Type 'help' or press Tab.";
+    }
+
+    /**
+     * Возвращает модель текста поля ввода.
+     *
+     * <p>Через модель можно работать с курсором, selection и Unicode-aware операциями на уровне code point.</p>
+     *
+     * @return модель текста активного input-поля
+     */
+    public TextEditorModel inputModel() {
+        return inputField.editorModel();
+    }
+
+    /**
+     * Возвращает динамический реестр команд этой консоли.
+     *
+     * @return реестр команд и аргументов
+     */
+    public AdminCommandRegistry commandRegistry() {
+        return commandRegistry;
+    }
+
+    /**
+     * Возвращает текущий текст в строке ввода.
+     *
+     * @return текст input-поля
+     */
+    public String inputText() {
+        return inputField.text();
+    }
+
+    /**
+     * Задаёт текст в строке ввода и обновляет подсказки.
+     *
+     * @param text новый текст команды
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole inputText(String text) {
+        setInputText(TextEditorModel.sanitizePrintable(text), true);
+        refreshCompletions(false);
+        return this;
+    }
+
+    /**
+     * Задаёт заголовок консоли.
+     *
+     * @param title новый заголовок, {@code null} заменяется на значение по умолчанию
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole title(String title) {
+        this.title = normalize(title, "Admin Console");
+        this.titleRichText = RichText.resolve(this.title);
+        titleLabel.richText(this.titleRichText);
+        return this;
+    }
+
+    public AdminConsole title(RichText title) {
+        this.titleRichText = title == null ? RichText.resolve("Admin Console") : title;
+        this.title = this.titleRichText.plainText();
+        titleLabel.richText(this.titleRichText);
+        return this;
+    }
+
+    /**
+     * Задаёт prompt перед строкой ввода.
+     *
+     * @param prompt текст prompt, например {@code ">"} или {@code "/"}
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole prompt(String prompt) {
+        this.prompt = normalize(prompt, ">");
+        this.promptRichText = RichText.resolve(this.prompt);
+        promptLabel.richText(this.promptRichText);
+        return this;
+    }
+
+    public AdminConsole prompt(RichText prompt) {
+        this.promptRichText = prompt == null ? RichText.resolve(">") : prompt;
+        this.prompt = this.promptRichText.plainText();
+        promptLabel.richText(this.promptRichText);
+        return this;
+    }
+
+    /**
+     * Подписывает слушатель на запрос закрытия консоли.
+     *
+     * @param listener обработчик события закрытия
+     * @return подписка, которую можно отменить
+     */
+    public EventSubscription onCloseRequested(EventListener<? super AdminConsoleCloseRequestedEvent> listener) {
+        return on(AdminConsoleCloseRequestedEvent.TYPE, listener);
+    }
+
+    /**
+     * Подписывает слушатель на отправку команды.
+     *
+     * <p>Событие можно отменить, чтобы остановить выполнение команды реестром.</p>
+     *
+     * @param listener обработчик отправленной команды
+     * @return подписка, которую можно отменить
+     */
+    public EventSubscription onCommandSubmitted(EventListener<? super AdminConsoleCommandSubmittedEvent> listener) {
+        return on(AdminConsoleCommandSubmittedEvent.TYPE, listener);
+    }
+
+    /**
+     * Подписывает слушатель на выбор элемента автодополнения.
+     *
+     * <p>Событие можно отменить, чтобы не применять выбранную подсказку к input-полю.</p>
+     *
+     * @param listener обработчик выбранной подсказки
+     * @return подписка, которую можно отменить
+     */
+    public EventSubscription onCompletionSelected(EventListener<? super AdminConsoleCompletionSelectedEvent> listener) {
+        return on(AdminConsoleCompletionSelectedEvent.TYPE, listener);
+    }
+
+    /**
+     * Задаёт шрифт и размер текста консоли.
+     *
+     * @param font шрифт, {@code null} заменяется на {@link Fonts#defaultFace()}
+     * @param fontSize размер шрифта в пикселях, минимально 8
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole font(FontFace font, float fontSize) {
+        this.font = font == null ? Fonts.defaultFace() : font;
+        this.fontSize = Float.isFinite(fontSize) ? Math.max(8.0f, fontSize) : 11.0f;
+        titleLabel.font(this.font, this.fontSize + 1.0f);
+        promptLabel.font(this.font, this.fontSize);
+        inputField.font(this.font, this.fontSize);
+        outputScroll.scrollStep(lineHeight());
+        rebuildOutputRows();
+        rebuildCompletionRows();
+        return this;
+    }
+
+    /**
+     * Ограничивает количество строк, которые хранятся в истории вывода.
+     *
+     * @param maxOutputLines максимальное число строк, минимально 16
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole maxOutputLines(int maxOutputLines) {
+        this.maxOutputLines = Math.max(16, maxOutputLines);
+        trimOutput();
+        rebuildOutputRows();
+        return this;
+    }
+
+    /**
+     * Регистрирует простую команду без описания аргументов.
+     *
+     * @param name имя команды, начальный {@code /} будет отброшен
+     * @param description описание для help и подсказок
+     * @param executor обработчик выполнения команды
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole registerCommand(String name, String description, CommandExecutor executor) {
+        commandRegistry.register(name, description, executor);
+        return this;
+    }
+
+    /**
+     * Регистрирует готовое описание команды.
+     *
+     * @param definition команда, собранная через {@link AdminCommandRegistry#command(String, String)}
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole registerCommand(AdminCommandRegistry.CommandDefinition definition) {
+        commandRegistry.register(definition);
+        return this;
+    }
+
+    /**
+     * Удаляет команду из реестра.
+     *
+     * @param name имя команды
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole unregisterCommand(String name) {
+        commandRegistry.unregister(name);
+        return this;
+    }
+
+    /**
+     * Задаёт внешний provider автодополнения.
+     *
+     * <p>Если provider равен {@code null}, консоль возвращается к подсказкам из {@link AdminCommandRegistry}.</p>
+     *
+     * @param completionProvider provider подсказок
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole completionProvider(CompletionProvider completionProvider) {
+        this.completionProvider = completionProvider == null ? this::defaultCompletions : completionProvider;
+        refreshCompletions(false);
+        return this;
+    }
+
+    /**
+     * Задаёт fallback executor для команд, которых нет в реестре.
+     *
+     * @param fallbackExecutor обработчик неизвестных команд или {@code null}
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole fallbackExecutor(CommandExecutor fallbackExecutor) {
+        this.fallbackExecutor = fallbackExecutor;
+        return this;
+    }
+
+    /**
+     * Добавляет обычную строку вывода.
+     *
+     * @param text текст строки
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole appendOutput(String text) {
+        return appendOutput(text, LineKind.OUTPUT);
+    }
+
+    public AdminConsole appendOutput(RichText text) {
+        return appendOutput(text, LineKind.OUTPUT);
+    }
+
+    /**
+     * Добавляет информационную строку вывода.
+     *
+     * @param text текст строки
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole appendInfo(String text) {
+        return appendOutput(text, LineKind.INFO);
+    }
+
+    public AdminConsole appendInfo(RichText text) {
+        return appendOutput(text, LineKind.INFO);
+    }
+
+    /**
+     * Добавляет предупреждение в вывод консоли.
+     *
+     * @param text текст предупреждения
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole appendWarning(String text) {
+        return appendOutput(text, LineKind.WARNING);
+    }
+
+    public AdminConsole appendWarning(RichText text) {
+        return appendOutput(text, LineKind.WARNING);
+    }
+
+    /**
+     * Добавляет ошибку в вывод консоли.
+     *
+     * @param text текст ошибки
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole appendError(String text) {
+        return appendOutput(text, LineKind.ERROR);
+    }
+
+    public AdminConsole appendError(RichText text) {
+        return appendOutput(text, LineKind.ERROR);
+    }
+
+    /**
+     * Добавляет одну или несколько строк вывода с указанным типом.
+     *
+     * <p>Многострочный текст разбивается по переводам строк и каждая строка получает один и тот же {@link LineKind}.</p>
+     *
+     * @param text текст вывода
+     * @param kind тип строки, влияющий на цвет
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole appendOutput(String text, LineKind kind) {
+        String value = normalize(text, "");
+        if (value.indexOf('\n') >= 0) {
+            for (String line : value.split("\\R", -1)) appendSingleLine(RichText.resolve(line), kind);
+        } else {
+            appendSingleLine(RichText.resolve(value), kind);
+        }
+        trimOutput();
+        rebuildOutputRows();
+        pendingOutputScrollToEnd = true;
+        return this;
+    }
+
+    public AdminConsole appendOutput(RichText text, LineKind kind) {
+        appendSingleLine(normalizeRichText(text), kind);
+        trimOutput();
+        rebuildOutputRows();
+        pendingOutputScrollToEnd = true;
+        return this;
+    }
+
+    /**
+     * Очищает историю вывода и визуальные строки.
+     *
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole clearOutput() {
+        lines.clear();
+        outputList.clearChildren();
+        outputList.applyQueuedMutations();
+        pendingOutputScrollToEnd = true;
+        return this;
+    }
+
+    /**
+     * Программно отправляет команду так, будто пользователь ввёл её вручную.
+     *
+     * <p>Команда добавляется в историю вывода, проходит через {@link AdminConsoleCommandSubmittedEvent}, затем
+     * выполняется через {@link AdminCommandRegistry} или fallback executor.</p>
+     *
+     * @param inputText текст команды без обязательного prompt
+     * @return эта консоль для fluent-настройки
+     */
+    public AdminConsole submit(String inputText) {
+        String raw = normalize(inputText, "").trim();
+        if (raw.isEmpty()) return this;
+        appendOutput(prompt + " " + raw, LineKind.COMMAND);
+        if (history.isEmpty() || !Objects.equals(history.get(history.size() - 1), raw)) history.add(raw);
+        historyIndex = -1;
+        CommandInvocation invocation = CommandInvocation.parse(raw);
+        AdminConsoleCommandSubmittedEvent event = commandSubmitted(raw, invocation);
+        if (event.isCancelled()) return this;
+        if (!commandRegistry.execute(this, invocation, fallbackExecutor))
+            appendError("Unknown command: " + invocation.commandName());
+        return this;
+    }
+
+    /**
+     * Возвращает текущий снимок элементов автодополнения.
+     *
+     * @return неизменяемый список подсказок
+     */
+    public List<CompletionItem> completions() {
+        return List.copyOf(completions);
+    }
+
+    /**
+     * Возвращает имена и описания зарегистрированных команд.
+     *
+     * @return неизменяемая карта {@code commandName -> description}
+     */
+    public Map<String, String> registeredCommands() {
+        return commandRegistry.registeredCommands();
+    }
+
+    @Override
+    public void arrange(RectView bounds) {
+        super.arrange(bounds);
+        if (pendingOutputScrollToEnd) {
+            outputScroll.scrollTo(0.0f, outputScroll.maxScrollY());
+            pendingOutputScrollToEnd = false;
+        }
+    }
+
+    @Override
+    public void tick(FrameContext frame) {
+        super.tick(frame);
+        closeCompletionsIfFocusOutside();
+    }
+
+    @Override
+    public void handle(Event event) {
+        if (event instanceof PointerPressedEvent pointer
+                && pointer.phase() == EventPhase.CAPTURE
+                && isWidgetOrDescendant(completionPopup, pointer.target())) {
+            focusInput();
+        }
+        super.handle(event);
+    }
+
+    /**
+     * Собирает внутреннюю структуру виджета.
+     *
+     * <p>По умолчанию создаёт header, область вывода, popup автодополнения и строку ввода. Для небольших правок
+     * лучше переопределять отдельные методы {@code configure*}/{@code create*}, а не весь этот метод.</p>
+     */
+    protected void buildUi() {
+        configureBody(body);
+
+        header = createHeader();
+        closeButton = createCloseButton();
+        configureHeader(header, closeButton);
+
+        configureOutputList(outputList);
+        configureOutputScroll(outputScroll);
+
+        configureCompletionList(completionList);
+        configureCompletionScroll(completionScroll);
+        configureCompletionPanel(completionPanel);
+        configureCompletionPopup(completionPopup);
+
+        inputRow = createInputRow();
+        configureInputRow(inputRow);
+
+        composeUi(header, inputRow);
+    }
+
+    /**
+     * Настраивает основной вертикальный контейнер консоли.
+     *
+     * @param body контейнер, в который добавляются header, вывод и строка ввода
+     */
+    protected void configureBody(VBox body) {
+        body.spacing(6.0f);
+        body.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO));
+    }
+
+    /**
+     * Создаёт контейнер верхней панели.
+     *
+     * @return новый контейнер header'а
+     */
+    protected HBox createHeader() {
+        return new HBox();
+    }
+
+    /**
+     * Создаёт кнопку закрытия консоли.
+     *
+     * @return кнопка, которая по умолчанию вызывает {@link #requestClose()}
+     */
+    protected Button createCloseButton() {
+        return new Button("x");
+    }
+
+    /**
+     * Настраивает верхнюю панель и добавляет в неё заголовок с кнопкой закрытия.
+     *
+     * @param header контейнер header'а
+     * @param closeButton кнопка закрытия
+     */
+    protected void configureHeader(HBox header, Button closeButton) {
+        header.spacing(6.0f);
+        header.layout(style -> style.height(24.0f).flexGrow(0.0f).flexShrink(0.0f).alignItems(Align.CENTER));
+        configureTitleLabel(titleLabel);
+        configureCloseButton(closeButton);
+        header.addChild(titleLabel);
+        header.addChild(closeButton);
+    }
+
+    /**
+     * Настраивает label заголовка.
+     *
+     * @param titleLabel label, отображающий {@link #title}
+     */
+    protected void configureTitleLabel(Label titleLabel) {
+        titleLabel.richText(titleRichText);
+        titleLabel.font(font, fontSize + 1.0f);
+        titleLabel.color(COLOR_TEXT);
+        titleLabel.layout(style -> style.height(24.0f).flexGrow(1.0f).flexShrink(1.0f));
+    }
+
+    /**
+     * Настраивает внешний вид и действие кнопки закрытия.
+     *
+     * @param closeButton кнопка закрытия
+     */
+    protected void configureCloseButton(Button closeButton) {
+        closeButton.textPadding(6.0f, 2.0f);
+        closeButton.textColor().set(COLOR_MUTED);
+        closeButton.background().set(0.10f, 0.12f, 0.15f, 0.75f);
+        closeButton.borderColor().set(COLOR_BORDER);
+        closeButton.layout(style -> style.size(22.0f, 20.0f).flexGrow(0.0f).flexShrink(0.0f));
+        closeButton.onClick(event -> requestClose());
+    }
+
+    /**
+     * Настраивает контейнер строк вывода.
+     *
+     * @param outputList список label'ов вывода
+     */
+    protected void configureOutputList(VBox outputList) {
+        outputList.spacing(1.0f);
+        outputList.layout(style -> style.flexGrow(0.0f).flexShrink(0.0f));
+    }
+
+    /**
+     * Настраивает scroll-область вывода.
+     *
+     * @param outputScroll scroll view, который содержит {@link #outputList}
+     */
+    protected void configureOutputScroll(ScrollView outputScroll) {
+        outputScroll.scrollStep(lineHeight());
+        outputScroll.scrollbarGap(2.0f);
+        outputScroll.scrollbarTrackColor().set(0.0f, 0.0f, 0.0f, 0.34f);
+        outputScroll.scrollbarThumbColor().set(COLOR_MUTED);
+        outputScroll.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).overflowX(Overflow.HIDDEN).overflowY(Overflow.AUTO).flexGrow(1.0f).flexShrink(1.0f));
+    }
+
+    /**
+     * Настраивает контейнер строк автодополнения.
+     *
+     * @param completionList список строк подсказок
+     */
+    protected void configureCompletionList(VBox completionList) {
+        completionList.spacing(1.0f);
+        completionList.layout(style -> style.flexGrow(0.0f).flexShrink(0.0f));
+    }
+
+    /**
+     * Настраивает scroll-область popup-подсказок.
+     *
+     * @param completionScroll scroll view для списка подсказок
+     */
+    protected void configureCompletionScroll(ScrollView completionScroll) {
+        completionScroll.scrollStep(COMPLETION_ROW_HEIGHT);
+        completionScroll.scrollbarGap(1.0f);
+        completionScroll.scrollbarTrackColor().set(0.0f, 0.0f, 0.0f, 0.38f);
+        completionScroll.scrollbarThumbColor().set(COLOR_MUTED);
+        completionScroll.layout(style -> style.height(COMPLETION_ROW_HEIGHT).overflowX(Overflow.HIDDEN).overflowY(Overflow.HIDDEN).flexGrow(0.0f).flexShrink(0.0f));
+    }
+
+    /**
+     * Настраивает визуальную панель popup автодополнения.
+     *
+     * @param completionPanel контейнер, который становится content у {@link #completionPopup}
+     */
+    protected void configureCompletionPanel(Box completionPanel) {
+        completionPanel.backgroundVisible(true);
+        completionPanel.borderVisible(true);
+        completionPanel.radius(4.0f);
+        completionPanel.background().set(COLOR_PANEL);
+        completionPanel.borderColor().set(COLOR_BORDER);
+        completionPanel.visibility(Visibility.COLLAPSED);
+        completionPanel.layout(style -> style.height(COMPLETION_ROW_HEIGHT + 4.0f).padding(2.0f).overflow(Overflow.HIDDEN).flexGrow(0.0f).flexShrink(0.0f));
+        completionPanel.addChild(completionScroll);
+    }
+
+    /**
+     * Настраивает popup автодополнения и привязывает его к input-полю.
+     *
+     * @param completionPopup popup, который показывает {@link #completionPanel}
+     */
+    protected void configureCompletionPopup(Popup completionPopup) {
+        completionPopup.anchor(inputField);
+        completionPopup.content(completionPanel);
+        completionPopup.padding(EdgeInsets.ZERO);
+        completionPopup.backgroundVisible(false);
+        completionPopup.borderVisible(false);
+        completionPopup.closeOnOutsideClick(true);
+        completionPopup.placement(Popup.Placement.ABOVE);
+        completionPopup.offset(0.0f, 4.0f);
+    }
+
+    /**
+     * Создаёт контейнер строки ввода.
+     *
+     * @return новый контейнер input-строки
+     */
+    protected HBox createInputRow() {
+        return new HBox();
+    }
+
+    /**
+     * Настраивает строку ввода и добавляет prompt с input-полем.
+     *
+     * @param inputRow контейнер строки ввода
+     */
+    protected void configureInputRow(HBox inputRow) {
+        inputRow.spacing(6.0f);
+        inputRow.layout(style -> style.height(26.0f).flexGrow(0.0f).flexShrink(0.0f).alignItems(Align.CENTER));
+        configurePromptLabel(promptLabel);
+        configureInputField(inputField);
+        inputRow.addChild(promptLabel);
+        inputRow.addChild(inputField);
+    }
+
+    /**
+     * Настраивает label prompt'а слева от input-поля.
+     *
+     * @param promptLabel label prompt'а
+     */
+    protected void configurePromptLabel(Label promptLabel) {
+        promptLabel.richText(promptRichText);
+        promptLabel.focusTarget(inputField);
+        promptLabel.font(font, fontSize);
+        promptLabel.color(COLOR_ACCENT);
+        promptLabel.layout(style -> style.width(18.0f).height(26.0f).flexGrow(0.0f).flexShrink(0.0f));
+    }
+
+    /**
+     * Настраивает поле ввода команд.
+     *
+     * @param inputField поле ввода, созданное через {@link #createInputField()}
+     */
+    protected void configureInputField(ConsoleInputField inputField) {
+        inputField.placeholder("type command...");
+        inputField.font(font, fontSize);
+        inputField.visualOnlyTextChanges(true);
+        inputField.textColor().set(COLOR_TEXT);
+        inputField.placeholderColor().set(COLOR_MUTED);
+        inputField.caretColor().set(COLOR_ACCENT);
+        inputField.background().set(COLOR_INPUT);
+        inputField.borderColor().set(COLOR_BORDER);
+        inputField.radius(3.0f);
+        inputField.layout(style -> style.height(26.0f).flexGrow(1.0f).flexShrink(1.0f));
+    }
+
+    /**
+     * Собирает уже настроенные части консоли в дерево виджетов.
+     *
+     * @param header верхняя панель
+     * @param inputRow строка ввода
+     */
+    protected void composeUi(HBox header, HBox inputRow) {
+        body.addChild(header);
+        body.addChild(outputScroll);
+        body.addChild(inputRow);
+        addChild(body);
+        addChild(completionPopup);
+    }
+
+    /**
+     * Обрабатывает клавиши, которые принадлежат логике консоли.
+     *
+     * @param key событие нажатия клавиши
+     * @return {@code true}, если событие обработано консолью и не должно идти в обычный TextField
+     */
+    protected boolean handleInputKey(KeyPressedEvent key) {
+        if (key.phase() != EventPhase.TARGET) return false;
+        return switch (key.keyCode()) {
+            case KeyCodes.ENTER, KeyCodes.KEYPAD_ENTER -> {
+                executeInput();
+                yield true;
+            }
+            case KeyCodes.TAB -> {
+                if (completions.isEmpty()) refreshCompletions(true);
+                if (!completions.isEmpty()) applyCompletion(false);
+                yield true;
+            }
+            case KeyCodes.UP -> {
+                if (completions.isEmpty()) moveHistory(-1);
+                else moveCompletion(-1);
+                yield true;
+            }
+            case KeyCodes.DOWN -> {
+                if (completions.isEmpty()) moveHistory(1);
+                else moveCompletion(1);
+                yield true;
+            }
+            case KeyCodes.PAGE_UP -> {
+                if (!completions.isEmpty()) {
+                    moveCompletion(-visibleCompletionRows());
+                    yield true;
+                }
+                yield false;
+            }
+            case KeyCodes.PAGE_DOWN -> {
+                if (!completions.isEmpty()) {
+                    moveCompletion(visibleCompletionRows());
+                    yield true;
+                }
+                yield false;
+            }
+            case KeyCodes.ESCAPE -> {
+                if (completions.isEmpty()) requestClose();
+                else clearCompletions();
+                yield true;
+            }
+            default -> false;
+        };
+    }
+
+    protected void executeInput() {
+        String value = inputField.text().trim();
+        setInputText("", false);
+        clearCompletions();
+        if (!value.isEmpty()) submit(value);
+    }
+
+    protected void applyCompletion(boolean refreshBeforeApply) {
+        if (refreshBeforeApply) refreshCompletions(true);
+        if (completions.isEmpty()) return;
+        CompletionItem item = completions.get(Math.max(0, Math.min(completionIndex, completions.size() - 1)));
+        if (completionSelected(item).isCancelled()) return;
+        String text = inputField.text();
+        int start = TextEditorModel.clampToCodePointBoundary(text, item.replacementStart());
+        int end = item.replacementEnd() == Integer.MAX_VALUE ? text.length() : TextEditorModel.clampToCodePointBoundary(text, Math.max(start, item.replacementEnd()));
+        String nextText = text.substring(0, start) + item.insertText() + text.substring(end);
+        setInputText(nextText, false);
+        inputField.cursorIndex(start + item.insertText().length());
+        completionIndex = 0;
+        refreshCompletions(false);
+    }
+
+    protected void moveCompletion(int delta) {
+        if (completions.isEmpty()) return;
+        completionIndex = Math.floorMod(completionIndex + delta, completions.size());
+        syncCompletionSelection();
+        ensureCompletionVisible();
+    }
+
+    protected void moveHistory(int delta) {
+        if (history.isEmpty()) return;
+        if (historyIndex < 0) historyIndex = history.size();
+        historyIndex = Math.max(0, Math.min(history.size(), historyIndex + delta));
+        String value = historyIndex >= history.size() ? "" : history.get(historyIndex);
+        boolean previous = suppressHistoryReset;
+        suppressHistoryReset = true;
+        try {
+            setInputText(value, false);
+        } finally {
+            suppressHistoryReset = previous;
+        }
+        refreshCompletions(false);
+    }
+
+    protected void refreshCompletions(boolean allowEmptyInput) {
+        completions.clear();
+        String value = inputField.text();
+        if (completionProvider != null && (allowEmptyInput || value != null && !value.isEmpty())) {
+            List<CompletionItem> provided = completionProvider.complete(this, value == null ? "" : value);
+            if (provided != null) for (CompletionItem item : provided)
+                if (item != null && !item.insertText().isBlank()) completions.add(item);
+        }
+        completionIndex = Math.max(0, Math.min(completionIndex, Math.max(0, completions.size() - 1)));
+        rebuildCompletionRows();
+    }
+
+    /**
+     * Возвращает подсказки по умолчанию из {@link AdminCommandRegistry}.
+     *
+     * @param console текущая консоль
+     * @param inputText текущий текст input-поля
+     * @return список подсказок
+     */
+    protected List<CompletionItem> defaultCompletions(AdminConsole console, String inputText) {
+        return commandRegistry.complete(inputText, inputField.cursorIndex());
+    }
+
+    protected void clearCompletions() {
+        if (completions.isEmpty()) return;
+        completions.clear();
+        completionIndex = 0;
+        rebuildCompletionRows();
+    }
+
+    protected void rebuildCompletionRows() {
+        completionList.clearChildren();
+        completionList.applyQueuedMutations();
+        completionRows.clear();
+        for (int i = 0; i < completions.size(); i++) {
+            CompletionRow row = completionRow(i, completions.get(i));
+            completionRows.add(row);
+            completionList.addChild(row);
+        }
+        syncCompletionPanelSize();
+        syncCompletionSelection();
+        ensureCompletionVisible();
+        invalidate(InvalidationFlags.LAYOUT | InvalidationFlags.VISUAL);
+    }
+
+    /**
+     * Создаёт визуальную строку для одного элемента автодополнения.
+     *
+     * @param index индекс подсказки в текущем списке
+     * @param item данные подсказки
+     * @return виджет строки подсказки
+     */
+    protected CompletionRow completionRow(int index, CompletionItem item) {
+        return new CompletionRow(this, index, item);
+    }
+
+    protected void selectCompletion(int index) {
+        if (index < 0 || index >= completions.size()) return;
+        completionIndex = index;
+        syncCompletionSelection();
+        applyCompletion(false);
+    }
+
+    protected void syncCompletionPanelSize() {
+        int rows = visibleCompletionRows();
+        boolean visible = !completions.isEmpty();
+        float scrollHeight = visible ? rows * COMPLETION_ROW_HEIGHT + Math.max(0, rows - 1) * completionList.spacing() : COMPLETION_ROW_HEIGHT;
+        float panelWidth = completionPopupWidth();
+        float scrollWidth = Float.isFinite(panelWidth) ? Math.max(0.0f, panelWidth - 4.0f) : LayoutConstraints.AUTO;
+        completionPanel.visibility(visible ? Visibility.VISIBLE : Visibility.COLLAPSED);
+        completionPanel.layout(style -> style.size(panelWidth, scrollHeight + 4.0f).padding(2.0f).overflow(Overflow.HIDDEN).flexGrow(0.0f).flexShrink(0.0f));
+        completionScroll.layout(style -> style.size(scrollWidth, scrollHeight).overflowX(Overflow.HIDDEN).overflowY(completions.size() > MAX_COMPLETIONS ? Overflow.SCROLL : Overflow.HIDDEN).flexGrow(0.0f).flexShrink(0.0f));
+        completionPopup.open(visible);
+    }
+
+    /**
+     * Вычисляет ширину popup автодополнения.
+     *
+     * @return ширина popup или {@link LayoutConstraints#AUTO}
+     */
+    protected float completionPopupWidth() {
+        float inputWidth = inputField.layoutBounds().width();
+        if (inputWidth > 0.0f) return inputWidth;
+        float bodyWidth = body.layoutBounds().width();
+        if (bodyWidth > 40.0f) return bodyWidth - 24.0f;
+        float consoleWidth = layoutBounds().width();
+        if (consoleWidth > 40.0f) return consoleWidth - 44.0f;
+        return LayoutConstraints.AUTO;
+    }
+
+    protected void syncCompletionSelection() {
+        for (int i = 0; i < completionRows.size(); i++) completionRows.get(i).selected(i == completionIndex);
+    }
+
+    protected void closeCompletionsIfFocusOutside() {
+        if (!completionPopup.opened() || completions.isEmpty()) return;
+        UIContext context = uiContext();
+        if (context == null) return;
+        Widget focused = context.focusManager().focusedWidget();
+        if (isWidgetOrDescendant(inputField, focused) || isWidgetOrDescendant(completionPopup, focused)) return;
+        clearCompletions();
+    }
+
+    protected void focusInput() {
+        UIContext context = uiContext();
+        if (context != null) context.focusManager().requestFocus(inputField);
+    }
+
+    protected void ensureCompletionVisible() {
+        if (completions.isEmpty()) {
+            completionScroll.scrollTo(0.0f, 0.0f);
+            return;
+        }
+        int rows = visibleCompletionRows();
+        float step = COMPLETION_ROW_HEIGHT + completionList.spacing();
+        float rowY = completionIndex * step;
+        float rowBottom = rowY + COMPLETION_ROW_HEIGHT;
+        float viewTop = completionScroll.scrollY();
+        float viewBottom = viewTop + rows * step;
+        if (rowY < viewTop) completionScroll.scrollTo(0.0f, rowY);
+        else if (rowBottom > viewBottom) completionScroll.scrollTo(0.0f, rowBottom - rows * step);
+    }
+
+    protected int visibleCompletionRows() {
+        return Math.max(1, Math.min(MAX_COMPLETIONS, completions.size()));
+    }
+
+    protected static boolean isWidgetOrDescendant(Widget root, Widget candidate) {
+        if (root == null || candidate == null) return false;
+        Widget current = candidate;
+        while (current != null) {
+            if (current == root) return true;
+            current = current.parent();
+        }
+        return false;
+    }
+
+    protected void setInputText(String text, boolean resetHistory) {
+        boolean previous = suppressHistoryReset;
+        suppressHistoryReset = suppressHistoryReset || !resetHistory;
+        try {
+            inputField.text(TextEditorModel.sanitizePrintable(text));
+            inputField.cursorIndex(inputField.text().length());
+        } finally {
+            suppressHistoryReset = previous;
+        }
+    }
+
+    /**
+     * Регистрирует базовые команды консоли.
+     *
+     * <p>Метод вызывается из конструктора, если {@link #registerBuiltInCommandsByDefault()} вернул {@code true}.</p>
+     */
+    protected void registerBuiltInCommands() {
+        registerCommand("help", "List registered commands", (console, invocation) -> {
+            console.appendInfo("Registered commands:");
+            for (AdminCommandRegistry.CommandDefinition command : commandRegistry.commands())
+                console.appendOutput("  " + command.signatureWithDescription(), LineKind.OUTPUT);
+        });
+        registerCommand("clear", "Clear console output", (console, invocation) -> console.clearOutput());
+        registerCommand("echo", "Print command arguments", (console, invocation) -> console.appendOutput(String.join(" ", invocation.arguments())));
+        registerCommand("time", "Print local client time", (console, invocation) -> console.appendInfo("Client time: " + LocalTime.now().format(TIME_FORMAT)));
+    }
+
+    protected void appendSingleLine(String text, LineKind kind) {
+        appendSingleLine(RichText.resolve(normalize(text, "")), kind);
+    }
+
+    protected void appendSingleLine(RichText text, LineKind kind) {
+        lines.add(new ConsoleLine(text, kind == null ? LineKind.OUTPUT : kind));
+    }
+
+    protected void trimOutput() {
+        while (lines.size() > maxOutputLines) lines.remove(0);
+    }
+
+    protected void rebuildOutputRows() {
+        outputList.clearChildren();
+        outputList.applyQueuedMutations();
+        for (ConsoleLine line : lines) {
+            outputList.addChild(createOutputLabel(line));
+        }
+        pendingOutputScrollToEnd = true;
+        invalidate(InvalidationFlags.LAYOUT | InvalidationFlags.VISUAL);
+    }
+
+    /**
+     * Создаёт label для строки вывода.
+     *
+     * @param line данные строки вывода
+     * @return настроенный label
+     */
+    protected Label createOutputLabel(ConsoleLine line) {
+        Label label = new Label(line.text());
+        configureOutputLabel(label, line);
+        return label;
+    }
+
+    /**
+     * Настраивает внешний вид label'а вывода.
+     *
+     * @param label label строки вывода
+     * @param line данные строки вывода
+     */
+    protected void configureOutputLabel(Label label, ConsoleLine line) {
+        label.font(font, fontSize);
+        label.color(line.kind().color());
+        label.noWrap();
+        label.overflowMode(TextOverflowMode.CLIP);
+        label.layout(style -> style.height(lineHeight()).flexGrow(0.0f).flexShrink(0.0f));
+    }
+
+    /**
+     * Отправляет событие запроса закрытия консоли.
+     *
+     * @return созданное событие закрытия
+     */
+    protected AdminConsoleCloseRequestedEvent requestClose() {
+        AdminConsoleCloseRequestedEvent event = new AdminConsoleCloseRequestedEvent(this);
+        UIContext context = uiContext();
+        if (context == null) emit(event);
+        else context.routedEvents().dispatch(event);
+        return event;
+    }
+
+    /**
+     * Отправляет событие отправки команды.
+     *
+     * @param rawInput исходный текст команды
+     * @param invocation разобранная команда
+     * @return созданное событие команды
+     */
+    protected AdminConsoleCommandSubmittedEvent commandSubmitted(String rawInput, CommandInvocation invocation) {
+        AdminConsoleCommandSubmittedEvent event = new AdminConsoleCommandSubmittedEvent(this, rawInput, invocation == null ? "" : invocation.commandName(), invocation == null ? List.of() : invocation.arguments());
+        UIContext context = uiContext();
+        if (context == null) emit(event);
+        else context.routedEvents().dispatch(event);
+        return event;
+    }
+
+    /**
+     * Отправляет событие выбора подсказки.
+     *
+     * @param item выбранная подсказка
+     * @return созданное событие выбора подсказки
+     */
+    protected AdminConsoleCompletionSelectedEvent completionSelected(CompletionItem item) {
+        AdminConsoleCompletionSelectedEvent event = new AdminConsoleCompletionSelectedEvent(this, item.insertText(), item.displayPlainText(), item.descriptionPlainText(), item.replacementStart(), item.replacementEnd());
+        UIContext context = uiContext();
+        if (context == null) emit(event);
+        else context.routedEvents().dispatch(event);
+        return event;
+    }
+
+    protected float lineHeight() {
+        return Math.max(ROW_HEIGHT, font.metrics(fontSize).lineHeight());
+    }
+
+    protected static String completionRowText(CompletionItem item) {
+        String display = normalize(item.displayPlainText(), item.insertText());
+        String description = normalize(item.descriptionPlainText(), "").trim();
+        return description.isEmpty() ? display : display + "  -  " + description;
+    }
+
+    protected static String normalizeCommandName(String value) {
+        String normalized = normalize(value, "").trim();
+        if (normalized.startsWith("/")) normalized = normalized.substring(1);
+        return normalized.toLowerCase(Locale.ROOT);
+    }
+
+    protected static String normalize(String value, String fallback) {
+        return value == null ? fallback : value;
+    }
+
+    protected static RichText normalizeRichText(RichText value) {
+        return value == null ? RichText.plain("") : value;
+    }
+
+    /**
+     * Тип строки вывода консоли.
+     *
+     * <p>Тип используется только для визуального оформления и не меняет семантику текста.</p>
+     */
+    public enum LineKind {
+        COMMAND(COLOR_COMMAND), OUTPUT(COLOR_TEXT), INFO(COLOR_SUCCESS), WARNING(COLOR_WARNING), ERROR(COLOR_ERROR);
+        protected final MutableColor color;
+
+        LineKind(MutableColor color) {
+            this.color = color;
+        }
+
+        /**
+         * Возвращает цвет, которым по умолчанию рисуются строки этого типа.
+         *
+         * @return цвет строки
+         */
+        public MutableColor color() {
+            return color;
+        }
+    }
+
+    /**
+     * Один элемент автодополнения.
+     *
+     * @param insertText текст, который будет вставлен в input-поле
+     * @param displayText rich text, который отображается пользователю в списке подсказок
+     * @param description rich text с дополнительным описанием подсказки
+     * @param replacementStart начало заменяемого диапазона в input-тексте
+     * @param replacementEnd конец заменяемого диапазона в input-тексте или {@link Integer#MAX_VALUE} для конца строки
+     */
+    public record CompletionItem(String insertText, RichText displayText, RichText description, int replacementStart,
+                                 int replacementEnd) {
+        /**
+         * Создаёт plain-подсказку, которая заменяет всю строку ввода.
+         *
+         * @param insertText текст вставки
+         * @param displayText видимый текст подсказки
+         * @param description описание подсказки
+         */
+        public CompletionItem(String insertText, String displayText, String description) {
+            this(insertText, RichText.resolve(normalize(displayText, insertText)), RichText.resolve(normalize(description, "")), 0, Integer.MAX_VALUE);
+        }
+
+        public CompletionItem(String insertText, RichText displayText, RichText description) {
+            this(insertText, displayText, description, 0, Integer.MAX_VALUE);
+        }
+
+        public CompletionItem {
+            insertText = normalize(insertText, "");
+            displayText = displayText == null ? RichText.resolve(insertText) : displayText;
+            description = normalizeRichText(description);
+            replacementStart = Math.max(0, replacementStart);
+            replacementEnd = replacementEnd == Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.max(replacementStart, replacementEnd);
+        }
+
+        public String displayPlainText() {
+            return displayText.plainText();
+        }
+
+        public String descriptionPlainText() {
+            return description.plainText();
+        }
+
+        /**
+         * Создаёт plain-подсказку, которая заменяет конкретный диапазон input-текста.
+         *
+         * @param insertText текст вставки
+         * @param displayText видимый текст подсказки
+         * @param description описание подсказки
+         * @param replacementStart начало заменяемого диапазона
+         * @param replacementEnd конец заменяемого диапазона
+         * @return новый элемент автодополнения
+         */
+        public static CompletionItem replace(String insertText, String displayText, String description, int replacementStart, int replacementEnd) {
+            return replace(insertText, RichText.resolve(normalize(displayText, insertText)), RichText.resolve(normalize(description, "")), replacementStart, replacementEnd);
+        }
+
+        public static CompletionItem replace(String insertText, RichText displayText, RichText description, int replacementStart, int replacementEnd) {
+            return new CompletionItem(insertText, displayText, description, replacementStart, replacementEnd);
+        }
+    }
+
+    /**
+     * Разобранный пользовательский ввод.
+     *
+     * @param rawInput исходная строка команды
+     * @param commandName нормализованное имя команды без начального {@code /}
+     * @param arguments аргументы команды в порядке ввода
+     */
+    public record CommandInvocation(String rawInput, String commandName, List<String> arguments) {
+        public CommandInvocation {
+            rawInput = normalize(rawInput, "");
+            commandName = normalizeCommandName(commandName);
+            arguments = arguments == null ? List.of() : List.copyOf(arguments);
+        }
+
+        /**
+         * Разбирает строку команды на имя и аргументы.
+         *
+         * <p>Парсер поддерживает кавычки и escaping обратным слэшем.</p>
+         *
+         * @param rawInput исходная строка
+         * @return разобранная команда
+         */
+        public static CommandInvocation parse(String rawInput) {
+            String raw = normalize(rawInput, "").trim();
+            if (raw.isEmpty()) return new CommandInvocation("", "", List.of());
+            List<String> tokens = splitArguments(raw);
+            String name = tokens.isEmpty() ? raw : tokens.get(0);
+            List<String> args = tokens.size() <= 1 ? List.of() : tokens.subList(1, tokens.size());
+            return new CommandInvocation(raw, name, args);
+        }
+    }
+
+    @FunctionalInterface
+    /**
+     * Обработчик выполнения команды.
+     */
+    public interface CommandExecutor {
+        /**
+         * Выполняет команду.
+         *
+         * @param console консоль, из которой вызвана команда
+         * @param invocation разобранный пользовательский ввод
+         */
+        void execute(AdminConsole console, CommandInvocation invocation);
+    }
+
+    @FunctionalInterface
+    /**
+     * Provider подсказок для input-поля консоли.
+     */
+    public interface CompletionProvider {
+        /**
+         * Возвращает подсказки для текущего текста.
+         *
+         * @param console консоль, которая запросила подсказки
+         * @param inputText текущий текст input-поля
+         * @return список подсказок или пустой список
+         */
+        List<CompletionItem> complete(AdminConsole console, String inputText);
+    }
+
+    /**
+     * Внутренняя строка вывода консоли.
+     *
+     * @param text текст строки
+     * @param kind тип строки
+     */
+    protected record ConsoleLine(RichText text, LineKind kind) {
+        protected ConsoleLine {
+            text = normalizeRichText(text);
+            kind = kind == null ? LineKind.OUTPUT : kind;
+        }
+    }
+
+    /**
+     * Базовая визуальная строка popup-списка автодополнения.
+     *
+     * <p>Наследники могут переопределить {@link #updateVisualState()} или заменить весь класс через
+     * {@link AdminConsole#completionRow(int, CompletionItem)}.</p>
+     */
+    protected static class CompletionRow extends Box {
+        protected final AdminConsole owner;
+        protected final int index;
+        protected final Label displayLabel = new Label();
+        protected final Label descriptionLabel = new Label();
+        protected boolean selected;
+        protected boolean pressed;
+        protected boolean rowHovered;
+
+        /**
+         * Создаёт строку подсказки.
+         *
+         * @param owner консоль-владелец
+         * @param index индекс подсказки
+         * @param item данные подсказки
+         */
+        protected CompletionRow(AdminConsole owner, int index, CompletionItem item) {
+            this.owner = owner;
+            this.index = index;
+            mouseCursor(MouseCursor.POINTER);
+            backgroundVisible(true);
+            borderVisible(false);
+            radius(3.0f);
+            layout(style -> style
+                    .height(COMPLETION_ROW_HEIGHT)
+                    .padding(6.0f, 2.0f)
+                    .flexGrow(0.0f)
+                    .flexShrink(0.0f));
+
+            HBox content = new HBox();
+            content.spacing(8.0f);
+            content.layout(style -> style.height(LayoutConstraints.AUTO).alignItems(Align.CENTER));
+
+            displayLabel.richText(item.displayText().isEmpty() ? RichText.resolve(item.insertText()) : item.displayText());
+            displayLabel.font(owner.font, owner.fontSize);
+            displayLabel.noWrap();
+            displayLabel.overflowMode(TextOverflowMode.CLIP);
+            displayLabel.layout(style -> style.width(132.0f).height(COMPLETION_ROW_HEIGHT - 4.0f).flexGrow(0.0f).flexShrink(0.0f));
+
+            descriptionLabel.richText(item.description());
+            descriptionLabel.font(owner.font, owner.fontSize);
+            descriptionLabel.noWrap();
+            descriptionLabel.marqueeOnHover();
+            descriptionLabel.marqueeSpeed(34.0f);
+            descriptionLabel.marqueeGap(32.0f);
+            descriptionLabel.layout(style -> style.height(COMPLETION_ROW_HEIGHT - 4.0f).flexGrow(1.0f).flexShrink(1.0f));
+
+            content.addChild(displayLabel);
+            content.addChild(descriptionLabel);
+            addChild(content);
+            updateVisualState();
+        }
+
+        /**
+         * Меняет состояние клавиатурного выбора строки.
+         *
+         * @param selected {@code true}, если строка выбрана
+         */
+        protected void selected(boolean selected) {
+            if (this.selected == selected) return;
+            this.selected = selected;
+            updateVisualState();
+        }
+
+        @Override
+        public void handle(Event event) {
+            boolean hoveredBefore = hovered();
+            super.handle(event);
+            if (hoveredBefore != hovered()) updateVisualState();
+            if (event.isCancelled()) return;
+            if (event instanceof PointerEvent pointer && pointer.phase() == EventPhase.CAPTURE) return;
+            if (event instanceof PointerEnteredEvent) {
+                rowHovered = true;
+                updateVisualState();
+            } else if (event instanceof PointerExitedEvent) {
+                rowHovered = false;
+                updateVisualState();
+            } else if (event instanceof PointerPressedEvent pointer && pointer.button() == PointerButton.PRIMARY) {
+                owner.completionIndex = index;
+                owner.syncCompletionSelection();
+                pressed = true;
+                updateVisualState();
+                event.cancel();
+            } else if (event instanceof PointerReleasedEvent pointer && pointer.button() == PointerButton.PRIMARY) {
+                boolean wasPressed = pressed;
+                pressed = false;
+                updateVisualState();
+                if (wasPressed) {
+                    owner.selectCompletion(index);
+                    event.cancel();
+                }
+            }
+        }
+
+        /**
+         * Синхронизирует цвета строки с состояниями hover, pressed и selected.
+         */
+        protected void updateVisualState() {
+            boolean active = selected || rowHovered || hovered();
+            if (pressed) background().set(COLOR_COMPLETION_PRESSED);
+            else if (selected) background().set(COLOR_SELECTION);
+            else if (active) background().set(COLOR_COMPLETION_HOVER);
+            else background().set(COLOR_COMPLETION_IDLE);
+
+            displayLabel.color(selected ? COLOR_TEXT : COLOR_ACCENT);
+            descriptionLabel.color(selected ? COLOR_TEXT : COLOR_MUTED);
+            descriptionLabel.marqueeActive(active);
+        }
+    }
+
+    /**
+     * Поле ввода, которое сначала отдаёт клавиши консоли, а затем обычной логике {@link TextField}.
+     */
+    protected static class ConsoleInputField extends TextField {
+        protected final AdminConsole owner;
+
+        /**
+         * Создаёт input-поле для указанной консоли.
+         *
+         * @param owner консоль-владелец
+         */
+        protected ConsoleInputField(AdminConsole owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void handle(Event event) {
+            if (event instanceof KeyPressedEvent key && owner.handleInputKey(key)) {
+                event.cancel();
+                return;
+            }
+            String beforeText = text();
+            int beforeCursor = cursorIndex();
+            super.handle(event);
+            if (!Objects.equals(beforeText, text()) || beforeCursor != cursorIndex()) owner.refreshCompletions(false);
+        }
+    }
+
+    protected static List<String> splitArguments(String input) {
+        if (input == null || input.isBlank()) return List.of();
+        List<String> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            if (escaped) {
+                current.append(ch);
+                escaped = false;
+                continue;
+            }
+            if (ch == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (ch == '"') {
+                quoted = !quoted;
+                continue;
+            }
+            if (Character.isWhitespace(ch) && !quoted) {
+                if (current.length() > 0) {
+                    result.add(current.toString());
+                    current.setLength(0);
+                }
+                continue;
+            }
+            current.append(ch);
+        }
+        if (current.length() > 0) result.add(current.toString());
+        return result;
+    }
+}

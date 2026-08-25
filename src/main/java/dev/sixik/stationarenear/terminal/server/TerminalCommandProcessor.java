@@ -6,11 +6,14 @@ import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.navigation.StationCodeGenerator;
 import dev.sixik.stationarenear.navigation.SolarNavigationProceduralMap;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationStationInfo;
-import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
+import dev.sixik.stationarenear.quest.runtime.QuestObjectiveFormatter;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.ship.data.ShipSystemModule;
+import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.TelevisionTextPosition;
+import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.TelevisionContentMode;
 import dev.sixik.stationarenear.ship.runtime.ShipDoorController;
+import dev.sixik.stationarenear.ship.runtime.ShipTelevisionManager;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
 import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
@@ -81,6 +84,10 @@ public final class TerminalCommandProcessor {
             case "status" -> appendStatus(snapshot, output);
             case "modules" -> appendModules(snapshot, output);
             case "door" -> appendDoorCommand(level, terminalPos, argument, output);
+            case "tv", "television" -> appendTelevisionCommand(level, terminalPos, snapshot, argument, output);
+            case "tv_clear" -> appendTelevisionCommand(level, terminalPos, snapshot, "clear", output);
+            case "tv_pos" -> appendTelevisionPositionCommand(level, terminalPos, argument, output);
+            case "tv_scale" -> appendTelevisionScaleCommand(level, terminalPos, argument, output);
             case "objectives", "objective", "tasks" -> appendObjectives(level, output);
             case "stations" -> appendStations(snapshot, output);
             case "scan" -> {
@@ -151,29 +158,86 @@ public final class TerminalCommandProcessor {
     }
 
     private static void appendObjectives(ServerLevel level, List<TerminalHistoryLine> output) {
-        QuestSavedData questData = QuestSavedData.get(level);
-        if (questData.currentStationId().isEmpty() || questData.currentStation().isEmpty()) {
-            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No active mission."));
+        for (QuestObjectiveFormatter.Entry entry : QuestObjectiveFormatter.terminalEntries(level)) {
+            output.add(new TerminalHistoryLine(entry.kind(), entry.text()));
+        }
+    }
+
+    private static void appendTelevisionCommand(ServerLevel level, BlockPos terminalPos, ShipTerminalSnapshot snapshot, String argument, List<TerminalHistoryLine> output) {
+        String normalized = argument == null ? "" : argument.trim();
+        if (normalized.isBlank()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "TV commands: tv text <message> / tv hp / tv clear"));
             return;
         }
 
-        QuestStationState station = questData.currentStation().get();
-        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Current mission station: " + stationDisplayId(level, station.stationId())));
-        if (station.hasTimer()) {
-            output.add(new TerminalHistoryLine(station.timerExpired() ? TerminalHistoryKind.ERROR : TerminalHistoryKind.OUTPUT,
-                    station.timerExpired() ? "Time left: EXPIRED" : "Time left: " + formatDuration(station.timerRemainingMillis())));
+        String[] parts = normalized.split("\\s+", 2);
+        String subcommand = parts[0].toLowerCase(Locale.ROOT);
+        String value = parts.length > 1 ? parts[1].trim() : "";
+        boolean changed;
+        String message;
+        switch (subcommand) {
+            case "clear", "reset" -> {
+                changed = ShipTelevisionManager.setManualText(level, terminalPos, "");
+                message = "TV manual text cleared.";
+            }
+            case "ship_status", "hp", "status" -> {
+                changed = ShipTelevisionManager.setManualContentMode(level, terminalPos, TelevisionContentMode.SHIP_STATUS);
+                message = "TV ship status mode enabled.";
+            }
+            case "ship_scan" -> {
+                changed = ShipTelevisionManager.setManualContentMode(level, terminalPos, TelevisionContentMode.SHIP_SCAN);
+                message = "TV ship scan mode enabled.";
+            }
+            case "text", "message", "show" -> {
+                changed = ShipTelevisionManager.setManualText(level, terminalPos, value);
+                message = value.isBlank() ? "TV manual text cleared." : "TV manual text updated.";
+            }
+            default -> {
+                changed = ShipTelevisionManager.setManualText(level, terminalPos, normalized);
+                message = normalized.isBlank() ? "TV manual text cleared." : "TV manual text updated.";
+            }
         }
-        if (station.objectives().isEmpty()) {
-            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No objectives assigned."));
+
+        if (changed) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                    message));
+        } else {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No ship television found for this terminal."));
+        }
+    }
+
+    private static void appendTelevisionPositionCommand(ServerLevel level, BlockPos terminalPos, String argument, List<TerminalHistoryLine> output) {
+        TelevisionTextPosition position = TelevisionTextPosition.fromName(argument);
+        if (argument == null || argument.isBlank()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Usage: tv_pos CENTER | TOP | DOWN"));
             return;
         }
 
-        int index = 1;
-        for (QuestObjectiveState objective : station.objectives()) {
-            TerminalHistoryKind kind = objective.completed() ? TerminalHistoryKind.INFO : TerminalHistoryKind.OUTPUT;
-            output.add(new TerminalHistoryLine(kind,
-                    "  " + index + ". " + objective.text() + " [" + objectiveProgress(objective) + "]"));
-            index++;
+        if (ShipTelevisionManager.setManualTextPosition(level, terminalPos, position)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "TV manual text position set to " + position.name() + "."));
+        } else {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No ship television found for this terminal."));
+        }
+    }
+
+    private static void appendTelevisionScaleCommand(ServerLevel level, BlockPos terminalPos, String argument, List<TerminalHistoryLine> output) {
+        if (argument == null || argument.isBlank()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Usage: tv_scale <0.35-3.0>"));
+            return;
+        }
+
+        float scale;
+        try {
+            scale = Float.parseFloat(argument.trim());
+        } catch (NumberFormatException exception) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Invalid TV scale: " + argument));
+            return;
+        }
+
+        if (ShipTelevisionManager.setManualTextScale(level, terminalPos, scale)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "TV manual text scale set to " + formatNumber(Math.max(0.35F, Math.min(3.0F, scale))) + "."));
+        } else {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No ship television found for this terminal."));
         }
     }
 
@@ -259,40 +323,6 @@ public final class TerminalCommandProcessor {
         float x = snapshot.navigationState().velocityX();
         float y = snapshot.navigationState().velocityY();
         return (float) Math.sqrt(x * x + y * y);
-    }
-
-    private static String stationDisplayId(ServerLevel level, UUID stationId) {
-        return StationSavedData.get(level)
-                .station(stationId)
-                .map(station -> station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE))
-                .filter(code -> code != null && !code.isBlank())
-                .orElseGet(() -> StationCodeGenerator.code(stationId));
-    }
-
-    private static String objectiveProgress(QuestObjectiveState objective) {
-        if (objective.completed()) {
-            return "DONE";
-        }
-        if (objective.targetCount() <= 1) {
-            return "PENDING";
-        }
-        return Math.min(progressCount(objective.progress()), objective.targetCount()) + "/" + objective.targetCount();
-    }
-
-    private static int progressCount(CompoundTag progress) {
-        if (progress.contains("value", Tag.TAG_INT)) {
-            return progress.getInt("value");
-        }
-        if (progress.contains("value", Tag.TAG_LONG)) {
-            return (int) Math.min(Integer.MAX_VALUE, progress.getLong("value"));
-        }
-        if (progress.contains("value", Tag.TAG_FLOAT)) {
-            return Math.round(progress.getFloat("value"));
-        }
-        if (progress.contains("value", Tag.TAG_DOUBLE)) {
-            return (int) Math.round(progress.getDouble("value"));
-        }
-        return 0;
     }
 
     private static String signalText(float distance) {

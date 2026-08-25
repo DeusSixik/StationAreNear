@@ -4,6 +4,7 @@ import dev.sixik.stationarenear.ship.command.ShipCommands;
 import dev.sixik.stationarenear.ship.registry.ShipBlocks;
 import dev.sixik.stationarenear.ship.runtime.ShipDecompressionEffects;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
+import dev.sixik.stationarenear.ship.runtime.ShipTelevisionManager;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -24,5 +25,11 @@ public final class ShipModule {
         MinecraftForge.EVENT_BUS.addListener(ShipManager::onHullBlockDamage);
         MinecraftForge.EVENT_BUS.addListener(ShipDecompressionEffects::onShipDecompression);
         MinecraftForge.EVENT_BUS.addListener(ShipDecompressionEffects::onPlayerTick);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onQuestStarted);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onQuestProgressChanged);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onQuestCompleted);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onStationQuestsCompleted);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onQuestTimerExpired);
+        MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onServerTick);
     }
 }

@@ -48,6 +48,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.ArrayList;
 
 public final class RetroTerminalScreen {
     private static RetroConsole currentConsole;
@@ -470,6 +471,7 @@ public final class RetroTerminalScreen {
             });
 
             this.registerCommand("clear", "Clear console output", (console, invocation) -> console.clearOutput());
+            this.completionProvider(this::terminalCompletions);
 
             for (TerminalCommandDefinition command : TerminalCommandCatalog.COMMANDS) {
                 registerCommand(command.command(), command.description(), switch (command.command()) {
@@ -477,11 +479,65 @@ public final class RetroTerminalScreen {
                     case "status" -> (console, call) -> appendStatus(console);
                     case "modules" -> (console, call) -> appendModules(console);
                     case "door" -> (console, call) -> console.appendInfo("Submit /door open or /door close to control the pressure door.");
+                    case "tv" -> (console, call) -> console.appendInfo("Submit /tv text <message>, /tv ship_status, /tv ship_scan or /tv clear.");
+                    case "tv_clear" -> (console, call) -> console.appendInfo("Submit /tv_clear to clear manual TV text.");
+                    case "tv_pos" -> (console, call) -> console.appendInfo("Submit /tv_pos CENTER, /tv_pos TOP or /tv_pos DOWN to move manual TV text.");
+                    case "tv_scale" -> (console, call) -> console.appendInfo("Submit /tv_scale <0.35-3.0> to resize manual TV text.");
                     case "objectives" -> (console, call) -> console.appendInfo("Submit /objectives to refresh current mission objectives.");
                     case "stations", "scan" -> (console, call) -> appendStations(console);
                     case "clear", "cls" -> (console, call) -> clearOutput();
                     default -> (console, call) -> console.appendError("Unknown command: " + command.command());
                 });
+            }
+        }
+
+        private List<CompletionItem> terminalCompletions(AdminConsole console, String inputText) {
+            String input = inputText == null ? "" : inputText;
+            String normalized = input.startsWith("/") ? input.substring(1) : input;
+            int commandStart = input.startsWith("/") ? 1 : 0;
+            String lower = normalized.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("door ") || lower.equals("door")) {
+                int subcommandStart = commandStart + 5;
+                String typed = normalized.length() <= 5 ? "" : normalized.substring(5).trim().toLowerCase(Locale.ROOT);
+                List<CompletionItem> items = new ArrayList<>();
+                addTvCompletion(items, typed, "open", "door open", "open pressure door", subcommandStart, input.length());
+                addTvCompletion(items, typed, "close", "door close", "close pressure door", subcommandStart, input.length());
+                return items;
+            }
+            if (lower.startsWith("tv ") || lower.equals("tv")) {
+                int subcommandStart = commandStart + 3;
+                String typed = normalized.length() <= 3 ? "" : normalized.substring(3).trim().toLowerCase(Locale.ROOT);
+                List<CompletionItem> items = new ArrayList<>();
+                addTvCompletion(items, typed, "text ", "tv text <message>", "show manual TV message", subcommandStart, input.length());
+                addTvCompletion(items, typed, "ship_status", "tv ship_status", "auto-refresh ship status", subcommandStart, input.length());
+                addTvCompletion(items, typed, "ship_scan", "tv ship_scan", "auto-refresh nearby station scan", subcommandStart, input.length());
+                addTvCompletion(items, typed, "clear", "tv clear", "clear manual TV text", subcommandStart, input.length());
+                return items;
+            }
+            if (lower.startsWith("tv_pos ") || lower.equals("tv_pos")) {
+                int valueStart = commandStart + 7;
+                String typed = normalized.length() <= 7 ? "" : normalized.substring(7).trim().toLowerCase(Locale.ROOT);
+                List<CompletionItem> items = new ArrayList<>();
+                addTvCompletion(items, typed, "CENTER", "tv_pos CENTER", "center manual TV text", valueStart, input.length());
+                addTvCompletion(items, typed, "TOP", "tv_pos TOP", "top-align manual TV text", valueStart, input.length());
+                addTvCompletion(items, typed, "DOWN", "tv_pos DOWN", "bottom-align manual TV text", valueStart, input.length());
+                return items;
+            }
+            if (lower.startsWith("tv_scale ") || lower.equals("tv_scale")) {
+                int valueStart = commandStart + 9;
+                String typed = normalized.length() <= 9 ? "" : normalized.substring(9).trim().toLowerCase(Locale.ROOT);
+                List<CompletionItem> items = new ArrayList<>();
+                addTvCompletion(items, typed, "0.75", "tv_scale 0.75", "smaller TV text", valueStart, input.length());
+                addTvCompletion(items, typed, "1.0", "tv_scale 1.0", "default TV text", valueStart, input.length());
+                addTvCompletion(items, typed, "1.5", "tv_scale 1.5", "larger TV text", valueStart, input.length());
+                return items;
+            }
+            return defaultCompletions(console, inputText);
+        }
+
+        private static void addTvCompletion(List<CompletionItem> items, String typed, String insert, String display, String description, int start, int end) {
+            if (typed.isBlank() || insert.toLowerCase(Locale.ROOT).startsWith(typed)) {
+                items.add(CompletionItem.replace(insert, display, description, start, end));
             }
         }
 

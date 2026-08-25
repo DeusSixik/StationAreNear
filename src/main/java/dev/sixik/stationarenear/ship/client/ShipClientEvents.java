@@ -15,9 +15,15 @@ public final class ShipClientEvents {
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> BlockEntityRenderers.register(
-                ShipBlocks.PRESSURE_TIGHT_DOOR_ENTITY.get(),
-                PressureTightDoorRenderer::new
-        ));
+        event.enqueueWork(() -> {
+            BlockEntityRenderers.register(
+                    ShipBlocks.PRESSURE_TIGHT_DOOR_ENTITY.get(),
+                    PressureTightDoorRenderer::new
+            );
+            BlockEntityRenderers.register(
+                    ShipBlocks.SHIP_TELEVISION_ENTITY.get(),
+                    ShipTelevisionRenderer::new
+            );
+        });
     }
 }

@@ -8,5 +8,7 @@
   "entity.stationarenear.living_trash": "Living Trash",
   "item.stationarenear.living_trash_spawn_egg": "Living Trash Spawn Egg",
   "entity.stationarenear.cadaver": "Cadaver",
-  "item.stationarenear.cadaver_spawn_egg": "Cadaver Spawn Egg"
+  "item.stationarenear.cadaver_spawn_egg": "Cadaver Spawn Egg",
+  "block.stationarenear.ship_television": "Ship Television",
+  "item.stationarenear.ship_television": "Ship Television"
 }

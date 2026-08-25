@@ -8,5 +8,7 @@
   "entity.stationarenear.living_trash": "Живой мусор",
   "item.stationarenear.living_trash_spawn_egg": "Яйцо призыва живого мусора",
   "entity.stationarenear.cadaver": "Кадавр",
-  "item.stationarenear.cadaver_spawn_egg": "Яйцо призыва кадавра"
+  "item.stationarenear.cadaver_spawn_egg": "Яйцо призыва кадавра",
+  "block.stationarenear.ship_television": "??????????? ?????????",
+  "item.stationarenear.ship_television": "??????????? ?????????"
 }

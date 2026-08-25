@@ -6,6 +6,8 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
+import dev.sixik.stationarenear.ship.block.ShipTelevisionBlock;
+import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
@@ -32,6 +34,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -63,7 +67,51 @@ public final class ShipCommands {
                 .then(Commands.literal("ship")
                         .then(spawnSpaceShipCommand())
                         .then(decompressionCommand())
-                        .then(shipAnchorCommand())));
+                        .then(shipAnchorCommand())
+                        .then(televisionCommand())));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> televisionCommand() {
+        return Commands.literal("television")
+                .then(Commands.literal("set")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .then(Commands.argument("text", StringArgumentType.greedyString())
+                                        .executes(context -> setTelevisionText(
+                                                context.getSource(),
+                                                BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                                StringArgumentType.getString(context, "text")
+                                        )))))
+                .then(Commands.literal("clear")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .executes(context -> setTelevisionText(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                        ""
+                                ))));
+    }
+
+    private static int setTelevisionText(CommandSourceStack source, BlockPos pos, String text) {
+        ServerLevel level = source.getLevel();
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof ShipTelevisionBlock)) {
+            source.sendFailure(Component.literal("No ship television at " + pos.toShortString()));
+            return 0;
+        }
+
+        BlockPos masterPos = ShipTelevisionBlock.masterPos(pos, state);
+        BlockEntity blockEntity = level.getBlockEntity(masterPos);
+        if (!(blockEntity instanceof ShipTelevisionBlockEntity television)) {
+            source.sendFailure(Component.literal("Ship television has no block entity at " + masterPos.toShortString()));
+            return 0;
+        }
+
+        television.text(text);
+        if (text == null || text.isBlank()) {
+            source.sendSuccess(() -> Component.literal("Cleared ship television text at " + masterPos.toShortString()), true);
+        } else {
+            source.sendSuccess(() -> Component.literal("Updated ship television text at " + masterPos.toShortString()), true);
+        }
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> decompressionCommand() {

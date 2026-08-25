@@ -9,6 +9,8 @@
   "item.stationarenear.living_trash_spawn_egg": "Яйцо призыва живого мусора",
   "entity.stationarenear.cadaver": "Кадавр",
   "item.stationarenear.cadaver_spawn_egg": "Яйцо призыва кадавра",
-  "block.stationarenear.ship_television": "??????????? ?????????",
-  "item.stationarenear.ship_television": "??????????? ?????????"
+  "block.stationarenear.ship_television": "Корабельный телевизор",
+  "item.stationarenear.ship_television": "Корабельный телевизор",
+  "block.stationarenear.station_map_terminal": "Терминал карты станции",
+  "item.stationarenear.station_map_terminal": "Терминал карты станции"
 }

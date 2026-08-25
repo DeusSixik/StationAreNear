@@ -39,7 +39,7 @@ public final class StationPlacementUtil {
         return StructureTemplate.transform(local, Mirror.NONE, rotation, BlockPos.ZERO);
     }
 
-    static StationConnector transformConnector(StationConnector connector, BlockPos origin, Rotation rotation) {
+    public static StationConnector transformConnector(StationConnector connector, BlockPos origin, Rotation rotation) {
         BlockPos worldPosition = origin.offset(transform(connector.position(), rotation));
         Direction worldDirection = rotation.rotate(connector.direction());
         BoundingBox bounds = transformBox(origin, connector.min(), connector.max(), rotation);

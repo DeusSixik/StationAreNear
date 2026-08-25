@@ -20,6 +20,7 @@ import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryKind;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
 import dev.sixik.stationarenear.terminal.data.TerminalSnapshotFactory;
+import dev.sixik.stationarenear.terminal.network.MapTerminalNetwork;
 import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
 import dev.sixik.stationarenear.terminal.registry.TerminalBlocks;
 import dev.sixik.stationarenear.terminal.world.TerminalSavedData;
@@ -50,7 +51,7 @@ public final class TerminalCommandProcessor {
     }
 
     public static void submit(ServerPlayer player, BlockPos terminalPos, String rawCommand) {
-        if (!isValidTerminal(player, terminalPos)) {
+        if (!canUseTerminal(player, terminalPos)) {
             return;
         }
 
@@ -69,12 +70,12 @@ public final class TerminalCommandProcessor {
 
         List<TerminalHistoryLine> output = new ArrayList<>();
         output.add(new TerminalHistoryLine(TerminalHistoryKind.COMMAND, "/" + command));
-        execute(level, terminalPos, command, output);
+        execute(player, level, terminalPos, command, output);
         data.appendAll(terminalPos, output);
         TerminalNetwork.syncHistory(level, terminalPos, data.history(terminalPos));
     }
 
-    private static void execute(ServerLevel level, BlockPos terminalPos, String command, List<TerminalHistoryLine> output) {
+    private static void execute(ServerPlayer player, ServerLevel level, BlockPos terminalPos, String command, List<TerminalHistoryLine> output) {
         ShipTerminalSnapshot snapshot = TerminalSnapshotFactory.create(level, terminalPos);
         String[] parts = command.split("\\s+", 2);
         String root = parts[0].toLowerCase(Locale.ROOT);
@@ -89,6 +90,7 @@ public final class TerminalCommandProcessor {
             case "tv_pos" -> appendTelevisionPositionCommand(level, terminalPos, argument, output);
             case "tv_scale" -> appendTelevisionScaleCommand(level, terminalPos, argument, output);
             case "objectives", "objective", "tasks" -> appendObjectives(level, output);
+            case "map" -> appendMapCommand(player, terminalPos, output);
             case "stations" -> appendStations(snapshot, output);
             case "scan" -> {
                 if (argument.isBlank()) {
@@ -98,6 +100,14 @@ public final class TerminalCommandProcessor {
                 }
             }
             default -> output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Unknown command: " + command + " / use help"));
+        }
+    }
+
+    private static void appendMapCommand(ServerPlayer player, BlockPos terminalPos, List<TerminalHistoryLine> output) {
+        if (MapTerminalNetwork.openMap(player, terminalPos, true)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Opening docked station level map."));
+        } else {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "Station map unavailable: ship is not docked with a station."));
         }
     }
 
@@ -288,7 +298,7 @@ public final class TerminalCommandProcessor {
         output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Direction guidance requires a future navigation module."));
     }
 
-    private static boolean isValidTerminal(ServerPlayer player, BlockPos terminalPos) {
+    public static boolean canUseTerminal(ServerPlayer player, BlockPos terminalPos) {
         ServerLevel level = player.serverLevel();
         BlockState state = level.getBlockState(terminalPos);
         return level.isLoaded(terminalPos)

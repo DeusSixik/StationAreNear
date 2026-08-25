@@ -10,5 +10,7 @@
   "entity.stationarenear.cadaver": "Cadaver",
   "item.stationarenear.cadaver_spawn_egg": "Cadaver Spawn Egg",
   "block.stationarenear.ship_television": "Ship Television",
-  "item.stationarenear.ship_television": "Ship Television"
+  "item.stationarenear.ship_television": "Ship Television",
+  "block.stationarenear.station_map_terminal": "Station Map Terminal",
+  "item.stationarenear.station_map_terminal": "Station Map Terminal"
 }

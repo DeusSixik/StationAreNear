@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_8",
   "refmap": "stationarenear.refmap.json",
   "mixins": [
+    "modules.FixBug$ComboBoxMixin"
   ],
   "client": [
   ],

@@ -4,6 +4,7 @@ import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
 import dev.sixik.stationarenear.terminal.data.TerminalSnapshotFactory;
 import dev.sixik.stationarenear.terminal.network.packet.OpenTerminalPacket;
+import dev.sixik.stationarenear.terminal.network.packet.RequestOpenTerminalPacket;
 import dev.sixik.stationarenear.terminal.network.packet.SubmitTerminalCommandPacket;
 import dev.sixik.stationarenear.terminal.network.packet.SyncTerminalHistoryPacket;
 import dev.sixik.stationarenear.terminal.server.TerminalCommandProcessor;
@@ -44,6 +45,11 @@ public final class TerminalNetwork {
                 .decoder(SubmitTerminalCommandPacket::decode)
                 .consumerMainThread(SubmitTerminalCommandPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(RequestOpenTerminalPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(RequestOpenTerminalPacket::encode)
+                .decoder(RequestOpenTerminalPacket::decode)
+                .consumerMainThread(RequestOpenTerminalPacket::handle)
+                .add();
         CHANNEL.messageBuilder(SyncTerminalHistoryPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
                 .encoder(SyncTerminalHistoryPacket::encode)
                 .decoder(SyncTerminalHistoryPacket::decode)
@@ -61,6 +67,10 @@ public final class TerminalNetwork {
 
     public static void sendCommand(BlockPos terminalPos, String command) {
         CHANNEL.sendToServer(new SubmitTerminalCommandPacket(terminalPos, command));
+    }
+
+    public static void requestOpenTerminal(BlockPos terminalPos) {
+        CHANNEL.sendToServer(new RequestOpenTerminalPacket(terminalPos));
     }
 
     public static void syncHistory(ServerLevel level, BlockPos terminalPos, List<TerminalHistoryLine> history) {

@@ -159,7 +159,7 @@ public final class RetroTerminalScreen {
         return new OverlayLayer(stack);
     }
 
-    private static UiPostEffectChain retroEffect(UIScaleProvider scaleProvider) {
+    static UiPostEffectChain retroEffect(UIScaleProvider scaleProvider) {
         UiPostEffectPass terminal = UiPostEffectPass.shader("stationarenear:retro_terminal")
                 .uniforms(uniforms -> uniforms
                         .vec3("fontColor", 0.78f, 1.00f, 0.43f)
@@ -484,6 +484,7 @@ public final class RetroTerminalScreen {
                     case "tv_pos" -> (console, call) -> console.appendInfo("Submit /tv_pos CENTER, /tv_pos TOP or /tv_pos DOWN to move manual TV text.");
                     case "tv_scale" -> (console, call) -> console.appendInfo("Submit /tv_scale <0.35-3.0> to resize manual TV text.");
                     case "objectives" -> (console, call) -> console.appendInfo("Submit /objectives to refresh current mission objectives.");
+                    case "map" -> (console, call) -> console.appendInfo("Submit /map to open the docked station level map.");
                     case "stations", "scan" -> (console, call) -> appendStations(console);
                     case "clear", "cls" -> (console, call) -> clearOutput();
                     default -> (console, call) -> console.appendError("Unknown command: " + command.command());

@@ -15,6 +15,7 @@ public final class TerminalCommandCatalog {
             new TerminalCommandDefinition("tv_pos", "CENTER|TOP|DOWN television manual text position"),
             new TerminalCommandDefinition("tv_scale", "set manual television text scale"),
             new TerminalCommandDefinition("objectives", "current mission objectives"),
+            new TerminalCommandDefinition("map", "open docked station level map"),
             new TerminalCommandDefinition("stations", "known station IDs near current solar position"),
             new TerminalCommandDefinition("scan", "scan <station_id> and show distance"),
             new TerminalCommandDefinition("clear", "clear shared terminal history"),

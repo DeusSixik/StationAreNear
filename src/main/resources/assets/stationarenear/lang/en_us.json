@@ -4,5 +4,7 @@
   "block.stationarenear.terminal": "Terminal",
   "item.stationarenear.terminal": "Terminal",
   "block.stationarenear.pressure_tight_door": "Pressure-Tight Door",
-  "item.stationarenear.pressure_tight_door": "Pressure-Tight Door"
+  "item.stationarenear.pressure_tight_door": "Pressure-Tight Door",
+  "entity.stationarenear.living_trash": "Living Trash",
+  "item.stationarenear.living_trash_spawn_egg": "Living Trash Spawn Egg"
 }

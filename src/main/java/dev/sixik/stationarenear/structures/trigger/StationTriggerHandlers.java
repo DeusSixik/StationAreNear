@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.trigger;
 
+import dev.sixik.stationarenear.mob.registry.StationMobEntities;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
@@ -228,7 +229,7 @@ public final class StationTriggerHandlers {
                 }
             }
         }
-        return danger >= 0.65F ? EntityType.SKELETON : EntityType.ZOMBIE;
+        return StationMobEntities.LIVING_TRASH.get();
     }
 
     private static BlockPos randomPosInside(PlacedTriggerZone zone, RandomSource random) {

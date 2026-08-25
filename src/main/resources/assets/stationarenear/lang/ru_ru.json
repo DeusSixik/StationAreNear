@@ -4,5 +4,7 @@
   "block.stationarenear.terminal": "Терминал",
   "item.stationarenear.terminal": "Терминал",
   "block.stationarenear.pressure_tight_door": "Герметичная дверь",
-  "item.stationarenear.pressure_tight_door": "Герметичная дверь"
+  "item.stationarenear.pressure_tight_door": "Герметичная дверь",
+  "entity.stationarenear.living_trash": "????? ?????",
+  "item.stationarenear.living_trash_spawn_egg": "???? ??????? ?????? ??????"
 }

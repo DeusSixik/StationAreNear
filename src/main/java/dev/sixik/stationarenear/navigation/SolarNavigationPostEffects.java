@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.navigation;
 
+import dev.sixik.unigui.api.core.UIScaleProvider;
 import dev.sixik.unigui.api.posteffect.UiPostEffectBlendMode;
 import dev.sixik.unigui.api.posteffect.UiPostEffectChain;
 import dev.sixik.unigui.api.posteffect.UiPostEffectPass;
@@ -104,6 +105,61 @@ final class SolarNavigationPostEffects {
                     """);
 
     private SolarNavigationPostEffects() {
+    }
+
+
+    static UiPostEffectChain retroTerminal(UIScaleProvider scaleProvider) {
+        return retroTerminal(scaleProvider, () -> 0.0D);
+    }
+
+    static UiPostEffectChain retroTerminal(UIScaleProvider scaleProvider, java.util.function.DoubleSupplier impactSupplier) {
+        UiPostEffectPass terminal = UiPostEffectPass.shader("stationarenear:retro_terminal")
+                .uniforms(uniforms -> uniforms
+                        .vec3("fontColor", 0.46f, 0.82f, 1.00f)
+                        .vec3("backgroundColor", 0.006f, 0.018f, 0.030f)
+                        .floatValue("chromaColor", 0.42f)
+                        .floatSupplier("staticNoise", () -> 0.035f + impact(impactSupplier) * 0.055f)
+                        .floatSupplier("horizontalSyncStrength", () -> 0.095f + impact(impactSupplier) * 0.140f)
+                        .floatValue("horizontalSyncFrequency", 0.070f)
+                        .vec2("jitter", 0.0010f, 0.00028f)
+                        .floatSupplier("glowingLine", () -> 0.10f + impact(impactSupplier) * 0.24f)
+                        .floatSupplier("flickering", () -> 0.040f + impact(impactSupplier) * 0.140f)
+                        .floatValue("ambientLight", 0.055f)
+                        .floatValue("pixelHeight", 5.40f)
+                        .boolValue("pixelization", false)
+                        .floatSupplier("rbgSplit", () -> 0.035f + impact(impactSupplier) * 0.070f)
+                        .floatValue("scanlineStrength", 0.55f)
+                        .floatValue("phosphorGlow", 0.18f)
+                        .floatSupplier("glitchStrength", () -> 0.016f + impact(impactSupplier) * 0.070f)
+                        .floatValue("glitchFrequency", 1.15f)
+                        .floatValue("glitchBandHeight", 0.038f)
+                        .floatSupplier("rollingInterference", () -> 0.045f + impact(impactSupplier) * 0.120f)
+                        .floatSupplier("impactDistortion", () -> impact(impactSupplier))
+                        .floatValue("noiseFrameRate", 24.0f)
+                        .floatValue("glitchFrameRate", 18.0f)
+                        .floatSupplier("UiScale", () -> UIScaleProvider.sanitize(
+                                scaleProvider == null ? 1.0f : scaleProvider.scale())));
+
+        UiPostEffectPass bloom = UiPostEffectPass.shader("stationarenear:retro_terminal_bloom")
+                .uniforms(uniforms -> uniforms
+                        .floatSupplier("bloomStrength", () -> 0.72f + impact(impactSupplier) * 0.58f)
+                        .floatValue("bloomRadius", 2.10f)
+                        .floatValue("threshold", 0.28f)
+                        .vec3("bloomTint", 0.46f, 0.78f, 1.00f));
+
+        UiPostEffectPass frame = UiPostEffectPass.shader("stationarenear:retro_terminal_frame")
+                .uniforms(uniforms -> uniforms
+                        .floatValue("screenCurvature", 0.145f)
+                        .vec3("frameColor", 0.11f, 0.16f, 0.22f));
+
+        return UiPostEffectChain.of(List.of(terminal, bloom, frame));
+    }
+
+    private static float impact(java.util.function.DoubleSupplier impactSupplier) {
+        if (impactSupplier == null) {
+            return 0.0f;
+        }
+        return Math.max(0.0f, Math.min(1.0f, (float) impactSupplier.getAsDouble()));
     }
 
     static UiPostEffectChain terminalContent() {

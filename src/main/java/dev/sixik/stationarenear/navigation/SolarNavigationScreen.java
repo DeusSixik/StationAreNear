@@ -80,11 +80,12 @@ public final class SolarNavigationScreen {
     }
 
     public static void openGui(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations) {
+        UnityLikeUIScaleProvider scaleProvider = new UnityLikeUIScaleProvider()
+                .referenceResolution(1920.0f, 1080.0f)
+                .matchBalanced()
+                .scaleRange(0.60f, 2.50f);
         DefaultUIContext context = new DefaultUIContext(new MinecraftClipboardService())
-                .scaleProvider(new UnityLikeUIScaleProvider()
-                        .referenceResolution(1920.0f, 1080.0f)
-                        .matchBalanced()
-                        .scaleRange(0.60f, 2.50f));
+                .scaleProvider(scaleProvider);
 
 //        context.debugFlags(DebugFlags.ALL);
 
@@ -121,7 +122,7 @@ public final class SolarNavigationScreen {
         };
         screen.renderPolicy(UiRenderPolicy.continuous());
         screen.scaleWithMinecraftGui(false);
-        screen.postEffect(SolarNavigationPostEffects.terminalContent());
+        screen.postEffect(SolarNavigationPostEffects.retroTerminal(scaleProvider, canvas::impactInterference));
         Minecraft.getInstance().setScreen(screen);
 
     }
@@ -153,6 +154,7 @@ public final class SolarNavigationScreen {
         private static final float ASTEROID_VISUAL_RETURN = 0.72f;
         private static final float ASTEROID_VISUAL_DAMPING = 0.26f;
         private static final float ASTEROID_VISUAL_HIT_COOLDOWN = 0.28f;
+        private static final float IMPACT_INTERFERENCE_DECAY = 0.08f;
         private static final float CAMERA_ZOOM = 0.42f;
         private static final float FIRST_FRAME_DELTA = 1.0f / 60.0f;
         private static final float MAX_FRAME_DELTA = 0.25f;
@@ -215,6 +217,7 @@ public final class SolarNavigationScreen {
         private float dockMessageSeconds;
         private String dockMessage = "Find the quest station";
         private float dockingProgressSeconds;
+        private float impactInterference;
         private long dockingTargetSeed = Long.MIN_VALUE;
         private String dockingTargetName = "";
 
@@ -253,6 +256,7 @@ public final class SolarNavigationScreen {
             int turnAxis = turnAxis(keyboard);
             predictLocalRotation(turnAxis, frameDelta);
             updateDockingProgress(keyboard, frameDelta);
+            updateImpactInterference(frameDelta);
             syncInput(keyboard, frameDelta);
             updateRenderState(frameDelta);
 
@@ -473,12 +477,37 @@ public final class SolarNavigationScreen {
                 return;
             }
             AsteroidOffset offset = asteroidOffsets.computeIfAbsent(asteroidSeed, ignored -> new AsteroidOffset());
+            float previousSpeed = (float) Math.sqrt(offset.velocityX * offset.velocityX + offset.velocityY * offset.velocityY);
+            float newSpeed = (float) Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+            triggerImpactInterference(Math.max(0.0f, newSpeed - previousSpeed));
             offset.offsetX = offsetX;
             offset.offsetY = offsetY;
             offset.velocityX = velocityX;
             offset.velocityY = velocityY;
             offset.hitCooldown = ASTEROID_VISUAL_HIT_COOLDOWN;
             offset.clampOffset();
+        }
+
+        private float impactInterference() {
+            return impactInterference;
+        }
+
+        private void updateImpactInterference(float delta) {
+            if (impactInterference <= 0.0f) {
+                return;
+            }
+            impactInterference *= (float) Math.pow(IMPACT_INTERFERENCE_DECAY, delta);
+            if (impactInterference < 0.01f) {
+                impactInterference = 0.0f;
+            }
+        }
+
+        private void triggerImpactInterference(float impulse) {
+            if (impulse < 25.0f) {
+                return;
+            }
+            float strength = clamp((impulse - 25.0f) / 260.0f, 0.16f, 1.0f);
+            impactInterference = clamp(impactInterference + strength, 0.0f, 1.0f);
         }
 
         private void updateAsteroidOffsets(float delta) {
@@ -524,6 +553,7 @@ public final class SolarNavigationScreen {
             offset.offsetX += directionX * Math.min(10.0f, penetration * 0.35f);
             offset.offsetY += directionY * Math.min(10.0f, penetration * 0.35f);
             offset.clampOffset();
+            triggerImpactInterference(impulse);
         }
 
         private float asteroidVisualX(Asteroid asteroid) {

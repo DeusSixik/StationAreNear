@@ -24,6 +24,7 @@ uniform float glitchStrength;
 uniform float glitchFrequency;
 uniform float glitchBandHeight;
 uniform float rollingInterference;
+uniform float impactDistortion;
 uniform float noiseFrameRate;
 uniform float glitchFrameRate;
 uniform float UiScale;
@@ -150,6 +151,23 @@ void main() {
     float bandDirection = hash11(glitchSlot + 41.0) * 2.0 - 1.0;
     coords.x += bandDirection * glitchStrength * pulse * bandMask;
 
+    float impact = clamp(impactDistortion, 0.0, 1.0);
+    if (impact > 0.001) {
+        float impactFrame = floor(Time * 32.0);
+        float row = floor(originalCoords.y * mix(18.0, 44.0, impact));
+        float rowRandom = hash11(row * 13.0 + impactFrame * 5.0);
+        float rowHold = hash11(row * 3.0 + floor(Time * 12.0) * 17.0);
+        float rowOffset = (rowRandom * 2.0 - 1.0) * step(0.38, rowHold) * impact * 0.026;
+
+        float shockCenter = fract(Time * 2.65 + hash11(impactFrame) * 0.18);
+        float shockBand = 1.0 - smoothstep(0.0, 0.075, abs(originalCoords.y - shockCenter));
+        float shockDirection = hash11(impactFrame + 91.0) * 2.0 - 1.0;
+        float shockOffset = shockDirection * shockBand * impact * 0.085;
+
+        float wave = sin(originalCoords.y * 58.0 + Time * 52.0) * impact * 0.012;
+        coords.x += rowOffset + shockOffset + wave;
+    }
+
     vec2 noiseUv = SourceSize / (vec2(512.0, 512.0) * 0.75) * coords
             + vec2(fract(noiseTime * 1000.0 / 51.0), fract(noiseTime * 1000.0 / 237.0));
     vec4 noiseTexel = noiseTexel(noiseUv);
@@ -157,7 +175,7 @@ void main() {
 
     float color = 0.0001;
     float distance = length(vec2(0.5) - originalCoords);
-    float noise = staticNoise + distortionScale * 7.0 + pulse * bandMask * 0.20;
+    float noise = staticNoise + distortionScale * 7.0 + pulse * bandMask * 0.20 + impact * 0.055;
     color += noiseTexel.a * noise * (1.0 - distance * 1.3);
     color += randomPass(coords * SourceSize) * glowingLine * 0.2;
 

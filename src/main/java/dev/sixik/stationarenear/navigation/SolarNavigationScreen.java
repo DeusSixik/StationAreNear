@@ -26,17 +26,23 @@ import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
 import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
 import dev.sixik.stationarenear.navigation.network.packet.ClearDockedSolarStationPacket;
 import dev.sixik.stationarenear.navigation.network.packet.DockSolarStationPacket;
-import dev.sixik.stationarenear.navigation.network.packet.SolarNavigationAsteroidCollisionPacket;
 import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationInputPacket;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -56,6 +62,12 @@ public final class SolarNavigationScreen {
     public static void syncShipState(BlockPos terminalPos, SolarNavigationShipState state) {
         if (currentCanvas != null) {
             currentCanvas.applyServerState(terminalPos, state);
+        }
+    }
+
+    public static void syncAsteroidOffset(BlockPos terminalPos, long asteroidSeed, float offsetX, float offsetY, float velocityX, float velocityY) {
+        if (currentCanvas != null) {
+            currentCanvas.applyServerAsteroidOffset(terminalPos, asteroidSeed, offsetX, offsetY, velocityX, velocityY);
         }
     }
 
@@ -132,16 +144,20 @@ public final class SolarNavigationScreen {
         private static final float SHIP_NOSE = 28.0f;
         private static final float SHIP_TAIL = 17.0f;
         private static final float SHIP_HALF_WIDTH = 12.0f;
-        private static final float TURN_SPEED = 2.65f;
-        private static final float THRUST = 520.0f;
-        private static final float REVERSE_THRUST = 300.0f;
-        private static final float MAX_SPEED = 520.0f;
+        private static final float MAX_TURN_SPEED = 2.65f;
+        private static final float TURN_ACCELERATION = 7.4f;
+        private static final float TURN_DECAY = 0.035f;
+        private static final float ASTEROID_PUSH_MULTIPLIER = 0.62f;
+        private static final float ASTEROID_PUSH_PENETRATION_FORCE = 7.5f;
+        private static final float ASTEROID_MAX_PUSH_OFFSET = 280.0f;
+        private static final float ASTEROID_VISUAL_RETURN = 0.72f;
+        private static final float ASTEROID_VISUAL_DAMPING = 0.26f;
+        private static final float ASTEROID_VISUAL_HIT_COOLDOWN = 0.28f;
         private static final float CAMERA_ZOOM = 0.42f;
         private static final float FIRST_FRAME_DELTA = 1.0f / 60.0f;
         private static final float MAX_FRAME_DELTA = 0.25f;
         private static final float POSITION_SMOOTHING = 18.0f;
         private static final float VELOCITY_SMOOTHING = 16.0f;
-        private static final float ANGLE_SMOOTHING = 22.0f;
         private static final float SNAP_DISTANCE = 900.0f;
         private static final float DOCK_HOLD_SECONDS = 5.0f;
 
@@ -166,12 +182,13 @@ public final class SolarNavigationScreen {
         private static final MutableColor STATION_ROOM_SHADOW = MutableColor.rgba(0.0f, 0.0f, 0.0f, 0.34f);
         private static final MutableColor STAR = MutableColor.rgba(0.88f, 0.96f, 1.0f, 0.55f);
 
-        private final List<Asteroid> asteroids = new ArrayList<>();
-        private final List<Station> stations = new ArrayList<>();
-        private final List<Star> stars = new ArrayList<>();
-        private final List<SolarNavigationQuestMarker> questMarkers = new ArrayList<>();
-        private final Set<Long> dockedStations = new HashSet<>();
-        private final List<DockedStation> activeDockedStations = new ArrayList<>();
+        private final List<Asteroid> asteroids = new ObjectArrayList<>();
+        private final Long2ObjectMap<AsteroidOffset> asteroidOffsets = new Long2ObjectOpenHashMap<>();
+        private final List<Station> stations = new ObjectArrayList<>();
+        private final List<Star> stars = new ObjectArrayList<>();
+        private final List<SolarNavigationQuestMarker> questMarkers = new ObjectArrayList<>();
+        private final LongOpenHashSet dockedStations = new LongOpenHashSet();
+        private final List<DockedStation> activeDockedStations = new ObjectArrayList<>();
         private final long seed;
         private final BlockPos terminalPos;
 
@@ -184,6 +201,7 @@ public final class SolarNavigationScreen {
         private float velocityX;
         private float velocityY;
         private float angle = -0.45f;
+        private float turnVelocity;
         private float renderShipX;
         private float renderShipY;
         private float renderVelocityX;
@@ -194,7 +212,6 @@ public final class SolarNavigationScreen {
         private long lastFrameNanos;
         private float inputSyncSeconds;
         private int lastInputMask = -1;
-        private float asteroidCollisionEventCooldown;
         private float dockMessageSeconds;
         private String dockMessage = "Find the quest station";
         private float dockingProgressSeconds;
@@ -233,12 +250,15 @@ public final class SolarNavigationScreen {
             timeSeconds += frameDelta;
 
             KeyboardState keyboard = uiContext() == null ? KeyboardState.NONE : uiContext().keyboard();
+            int turnAxis = turnAxis(keyboard);
+            predictLocalRotation(turnAxis, frameDelta);
             updateDockingProgress(keyboard, frameDelta);
             syncInput(keyboard, frameDelta);
             updateRenderState(frameDelta);
 
             updateCamera();
             refreshDynamicObjects(false);
+            updateAsteroidOffsets(frameDelta);
 
             if (dockMessageSeconds > 0.0f) {
                 dockMessageSeconds = Math.max(0.0f, dockMessageSeconds - frameDelta);
@@ -265,7 +285,7 @@ public final class SolarNavigationScreen {
             renderShipY = smooth(renderShipY, shipY, POSITION_SMOOTHING, delta);
             renderVelocityX = smooth(renderVelocityX, velocityX, VELOCITY_SMOOTHING, delta);
             renderVelocityY = smooth(renderVelocityY, velocityY, VELOCITY_SMOOTHING, delta);
-            renderAngle = smoothAngle(renderAngle, angle, ANGLE_SMOOTHING, delta);
+            renderAngle = angle;
         }
 
         private void snapRenderState() {
@@ -431,80 +451,89 @@ public final class SolarNavigationScreen {
             )));
         }
 
-        private void updateInput(KeyboardState keyboard, float delta) {
-            if (keyboard.isDown(KeyCodes.A)) {
-                angle -= TURN_SPEED * delta;
-            }
-            if (keyboard.isDown(KeyCodes.D)) {
-                angle += TURN_SPEED * delta;
-            }
-
-            float directionX = (float) Math.cos(angle);
-            float directionY = (float) Math.sin(angle);
-            if (keyboard.isDown(KeyCodes.W)) {
-                velocityX += directionX * THRUST * delta;
-                velocityY += directionY * THRUST * delta;
-            }
-            if (keyboard.isDown(KeyCodes.S)) {
-                velocityX -= directionX * REVERSE_THRUST * delta;
-                velocityY -= directionY * REVERSE_THRUST * delta;
-            }
+        private int turnAxis(KeyboardState keyboard) {
+            return (keyboard.isDown(KeyCodes.D) ? 1 : 0) - (keyboard.isDown(KeyCodes.A) ? 1 : 0);
         }
 
-        private void updatePhysics(float delta) {
-            float speed = (float) Math.sqrt(velocityX * velocityX + velocityY * velocityY);
-            if (speed > MAX_SPEED) {
-                float scale = MAX_SPEED / speed;
-                velocityX *= scale;
-                velocityY *= scale;
+        private void predictLocalRotation(int turnAxis, float delta) {
+            if (turnAxis != 0) {
+                turnVelocity += turnAxis * TURN_ACCELERATION * delta;
+                turnVelocity = clamp(turnVelocity, -MAX_TURN_SPEED, MAX_TURN_SPEED);
+            } else if (turnVelocity != 0.0f) {
+                turnVelocity *= (float) Math.pow(TURN_DECAY, delta);
+                if (Math.abs(turnVelocity) < 0.01f) {
+                    turnVelocity = 0.0f;
+                }
             }
-
-            shipX += velocityX * delta;
-            shipY += velocityY * delta;
-
-            float damping = (float) Math.pow(0.74f, delta);
-            velocityX *= damping;
-            velocityY *= damping;
-
-            resolveAsteroidCollisions();
+            angle = wrapRadians(angle + turnVelocity * delta);
         }
 
-        private void resolveAsteroidCollisions() {
+        private void applyServerAsteroidOffset(BlockPos terminalPos, long asteroidSeed, float offsetX, float offsetY, float velocityX, float velocityY) {
+            if (!this.terminalPos.equals(terminalPos)) {
+                return;
+            }
+            AsteroidOffset offset = asteroidOffsets.computeIfAbsent(asteroidSeed, ignored -> new AsteroidOffset());
+            offset.offsetX = offsetX;
+            offset.offsetY = offsetY;
+            offset.velocityX = velocityX;
+            offset.velocityY = velocityY;
+            offset.hitCooldown = ASTEROID_VISUAL_HIT_COOLDOWN;
+            offset.clampOffset();
+        }
+
+        private void updateAsteroidOffsets(float delta) {
+            tickAsteroidOffsets(delta);
             for (Asteroid asteroid : asteroids) {
+                float asteroidX = asteroidVisualX(asteroid);
+                float asteroidY = asteroidVisualY(asteroid);
                 float minDistance = asteroid.radius() + SHIP_RADIUS;
-                float dx = shipX - asteroid.x();
-                float dy = shipY - asteroid.y();
+                float dx = shipX - asteroidX;
+                float dy = shipY - asteroidY;
                 float distanceSq = dx * dx + dy * dy;
                 if (distanceSq <= 0.001f || distanceSq >= minDistance * minDistance) continue;
+
+                AsteroidOffset offset = asteroidOffsets.computeIfAbsent(asteroid.seed(), ignored -> new AsteroidOffset());
+                if (offset.hitCooldown > 0.0f) continue;
 
                 float distance = (float) Math.sqrt(distanceSq);
                 float normalX = dx / distance;
                 float normalY = dy / distance;
-                float push = minDistance - distance;
-                shipX += normalX * push;
-                shipY += normalY * push;
-
                 float impactSpeed = (float) Math.sqrt(velocityX * velocityX + velocityY * velocityY);
                 float dot = velocityX * normalX + velocityY * normalY;
-                if (dot < 0.0f) {
-                    velocityX -= normalX * dot * 1.55f;
-                    velocityY -= normalY * dot * 1.55f;
-                }
-                if (asteroidCollisionEventCooldown <= 0.0f) {
-                    SolarNavigationNetwork.sendAsteroidCollision(new SolarNavigationAsteroidCollisionPacket(
-                            terminalPos,
-                            new SolarNavigationShipState(shipX, shipY, velocityX, velocityY, angle),
-                            asteroid.seed(),
-                            asteroid.x(),
-                            asteroid.y(),
-                            asteroid.radius(),
-                            impactSpeed
-                    ));
-                    asteroidCollisionEventCooldown = SolarNavigationConfig.ASTEROID_COLLISION_EVENT_COOLDOWN.get().floatValue();
-                }
-                dockMessage = "Hull impact: asteroid collision";
-                dockMessageSeconds = 1.2f;
+                pushAsteroid(asteroid.seed(), -normalX, -normalY, dot < 0.0f ? -dot : impactSpeed * 0.18f, minDistance - distance);
+                offset.hitCooldown = ASTEROID_VISUAL_HIT_COOLDOWN;
             }
+        }
+
+        private void tickAsteroidOffsets(float delta) {
+            Iterator<Map.Entry<Long, AsteroidOffset>> iterator = asteroidOffsets.entrySet().iterator();
+            while (iterator.hasNext()) {
+                AsteroidOffset offset = iterator.next().getValue();
+                offset.tick(delta);
+                if (offset.isIdle()) {
+                    iterator.remove();
+                }
+            }
+        }
+
+        private void pushAsteroid(long asteroidSeed, float directionX, float directionY, float impactSpeed, float penetration) {
+            AsteroidOffset offset = asteroidOffsets.computeIfAbsent(asteroidSeed, ignored -> new AsteroidOffset());
+            float impulse = impactSpeed * ASTEROID_PUSH_MULTIPLIER + penetration * ASTEROID_PUSH_PENETRATION_FORCE;
+            offset.velocityX += directionX * impulse;
+            offset.velocityY += directionY * impulse;
+            offset.offsetX += directionX * Math.min(10.0f, penetration * 0.35f);
+            offset.offsetY += directionY * Math.min(10.0f, penetration * 0.35f);
+            offset.clampOffset();
+        }
+
+        private float asteroidVisualX(Asteroid asteroid) {
+            AsteroidOffset offset = asteroidOffsets.get(asteroid.seed());
+            return asteroid.x() + (offset == null ? 0.0f : offset.offsetX);
+        }
+
+        private float asteroidVisualY(Asteroid asteroid) {
+            AsteroidOffset offset = asteroidOffsets.get(asteroid.seed());
+            return asteroid.y() + (offset == null ? 0.0f : offset.offsetY);
         }
 
         private void clearFarDockedStations() {
@@ -662,8 +691,8 @@ public final class SolarNavigationScreen {
 
         private void drawAsteroids(WorldCanvas canvas, DrawScope draw) {
             for (Asteroid asteroid : asteroids) {
-                float sx = canvas.worldToRootX(asteroid.x());
-                float sy = canvas.worldToRootY(asteroid.y());
+                float sx = canvas.worldToRootX(asteroidVisualX(asteroid));
+                float sy = canvas.worldToRootY(asteroidVisualY(asteroid));
                 float radius = asteroid.radius() * canvas.viewport().zoom();
                 if (!visible(canvas.layoutBounds(), sx, sy, radius + 6.0f)) continue;
 
@@ -728,10 +757,25 @@ public final class SolarNavigationScreen {
 
             float speed = (float) Math.sqrt(renderVelocityX * renderVelocityX + renderVelocityY * renderVelocityY);
             if (speed > 18.0f) {
+                float velocityDirX = renderVelocityX / speed;
+                float velocityDirY = renderVelocityY / speed;
                 float trailLength = clamp(speed * 0.12f, 18.0f, 74.0f);
-                draw.addLine(centerX - dirX * 12.0f, centerY - dirY * 12.0f,
-                        centerX - dirX * trailLength, centerY - dirY * trailLength,
-                        MutableColor.rgba(0.38f, 0.86f, 1.0f, 0.35f), 3.0f);
+                float slip = Math.abs(dirX * velocityDirY - dirY * velocityDirX);
+                draw.addLine(centerX - velocityDirX * 12.0f, centerY - velocityDirY * 12.0f,
+                        centerX - velocityDirX * trailLength, centerY - velocityDirY * trailLength,
+                        MutableColor.rgba(0.38f, 0.86f, 1.0f, 0.35f + Math.min(0.25f, slip * 0.35f)), 3.0f + slip * 2.0f);
+                if (slip > 0.16f) {
+                    float driftSideX = -velocityDirY;
+                    float driftSideY = velocityDirX;
+                    draw.addLine(centerX - driftSideX * SHIP_HALF_WIDTH * 0.85f, centerY - driftSideY * SHIP_HALF_WIDTH * 0.85f,
+                            centerX - velocityDirX * trailLength * 0.62f - driftSideX * SHIP_HALF_WIDTH * 1.45f,
+                            centerY - velocityDirY * trailLength * 0.62f - driftSideY * SHIP_HALF_WIDTH * 1.45f,
+                            MutableColor.rgba(0.65f, 0.92f, 1.0f, Math.min(0.42f, slip * 0.55f)), 1.6f);
+                    draw.addLine(centerX + driftSideX * SHIP_HALF_WIDTH * 0.85f, centerY + driftSideY * SHIP_HALF_WIDTH * 0.85f,
+                            centerX - velocityDirX * trailLength * 0.62f + driftSideX * SHIP_HALF_WIDTH * 1.45f,
+                            centerY - velocityDirY * trailLength * 0.62f + driftSideY * SHIP_HALF_WIDTH * 1.45f,
+                            MutableColor.rgba(0.65f, 0.92f, 1.0f, Math.min(0.42f, slip * 0.55f)), 1.6f);
+                }
             }
 
             draw.addTriangleFilled(new DrawPoint(noseX, noseY), new DrawPoint(leftX, leftY), new DrawPoint(rightX, rightY), CYAN);
@@ -1024,6 +1068,43 @@ public final class SolarNavigationScreen {
         }
 
         private record Asteroid(float x, float y, float radius, float rotation, int segments, long seed) {
+        }
+
+        private static final class AsteroidOffset {
+            private float offsetX;
+            private float offsetY;
+            private float velocityX;
+            private float velocityY;
+            private float hitCooldown;
+
+            private void tick(float delta) {
+                hitCooldown = Math.max(0.0f, hitCooldown - delta);
+                velocityX -= offsetX * ASTEROID_VISUAL_RETURN * delta;
+                velocityY -= offsetY * ASTEROID_VISUAL_RETURN * delta;
+                offsetX += velocityX * delta;
+                offsetY += velocityY * delta;
+                float damping = (float) Math.pow(ASTEROID_VISUAL_DAMPING, delta);
+                velocityX *= damping;
+                velocityY *= damping;
+                clampOffset();
+            }
+
+            private void clampOffset() {
+                float distance = (float) Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+                if (distance > ASTEROID_MAX_PUSH_OFFSET) {
+                    float scale = ASTEROID_MAX_PUSH_OFFSET / distance;
+                    offsetX *= scale;
+                    offsetY *= scale;
+                }
+            }
+
+            private boolean isIdle() {
+                return hitCooldown <= 0.0f
+                        && Math.abs(offsetX) < 0.05f
+                        && Math.abs(offsetY) < 0.05f
+                        && Math.abs(velocityX) < 0.05f
+                        && Math.abs(velocityY) < 0.05f;
+            }
         }
 
         private record DockedStation(long seed, String name, String code, float x, float y) {

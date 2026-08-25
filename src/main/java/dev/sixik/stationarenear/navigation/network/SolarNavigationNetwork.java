@@ -6,6 +6,7 @@ import dev.sixik.stationarenear.navigation.network.packet.DockSolarStationPacket
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
 import dev.sixik.stationarenear.navigation.network.packet.OpenSolarNavigationPacket;
 import dev.sixik.stationarenear.navigation.network.packet.SolarNavigationAsteroidCollisionPacket;
+import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationAsteroidOffsetPacket;
 import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationQuestMarkersPacket;
 import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationStatePacket;
 import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationInputPacket;
@@ -80,6 +81,11 @@ public final class SolarNavigationNetwork {
                 .decoder(SyncSolarNavigationStatePacket::decode)
                 .consumerMainThread(SyncSolarNavigationStatePacket::handle)
                 .add();
+        CHANNEL.messageBuilder(SyncSolarNavigationAsteroidOffsetPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(SyncSolarNavigationAsteroidOffsetPacket::encode)
+                .decoder(SyncSolarNavigationAsteroidOffsetPacket::decode)
+                .consumerMainThread(SyncSolarNavigationAsteroidOffsetPacket::handle)
+                .add();
     }
 
     public static void openTerminal(ServerPlayer player, BlockPos terminalPos, long seed) {
@@ -108,6 +114,10 @@ public final class SolarNavigationNetwork {
 
     public static void syncState(ServerPlayer player, BlockPos terminalPos, SolarNavigationShipState state) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SyncSolarNavigationStatePacket(terminalPos, state));
+    }
+
+    public static void syncAsteroidOffset(ServerPlayer player, BlockPos terminalPos, long asteroidSeed, float offsetX, float offsetY, float velocityX, float velocityY) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SyncSolarNavigationAsteroidOffsetPacket(terminalPos, asteroidSeed, offsetX, offsetY, velocityX, velocityY));
     }
 
     public static void sendAsteroidCollision(SolarNavigationAsteroidCollisionPacket packet) {

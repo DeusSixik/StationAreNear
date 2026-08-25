@@ -62,8 +62,13 @@ public class StationGenerator {
             return StationGenerationResult.failure("Could not plan station layout with at least " + requiredMinRooms + " pieces for pool: " + settings.pool());
         }
 
+        List<PlacedStationPiece> placedPieces = new ObjectArrayList<>();
         for (PlacedStationPiece piece : layout.pieces()) {
-            placePiece(level, piece);
+            if (!placePiece(level, piece)) {
+                clearPieces(level, placedPieces);
+                return StationGenerationResult.failure("Failed to place station template: " + piece.template());
+            }
+            placedPieces.add(piece);
         }
 
         StationInstance station = new StationInstance(
@@ -73,7 +78,7 @@ public class StationGenerator {
                 stationDirection,
                 danger,
                 settings.seed(),
-                layout.pieces(),
+                placedPieces,
                 new CompoundTag()
         );
         StationSavedData.get(level).addStation(station);
@@ -1105,11 +1110,27 @@ public class StationGenerator {
         );
     }
 
-    private void placePiece(ServerLevel level, PlacedStationPiece piece) {
+    private boolean placePiece(ServerLevel level, PlacedStationPiece piece) {
         StructureTemplate template = level.getStructureManager().getOrCreate(piece.template());
         StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(piece.rotation());
-        template.placeInWorld(level, piece.origin(), piece.origin(), settings, level.getRandom(), 2);
+        return template.placeInWorld(level, piece.origin(), piece.origin(), settings, level.getRandom(), 2)
+                && hasPlacedBlocks(level, piece.bounds());
     }
+
+    private boolean hasPlacedBlocks(ServerLevel level, BoundingBox bounds) {
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    if (!level.getBlockState(mutable.set(x, y, z)).isAir()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
 
     private record PlacementCandidate(StationConnector sourceConnector, PlacedStationPiece piece, int score) {
     }

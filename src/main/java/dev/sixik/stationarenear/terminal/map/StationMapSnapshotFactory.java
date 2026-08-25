@@ -65,6 +65,7 @@ public final class StationMapSnapshotFactory {
         int minFloor = 0;
         int maxFloor = 0;
         for (PlacedStationPiece piece : station.pieces()) {
+            if (!hasPlacedBlocks(level, piece.bounds())) continue;
             BoundingBox bounds = piece.selectionBounds();
             int pieceMinFloor = floorIndex(bounds.minY(), dockY);
             int pieceMaxFloor = floorIndex(bounds.maxY(), dockY);
@@ -84,6 +85,10 @@ public final class StationMapSnapshotFactory {
             ));
             minFloor = Math.min(minFloor, pieceMinFloor);
             maxFloor = Math.max(maxFloor, pieceMaxFloor);
+        }
+
+        if (pieces.isEmpty()) {
+            return Optional.empty();
         }
 
         pieces.add(playerShipPiece(station.shuttleDoorCenter(), station.stationDirection()));
@@ -125,6 +130,7 @@ public final class StationMapSnapshotFactory {
         int maxFloor = 0;
         List<StationMapData.Room> rooms = new ArrayList<>();
         for (PlacedStationPiece piece : station.pieces()) {
+            if (!hasPlacedBlocks(level, piece.bounds())) continue;
             BoundingBox bounds = piece.selectionBounds();
             int pieceMinFloor = floorIndex(bounds.minY(), dockY);
             int pieceMaxFloor = floorIndex(bounds.maxY(), dockY);
@@ -145,6 +151,10 @@ public final class StationMapSnapshotFactory {
             maxFloor = Math.max(maxFloor, pieceMaxFloor);
         }
 
+        if (rooms.isEmpty()) {
+            return Optional.empty();
+        }
+
         rooms.add(playerShipRoom(station.shuttleDoorCenter(), station.stationDirection()));
 
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
@@ -162,6 +172,20 @@ public final class StationMapSnapshotFactory {
                 maxFloor,
                 rooms
         ));
+    }
+
+    private static boolean hasPlacedBlocks(ServerLevel level, BoundingBox bounds) {
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    if (!level.getBlockState(mutable.set(x, y, z)).isAir()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static List<StationConnector> visibleConnectors(StationStructureLibraryData library, PlacedStationPiece piece) {

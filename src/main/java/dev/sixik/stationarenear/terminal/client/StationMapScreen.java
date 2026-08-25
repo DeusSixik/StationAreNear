@@ -93,7 +93,8 @@ public final class StationMapScreen {
                 .userScale(resolved.userScale());
         context.scaleProvider(scale);
 
-        StationLevelMap map = new StationLevelMap(snapshot, resolved.markers(), resolved.initialFloor());
+        StationMapMarkers markers = resolved.markers();
+        StationLevelMap map = new StationLevelMap(snapshot, markers, resolved.initialFloor());
         LevelSidePanel sidePanel = new LevelSidePanel(map);
         Widget root = root(map, sidePanel);
 
@@ -281,6 +282,20 @@ public final class StationMapScreen {
         return label;
     }
 
+    private static String pieceKey(StationMapPiece piece) {
+        return piece.definitionId() + "|" + piece.minFloor() + ':' + piece.maxFloor()
+                + '|' + piece.minX() + ':' + piece.minZ()
+                + '|' + piece.maxX() + ':' + piece.maxZ();
+    }
+
+    private static boolean pieceHasVerticalConnection(StationMapPiece piece) {
+        if (piece == null) return false;
+        for (StationMapConnection connection : piece.connections()) {
+            if (connection.direction().getAxis().isVertical()) return true;
+        }
+        return false;
+    }
+
     private static final MutableColor COLOR_TITLE = MutableColor.rgba(0.74f, 0.90f, 1.0f, 1.0f);
     private static final MutableColor COLOR_TEXT = MutableColor.rgba(0.72f, 0.78f, 0.86f, 1.0f);
     private static final MutableColor COLOR_MUTED = MutableColor.rgba(0.42f, 0.50f, 0.62f, 1.0f);
@@ -293,6 +308,8 @@ public final class StationMapScreen {
     private static final MutableColor COLOR_COMBAT_BORDER = MutableColor.rgba(0.92f, 0.34f, 0.24f, 0.92f);
     private static final MutableColor COLOR_TREASURE = MutableColor.rgba(0.22f, 0.17f, 0.07f, 0.92f);
     private static final MutableColor COLOR_TREASURE_BORDER = MutableColor.rgba(1.0f, 0.72f, 0.25f, 0.96f);
+    private static final MutableColor COLOR_DEMO_QUEST = MutableColor.rgba(0.30f, 0.20f, 0.04f, 0.96f);
+    private static final MutableColor COLOR_DEMO_QUEST_BORDER = MutableColor.rgba(1.0f, 0.82f, 0.16f, 1.0f);
     private static final MutableColor COLOR_ELEVATOR = MutableColor.rgba(0.11f, 0.18f, 0.18f, 0.95f);
     private static final MutableColor COLOR_ELEVATOR_BORDER = MutableColor.rgba(0.42f, 1.0f, 0.82f, 0.92f);
     private static final MutableColor COLOR_CONNECTION = MutableColor.rgba(0.44f, 0.82f, 1.0f, 0.88f);
@@ -311,6 +328,7 @@ public final class StationMapScreen {
     public static final class StationMapMarkers {
         private final Map<String, RoomMarker> markers = new LinkedHashMap<>();
         private final Map<String, String> templateBindings = new LinkedHashMap<>();
+        private final Map<String, String> pieceBindings = new LinkedHashMap<>();
 
         public StationMapMarkers() {
             define(new RoomMarker("ship", "SHIP", "Текущая позиция", COLOR_SHIP, COLOR_SHIP_BORDER));
@@ -353,6 +371,18 @@ public final class StationMapScreen {
             }
             return this;
         }
+
+        public StationMapMarkers bindPiece(StationMapPiece piece, String markerId) {
+            if (piece == null || markerId == null || markerId.isBlank()) return this;
+            pieceBindings.put(pieceKey(piece), markerId);
+            return this;
+        }
+
+        public StationMapMarkers clearGeneratedQuestBindings() {
+            pieceBindings.entrySet().removeIf(entry -> "quest".equals(entry.getValue()));
+            return this;
+        }
+
         public StationMapMarkers mark(String templateId, String markerId, MutableColor color, String title, String description) {
             return define(markerId, color, title, description).bind(templateId, markerId);
         }
@@ -367,7 +397,8 @@ public final class StationMapScreen {
         }
         public RoomMarker markerFor(StationMapPiece piece) {
             if (piece == null) return marker("room");
-            String markerId = piece.dockPiece() ? "ship" : templateBindings.get(piece.definitionId().toString());
+            String markerId = pieceBindings.get(pieceKey(piece));
+            if (markerId == null) markerId = piece.dockPiece() ? "ship" : templateBindings.get(piece.definitionId().toString());
             if (markerId == null) markerId = templateBindings.get(piece.definitionId().getPath());
             if (markerId == null) markerId = fallbackMarkerId(piece);
             return marker(markerId);
@@ -379,7 +410,7 @@ public final class StationMapScreen {
         }
 
         private String fallbackMarkerId(StationMapPiece piece) {
-            return hasVerticalConnection(piece) ? "lift" : "room";
+            return pieceHasVerticalConnection(piece) ? "lift" : "room";
         }
 
         private boolean hasVerticalConnection(StationMapPiece piece) {
@@ -684,6 +715,27 @@ public final class StationMapScreen {
             draw.addText("FLOOR " + activeFloor + " / " + snapshot.stationCode(), x + 10.0f, y + 7.0f, 162.0f, 20.0f, COLOR_TITLE);
         }
 
+        private void drawQuestHighlight(DrawScope draw, float x, float y, float w, float h, float radius) {
+            float pulse = (float) ((Math.sin(System.nanoTime() / 1_000_000_000.0D * 3.2D) + 1.0D) * 0.5D);
+            MutableColor glow = MutableColor.rgba(1.0f, 0.86f, 0.18f, 0.48f + pulse * 0.32f);
+            MutableColor core = MutableColor.rgba(1.0f, 0.92f, 0.38f, 0.84f);
+            float line = Math.max(1.8f, 2.2f * viewport().zoom());
+            float corner = Math.min(Math.min(w, h) * 0.28f, Math.max(7.0f, 12.0f * viewport().zoom()));
+
+            draw.addRect(x - 3.0f, y - 3.0f, w + 6.0f, h + 6.0f, radius, glow, line);
+            draw.addRectFilled(x + 3.0f, y + 3.0f, corner, line, radius, core);
+            draw.addRectFilled(x + 3.0f, y + 3.0f, line, corner, radius, core);
+            draw.addRectFilled(x + w - 3.0f - corner, y + 3.0f, corner, line, radius, core);
+            draw.addRectFilled(x + w - 3.0f - line, y + 3.0f, line, corner, radius, core);
+            draw.addRectFilled(x + 3.0f, y + h - 3.0f - line, corner, line, radius, core);
+            draw.addRectFilled(x + 3.0f, y + h - 3.0f - corner, line, corner, radius, core);
+            draw.addRectFilled(x + w - 3.0f - corner, y + h - 3.0f - line, corner, line, radius, core);
+            draw.addRectFilled(x + w - 3.0f - line, y + h - 3.0f - corner, line, corner, radius, core);
+            if (w >= 26.0f && h >= 22.0f) {
+                draw.addText("!", x, y + h * 0.5f - 10.0f, w, 18.0f, MutableColor.rgba(1.0f, 0.96f, 0.54f, 0.95f));
+            }
+        }
+
         private void drawConnections(DrawScope draw, StationMapPiece piece) {
             for (StationMapConnection connection : piece.connections()) {
                 if (connection.floor() != activeFloor || connection.direction().getAxis().isVertical()) continue;
@@ -742,6 +794,9 @@ public final class StationMapScreen {
             draw.addRectFilled(x + 4.0f, y + 5.0f, w, h, radius, MutableColor.rgba(0.0f, 0.0f, 0.0f, 0.26f));
             draw.addRectFilled(x, y, w, h, radius, marker.fill());
             draw.addRect(x, y, w, h, radius, marker.border(), piece.dockPiece() ? 3.0f : 1.4f);
+            if ("quest".equals(marker.id())) {
+                drawQuestHighlight(draw, x, y, w, h, radius);
+            }
 
             if (piece.dockPiece()) {
                 draw.addRect(x - 7.0f, y - 7.0f, w + 14.0f, h + 14.0f, radius + 6.0f, marker.border(), 1.5f);

@@ -60,10 +60,26 @@ public final class StationTemplateSelectionManager {
         List<TemplateSelectionEntry> entries = new ObjectArrayList<>(templateDefinitions.values());
         StationSavedData.get(level).stations().forEach(station -> {
             for (PlacedStationPiece piece : station.pieces()) {
-                entries.add(new TemplateSelectionEntry(piece.template(), "generated", true, piece.selectionBounds()));
+                if (hasPlacedBlocks(level, piece.bounds())) {
+                    entries.add(new TemplateSelectionEntry(piece.template(), "generated", true, piece.selectionBounds()));
+                }
             }
         });
         return entries;
+    }
+
+    private static boolean hasPlacedBlocks(ServerLevel level, BoundingBox bounds) {
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    if (!level.getBlockState(mutable.set(x, y, z)).isAir()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public static Optional<TemplateSelectionEntry> find(ServerLevel level, ResourceLocation template) {

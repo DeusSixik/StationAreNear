@@ -40,9 +40,14 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
     private static final int HIDDEN_STALK_MAX_REVEAL_TICKS = 20 * 90;
     private static final double REVEAL_RANGE = 5.0D;
     private static final double HIDDEN_STALK_RANGE = 14.0D;
+    private static final double HIDDEN_SNEAK_DETECTION_RANGE = 1.0D;
+    private static final double HIDDEN_FIELD_OF_VIEW_DOT = Math.cos(Math.toRadians(70.0D));
+    private static final double HIDDEN_SNEAK_FIELD_OF_VIEW_DOT = Math.cos(Math.toRadians(35.0D));
     private static final double HIDDEN_STALK_SPEED = 0.72D;
     private static final double HIDDEN_STALK_STOP_DISTANCE_SQR = 2.25D;
     private static final double AGGRO_RANGE = 18.0D;
+    private static final double AGGRO_SNEAK_DETECTION_RANGE = 1.0D;
+    private static final int AGGRO_LOSE_SIGHT_TICKS = 20 * 5;
     private static final RawAnimation IDLE_HIDDEN_ANIMATION = RawAnimation.begin().thenLoop("idleHiden");
     private static final RawAnimation WALK_HIDDEN_ANIMATION = RawAnimation.begin().thenLoop("walkHiden");
     private static final RawAnimation UNHIDE_ANIMATION = RawAnimation.begin().thenPlay("unhide");
@@ -54,6 +59,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
     private int unhideTicks;
     private int hiddenStalkTicks;
     private int hiddenStalkRevealTicks;
+    private int aggroLostSightTicks;
     private UUID pendingTargetId;
     private UUID hiddenStalkTargetId;
 
@@ -136,9 +142,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
             tickHiddenStalking();
             return;
         }
-        if (!isValidTarget(getTarget())) {
-            setTarget(nearestScaryPlayer(AGGRO_RANGE).orElse(null));
-        }
+        tickAggressiveTargeting();
         setRunning(isValidTarget(getTarget()));
     }
 
@@ -164,6 +168,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         tag.putInt("unhideTicks", unhideTicks);
         tag.putInt("hiddenStalkTicks", hiddenStalkTicks);
         tag.putInt("hiddenStalkRevealTicks", hiddenStalkRevealTicks);
+        tag.putInt("aggroLostSightTicks", aggroLostSightTicks);
         if (pendingTargetId != null) {
             tag.putUUID("pendingTargetId", pendingTargetId);
         }
@@ -180,6 +185,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         unhideTicks = tag.getInt("unhideTicks");
         hiddenStalkTicks = tag.getInt("hiddenStalkTicks");
         hiddenStalkRevealTicks = tag.contains("hiddenStalkRevealTicks") ? tag.getInt("hiddenStalkRevealTicks") : 0;
+        aggroLostSightTicks = tag.getInt("aggroLostSightTicks");
         pendingTargetId = tag.hasUUID("pendingTargetId") ? tag.getUUID("pendingTargetId") : null;
         hiddenStalkTargetId = tag.hasUUID("hiddenStalkTargetId") ? tag.getUUID("hiddenStalkTargetId") : null;
     }
@@ -276,8 +282,22 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         return player != null
                 && isScary(player)
                 && player.isAlive()
-                && distanceToSqr(player) <= HIDDEN_STALK_RANGE * HIDDEN_STALK_RANGE
-                && hasLineOfSight(player);
+                && canSpotHiddenPlayer(player);
+    }
+
+    private boolean canSpotHiddenPlayer(Player player) {
+        double detectionRange = player.isShiftKeyDown() ? HIDDEN_SNEAK_DETECTION_RANGE : HIDDEN_STALK_RANGE;
+        if (distanceToSqr(player) > detectionRange * detectionRange || !hasLineOfSight(player)) {
+            return false;
+        }
+        double fieldOfViewDot = player.isShiftKeyDown() ? HIDDEN_SNEAK_FIELD_OF_VIEW_DOT : HIDDEN_FIELD_OF_VIEW_DOT;
+        return isInsideHiddenFieldOfView(player, fieldOfViewDot);
+    }
+
+    private boolean isInsideHiddenFieldOfView(Player player, double minDot) {
+        Vec3 lookDirection = getViewVector(1.0F).normalize();
+        Vec3 targetDirection = player.getEyePosition().subtract(getEyePosition()).normalize();
+        return lookDirection.dot(targetDirection) >= minDot;
     }
 
     private Optional<Player> nearestVisibleScaryPlayer(double range) {
@@ -290,9 +310,50 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
     private void finishUnhide() {
         entityData.set(UNHIDING, false);
         LivingEntity pendingTarget = pendingTarget();
-        setTarget(isValidTarget(pendingTarget) ? pendingTarget : nearestScaryPlayer(AGGRO_RANGE).orElse(null));
+        setTarget(isValidTarget(pendingTarget) ? pendingTarget : nearestAggressivePlayer().orElse(null));
+        aggroLostSightTicks = 0;
         setRunning(isValidTarget(getTarget()));
         pendingTargetId = null;
+    }
+
+
+    private void tickAggressiveTargeting() {
+        LivingEntity target = getTarget();
+        if (!isValidTarget(target)) {
+            setTarget(nearestAggressivePlayer().orElse(null));
+            aggroLostSightTicks = 0;
+            return;
+        }
+        if (!(target instanceof Player player)) {
+            aggroLostSightTicks = 0;
+            return;
+        }
+        if (canSpotAggressivePlayer(player)) {
+            aggroLostSightTicks = 0;
+            return;
+        }
+        aggroLostSightTicks++;
+        if (aggroLostSightTicks >= AGGRO_LOSE_SIGHT_TICKS) {
+            setTarget(null);
+            setRunning(false);
+            aggroLostSightTicks = 0;
+            getNavigation().stop();
+        }
+    }
+
+    private Optional<Player> nearestAggressivePlayer() {
+        AABB area = getBoundingBox().inflate(AGGRO_RANGE);
+        return level().getEntitiesOfClass(Player.class, area, this::canSpotAggressivePlayer)
+                .stream()
+                .min(Comparator.comparingDouble(this::distanceToSqr));
+    }
+
+    private boolean canSpotAggressivePlayer(Player player) {
+        if (!isScary(player) || !player.isAlive()) {
+            return false;
+        }
+        double detectionRange = player.isShiftKeyDown() ? AGGRO_SNEAK_DETECTION_RANGE : AGGRO_RANGE;
+        return distanceToSqr(player) <= detectionRange * detectionRange && hasLineOfSight(player);
     }
 
     private LivingEntity pendingTarget() {

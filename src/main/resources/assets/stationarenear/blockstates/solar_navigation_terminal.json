@@ -1,8 +1,49 @@
-﻿{
+{
   "variants": {
-    "facing=north": { "model": "stationarenear:block/solar_navigation_terminal" },
-    "facing=east": { "model": "stationarenear:block/solar_navigation_terminal", "y": 90 },
-    "facing=south": { "model": "stationarenear:block/solar_navigation_terminal", "y": 180 },
-    "facing=west": { "model": "stationarenear:block/solar_navigation_terminal", "y": 270 }
+    "facing=north,part_x=0": {
+      "model": "stationarenear:block/solar_navigation_terminal"
+    },
+    "facing=north,part_x=1": {
+      "model": "stationarenear:block/solar_navigation_terminal"
+    },
+    "facing=north,part_x=2": {
+      "model": "stationarenear:block/solar_navigation_terminal"
+    },
+    "facing=east,part_x=0": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 90
+    },
+    "facing=east,part_x=1": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 90
+    },
+    "facing=east,part_x=2": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 90
+    },
+    "facing=south,part_x=0": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 180
+    },
+    "facing=south,part_x=1": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 180
+    },
+    "facing=south,part_x=2": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 180
+    },
+    "facing=west,part_x=0": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 270
+    },
+    "facing=west,part_x=1": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 270
+    },
+    "facing=west,part_x=2": {
+      "model": "stationarenear:block/solar_navigation_terminal",
+      "y": 270
+    }
   }
 }

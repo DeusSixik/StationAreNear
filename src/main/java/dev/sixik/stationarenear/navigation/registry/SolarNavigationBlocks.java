@@ -24,6 +24,7 @@ public final class SolarNavigationBlocks {
             () -> new SolarNavigationTerminalBlock(BlockBehaviour.Properties.of()
                     .strength(2.5F, 8.0F)
                     .sound(SoundType.METAL)
+                    .noOcclusion()
                     .requiresCorrectToolForDrops())
     );
 

@@ -1,3 +1,6 @@
 {
-  "parent": "stationarenear:block/terminal"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "stationarenear:block/console"
+  }
 }

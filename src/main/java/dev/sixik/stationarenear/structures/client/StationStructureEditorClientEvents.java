@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.client;
 
+import dev.sixik.stationarenear.structures.editor.StationEditorWandMode;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.network.packet.CycleStationEditorModePacket;
@@ -14,6 +15,7 @@ public final class StationStructureEditorClientEvents {
 
     public static void register() {
         MinecraftForge.EVENT_BUS.addListener(StationStructureWorldRenderer::onRenderLevelStage);
+        MinecraftForge.EVENT_BUS.addListener(StationEditorModeOverlay::onRenderGui);
         MinecraftForge.EVENT_BUS.addListener(StationStructureEditorClientEvents::onMouseScroll);
     }
 
@@ -27,6 +29,9 @@ public final class StationStructureEditorClientEvents {
         }
         event.setCanceled(true);
         int direction = event.getScrollDelta() > 0.0D ? 1 : -1;
+        StationEditorWandMode nextMode = StationStructureEditorStick.mode(minecraft.player.getMainHandItem()).next(direction);
+        StationStructureEditorStick.mode(minecraft.player.getMainHandItem(), nextMode);
+        StationEditorModeOverlay.show(nextMode);
         StationStructureNetwork.sendModeCycle(new CycleStationEditorModePacket(direction));
     }
 }

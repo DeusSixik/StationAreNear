@@ -1,24 +1,42 @@
 package dev.sixik.stationarenear.structures.editor;
 
 import dev.sixik.stationarenear.structures.client.StationEditorClientState;
+import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
+import dev.sixik.stationarenear.structures.data.StationConnector;
+import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
+import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
+import dev.sixik.stationarenear.structures.data.StationTriggerZone;
+import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.network.packet.OpenStationZoneEditorPacket;
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.world.StationSavedData;
+import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 public final class StationStructureEditorEvents {
 
@@ -90,6 +108,7 @@ public final class StationStructureEditorEvents {
             case TRIGGER_MANAGER_CREATE -> handleTriggerCreate(player, stack, clickedPos, shiftDown);
             case TRIGGER_MANAGER_EDIT -> handleTriggerEdit(player, stack, clickedPos);
             case CONNECTION_MANAGER -> handleConnectionManager(player, stack, clickedPos, shiftDown);
+            case STRUCTURE_COPY -> handleStructureCopy(player, stack, clickedPos);
         }
     }
 
@@ -156,6 +175,200 @@ public final class StationStructureEditorEvents {
         }
     }
 
+
+    private static void handleStructureCopy(ServerPlayer player, ItemStack stack, BlockPos clickedPos) {
+        StationStructureLibraryData library = StationStructureLibraryData.get(player.serverLevel());
+        Optional<CopySource> sourceOptional = findCopySource(player, library, clickedPos);
+        if (sourceOptional.isEmpty()) {
+            player.displayClientMessage(Component.literal("No saved/generated structure piece at clicked block."), true);
+            return;
+        }
+
+        CopySource source = sourceOptional.get();
+        CompoundTag tag = stack.getOrCreateTag();
+        boolean hadTargetSelection = StationStructureEditorStick.hasSelection(stack);
+        BoundingBox targetBounds = hadTargetSelection ? rootBounds(tag) : source.selectionBounds();
+        BlockPos targetMin = minPos(targetBounds);
+        BlockPos targetMax = maxPos(targetBounds);
+
+        if (!hadTargetSelection) {
+            tag.put(StationStructureToolItem.KEY_POS_1, NbtPos.save(targetMin));
+            tag.put(StationStructureToolItem.KEY_POS_2, NbtPos.save(targetMax));
+            tag.putString(StationStructureToolItem.KEY_TEMPLATE, source.definition().template().toString());
+        }
+
+        StationPieceDefinition definition = source.definition();
+        tag.putString(StationStructureToolItem.KEY_POOL, definition.pool().toString());
+        tag.putString(StationStructureToolItem.KEY_TEMPLATE_TAGS, String.join(",", definition.tags()));
+        tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, source.startPiece());
+        tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, definition.weight()));
+        tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, definition.floorSpan()));
+        tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, definition.exteriorSide() == null ? "none" : definition.exteriorSide().getSerializedName());
+        tag.put(StationStructureToolItem.KEY_CONNECTORS, copyConnectors(source, targetBounds));
+        tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, copyTriggers(source, targetBounds));
+        tag.remove(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_1);
+        tag.remove(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_2);
+        tag.remove(StationStructureEditorStick.KEY_CONNECTION_DRAFT_POS_1);
+        tag.remove(StationStructureEditorStick.KEY_CONNECTION_DRAFT_POS_2);
+        tag.putString(StationStructureEditorStick.KEY_SELECTED_NODE, "root");
+        StationStructureEditorStick.normalize(tag);
+        syncClientPreview(stack);
+
+        String sizeWarning = sameSize(source.selectionBounds(), targetBounds) ? "" : " Size differs; copied zones were clamped.";
+        player.displayClientMessage(Component.literal("Copied structure metadata from " + definition.id() + ": "
+                + definition.connectors().size() + " connections, " + definition.triggerZones().size() + " triggers." + sizeWarning), true);
+    }
+
+    private static Optional<CopySource> findCopySource(ServerPlayer player, StationStructureLibraryData library, BlockPos clickedPos) {
+        for (var station : StationSavedData.get(player.serverLevel()).stations()) {
+            for (PlacedStationPiece piece : station.pieces()) {
+                if (!contains(piece.selectionBounds(), clickedPos) && !contains(piece.bounds(), clickedPos)) {
+                    continue;
+                }
+                Optional<StationPieceDefinition> definition = library.piece(piece.definitionId());
+                if (definition.isPresent()) {
+                    return Optional.of(new CopySource(
+                            definition.get(),
+                            piece.origin(),
+                            piece.rotation(),
+                            piece.selectionBounds(),
+                            isStartPiece(library, definition.get())
+                    ));
+                }
+            }
+        }
+
+        for (Map.Entry<ResourceLocation, BoundingBox> entry : library.savedTemplateSelections().entrySet()) {
+            BoundingBox bounds = entry.getValue();
+            if (!contains(bounds, clickedPos)) {
+                continue;
+            }
+            Optional<StationPieceDefinition> definition = library.piece(entry.getKey());
+            if (definition.isPresent()) {
+                StationPieceDefinition piece = definition.get();
+                return Optional.of(new CopySource(
+                        piece,
+                        minPos(bounds).subtract(piece.selectionMin()),
+                        Rotation.NONE,
+                        bounds,
+                        isStartPiece(library, piece)
+                ));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static ListTag copyConnectors(CopySource source, BoundingBox targetBounds) {
+        ListTag list = new ListTag();
+        BlockPos sourceMin = minPos(source.selectionBounds());
+        for (StationConnector connector : source.definition().connectors()) {
+            BlockPos sourceWorldPosition = source.origin().offset(StructureTemplate.transform(connector.position(), Mirror.NONE, source.rotation(), BlockPos.ZERO));
+            Direction sourceWorldDirection = source.rotation().rotate(connector.direction());
+            BoundingBox sourceBounds = StationPlacementUtil.transformBox(source.origin(), connector.min(), connector.max(), source.rotation());
+            BlockPos worldMin = rebaseToTarget(new BlockPos(sourceBounds.minX(), sourceBounds.minY(), sourceBounds.minZ()), sourceMin, targetBounds);
+            BlockPos worldMax = rebaseToTarget(new BlockPos(sourceBounds.maxX(), sourceBounds.maxY(), sourceBounds.maxZ()), sourceMin, targetBounds);
+            BlockPos worldPosition = rebaseToTarget(sourceWorldPosition, sourceMin, targetBounds);
+            CompoundTag connectorTag = new CompoundTag();
+            connectorTag.putString("nodeType", StationEditorNodeType.CONNECTION.name());
+            connectorTag.putString("name", connector.name());
+            connectorTag.put("worldMin", NbtPos.save(min(worldMin, worldMax)));
+            connectorTag.put("worldMax", NbtPos.save(max(worldMin, worldMax)));
+            connectorTag.put("worldPosition", NbtPos.save(worldPosition));
+            connectorTag.putString("direction", sourceWorldDirection.getSerializedName());
+            connectorTag.putString("tags", join(connector.tags()));
+            connectorTag.putString("accepts", join(connector.accepts()));
+            connectorTag.putInt("priority", connector.priority());
+            connectorTag.putInt("width", connector.width());
+            connectorTag.putInt("height", connector.height());
+            connectorTag.putString("acceptedSizes", connector.acceptedSizes());
+            list.add(connectorTag);
+        }
+        return list;
+    }
+
+    private static ListTag copyTriggers(CopySource source, BoundingBox targetBounds) {
+        ListTag list = new ListTag();
+        BlockPos sourceMin = minPos(source.selectionBounds());
+        for (StationTriggerZone triggerZone : source.definition().triggerZones()) {
+            BoundingBox sourceBounds = StationPlacementUtil.transformBox(source.origin(), triggerZone.min(), triggerZone.max(), source.rotation());
+            BlockPos worldMin = rebaseToTarget(new BlockPos(sourceBounds.minX(), sourceBounds.minY(), sourceBounds.minZ()), sourceMin, targetBounds);
+            BlockPos worldMax = rebaseToTarget(new BlockPos(sourceBounds.maxX(), sourceBounds.maxY(), sourceBounds.maxZ()), sourceMin, targetBounds);
+            CompoundTag triggerTag = new CompoundTag();
+            StationEditorNodeType nodeType = triggerNodeType(triggerZone.type());
+            triggerTag.putString("nodeType", nodeType.name());
+            triggerTag.putString("id", triggerZone.id());
+            triggerTag.putString("type", triggerZone.type());
+            triggerTag.put("worldMin", NbtPos.save(min(worldMin, worldMax)));
+            triggerTag.put("worldMax", NbtPos.save(max(worldMin, worldMax)));
+            triggerTag.put("data", triggerZone.data().copy());
+            list.add(triggerTag);
+        }
+        return list;
+    }
+
+    private static StationEditorNodeType triggerNodeType(String type) {
+        try {
+            StationEditorNodeType nodeType = StationEditorNodeType.valueOf(type.toUpperCase(java.util.Locale.ROOT));
+            return nodeType == StationEditorNodeType.STRUCTURE || nodeType == StationEditorNodeType.CONNECTION ? StationEditorNodeType.TRIGGER : nodeType;
+        } catch (IllegalArgumentException exception) {
+            return StationEditorNodeType.TRIGGER;
+        }
+    }
+
+    private static BoundingBox rootBounds(CompoundTag tag) {
+        BlockPos min = StationStructureEditorStick.structureMin(tag);
+        BlockPos max = StationStructureEditorStick.structureMax(tag);
+        return new BoundingBox(min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ());
+    }
+
+    private static BlockPos rebaseToTarget(BlockPos sourceWorldPos, BlockPos sourceMin, BoundingBox targetBounds) {
+        BlockPos targetMin = minPos(targetBounds);
+        BlockPos targetMax = maxPos(targetBounds);
+        BlockPos rebased = targetMin.offset(sourceWorldPos.getX() - sourceMin.getX(), sourceWorldPos.getY() - sourceMin.getY(), sourceWorldPos.getZ() - sourceMin.getZ());
+        return new BlockPos(
+                net.minecraft.util.Mth.clamp(rebased.getX(), targetMin.getX(), targetMax.getX()),
+                net.minecraft.util.Mth.clamp(rebased.getY(), targetMin.getY(), targetMax.getY()),
+                net.minecraft.util.Mth.clamp(rebased.getZ(), targetMin.getZ(), targetMax.getZ())
+        );
+    }
+
+    private static boolean isStartPiece(StationStructureLibraryData library, StationPieceDefinition definition) {
+        return library.pool(definition.pool())
+                .map(StationPoolDefinition::startPieces)
+                .map(starts -> starts.contains(definition.id()))
+                .orElse(false);
+    }
+
+    private static boolean contains(BoundingBox bounds, BlockPos pos) {
+        return pos.getX() >= bounds.minX() && pos.getX() <= bounds.maxX()
+                && pos.getY() >= bounds.minY() && pos.getY() <= bounds.maxY()
+                && pos.getZ() >= bounds.minZ() && pos.getZ() <= bounds.maxZ();
+    }
+
+    private static boolean sameSize(BoundingBox left, BoundingBox right) {
+        return left.getXSpan() == right.getXSpan() && left.getYSpan() == right.getYSpan() && left.getZSpan() == right.getZSpan();
+    }
+
+    private static BlockPos minPos(BoundingBox bounds) {
+        return new BlockPos(bounds.minX(), bounds.minY(), bounds.minZ());
+    }
+
+    private static BlockPos maxPos(BoundingBox bounds) {
+        return new BlockPos(bounds.maxX(), bounds.maxY(), bounds.maxZ());
+    }
+
+    private static BlockPos min(BlockPos left, BlockPos right) {
+        return new BlockPos(Math.min(left.getX(), right.getX()), Math.min(left.getY(), right.getY()), Math.min(left.getZ(), right.getZ()));
+    }
+
+    private static BlockPos max(BlockPos left, BlockPos right) {
+        return new BlockPos(Math.max(left.getX(), right.getX()), Math.max(left.getY(), right.getY()), Math.max(left.getZ(), right.getZ()));
+    }
+
+    private static String join(Set<String> values) {
+        return String.join(",", values);
+    }
+
     private static boolean insideRoot(ItemStack stack, BlockPos pos) {
         CompoundTag tag = StationStructureEditorStick.editorTag(stack);
         BlockPos min = StationStructureEditorStick.structureMin(tag);
@@ -193,5 +406,7 @@ public final class StationStructureEditorEvents {
 
     private static void syncClientPreview(ItemStack stack) {
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> StationEditorClientState.setEditorTag(StationStructureEditorStick.editorTag(stack)));
+    }
+    private record CopySource(StationPieceDefinition definition, BlockPos origin, Rotation rotation, BoundingBox selectionBounds, boolean startPiece) {
     }
 }

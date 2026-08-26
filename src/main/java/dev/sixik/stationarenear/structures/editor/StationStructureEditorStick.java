@@ -85,7 +85,6 @@ public final class StationStructureEditorStick {
         }
         StationEditorWandMode next = mode(stack).next(direction);
         mode(stack, next);
-        player.displayClientMessage(Component.literal("Station editor mode: " + next.title()).withStyle(ChatFormatting.AQUA), true);
     }
 
     public static CompoundTag editorTag(ItemStack stack) {

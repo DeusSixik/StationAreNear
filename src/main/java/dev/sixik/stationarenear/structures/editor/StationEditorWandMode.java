@@ -4,7 +4,8 @@ public enum StationEditorWandMode {
     ZONE_SELECTION("Zone Selection"),
     TRIGGER_MANAGER_CREATE("Trigger Manager Create"),
     TRIGGER_MANAGER_EDIT("Trigger Manager Edit"),
-    CONNECTION_MANAGER("Connection Manager");
+    CONNECTION_MANAGER("Connection Manager"),
+    STRUCTURE_COPY("Structure Copy");
 
     private final String title;
 

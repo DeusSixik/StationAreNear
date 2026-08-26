@@ -1,24 +1,21 @@
 package dev.sixik.stationarenear.quest.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.quest.api.QuestApi;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
+import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
-import dev.sixik.stationarenear.structures.data.StationInstance;
-import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,29 +53,15 @@ public final class QuestCommands {
         if (currentStationId.isPresent() && isTestQuest(level, currentStationId.get())) {
             QuestApi.clear(level, currentStationId.get());
         }
+        QuestTestScenario.stop(level);
 
-        Optional<StationInstance> station = nearestGeneratedStation(level, source.getPosition());
-        UUID stationId = station.map(StationInstance::id).orElse(FALLBACK_TEST_STATION_ID);
+        SolarNavigationQuestMarker marker = QuestTestScenario.createQuestMarker(level, source.getPosition());
 
-        QuestApi.startQuest(
-                level,
-                stationId,
-                List.of(
-                        QuestApi.quest(TEST_COLLECT_ID, 3),
-                        QuestApi.quest(TEST_ACTIVATE_ID, 1)
-                ),
-                Map.of(
-                        TEST_COLLECT_ID, "Recover three demo cargo crates",
-                        TEST_ACTIVATE_ID, "Activate the demo station console"
-                ),
-                TEST_DURATION_SECONDS
-        );
-
-        String target = station
-                .map(value -> "nearest generated station " + value.id())
-                .orElse("virtual demo station " + stationId);
-        source.sendSuccess(() -> Component.literal("Started demo quest on " + target + "."), false);
-        source.sendSuccess(() -> Component.literal("Terminal command: /objectives. Stop command: /stationarenear quests test stop."), false);
+        source.sendSuccess(() -> Component.literal("Created test quest station marker " + marker.id()
+                + " code=" + dev.sixik.stationarenear.navigation.StationCodeGenerator.code(marker.seed(), marker.x(), marker.y())
+                + " solar_pos=" + Math.round(marker.x()) + " " + Math.round(marker.y()) + "."), false);
+        source.sendSuccess(() -> Component.literal("Fly to it in Solar Navigation and dock. The generated station will require quest_room."), false);
+        source.sendSuccess(() -> Component.literal("Terminal command after docking: /objectives. Stop command: /stationarenear quests test stop."), false);
         return 1;
     }
 
@@ -90,6 +73,12 @@ public final class QuestCommands {
             QuestApi.stopCurrentQuest(level);
             source.sendSuccess(() -> Component.literal("Stopped demo quest on station " + stationId + "."), false);
             return 1;
+        }
+
+        int removedScenarioData = QuestTestScenario.stop(level);
+        if (removedScenarioData > 0) {
+            source.sendSuccess(() -> Component.literal("Stopped test quest scenario data: " + removedScenarioData + " item(s)."), false);
+            return removedScenarioData;
         }
 
         List<UUID> staleTestStations = new ArrayList<>();
@@ -119,14 +108,9 @@ public final class QuestCommands {
     private static boolean isTestQuest(ServerLevel level, UUID stationId) {
         return QuestSavedData.get(level)
                 .stationIfPresent(stationId)
-                .map(state -> state.objective(TEST_COLLECT_ID).isPresent() || state.objective(TEST_ACTIVATE_ID).isPresent())
+                .map(state -> state.objective(TEST_COLLECT_ID).isPresent()
+                        || state.objective(TEST_ACTIVATE_ID).isPresent()
+                        || QuestTestScenario.isTestQuest(state))
                 .orElse(false);
-    }
-
-    private static Optional<StationInstance> nearestGeneratedStation(ServerLevel level, Vec3 position) {
-        return StationSavedData.get(level)
-                .stations()
-                .stream()
-                .min(Comparator.comparingDouble(station -> station.shuttleDoorCenter().distToCenterSqr(position.x(), position.y(), position.z())));
     }
 }

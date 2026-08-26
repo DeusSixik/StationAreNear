@@ -1,0 +1,34 @@
+package dev.sixik.stationarenear.quest.registry;
+
+import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.data.QuestDefinition;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
+
+public final class StationQuests {
+
+    public static final String CLEAR_TRASH = id("clear_trash");
+    public static final String PLACE_ITEM = id("place_item");
+    public static final String REPAIR_BLOCKS = id("repair_blocks");
+    public static final String BUILD_SHEATHING = id("build_sheathing");
+    public static final String REPAIR_DOORS = id("repair_doors");
+
+    private StationQuests() {
+    }
+
+    public static void register() {
+        register(CLEAR_TRASH, QuestObjectiveKind.CLEAR_TRASH, "\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043c\u0443\u0441\u043e\u0440", "Clean up the station trash");
+        register(PLACE_ITEM, QuestObjectiveKind.PLACE_ITEM, "\u0420\u0430\u0437\u043c\u0435\u0441\u0442\u0438\u0442\u0435 \u043d\u0443\u0436\u043d\u044b\u0435 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u044b", "Place the required items at the marked station zone");
+        register(REPAIR_BLOCKS, QuestObjectiveKind.REPAIR_BLOCK, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u043f\u043e\u0432\u0440\u0435\u0436\u0434\u0451\u043d\u043d\u044b\u0435 \u0431\u043b\u043e\u043a\u0438", "Repair the damaged blocks at the marked station zone");
+        register(BUILD_SHEATHING, QuestObjectiveKind.BUILD_BLOCK, "\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0441\u0442\u0430\u043d\u0446\u0438\u0438", "Build the requested station sheathing at the marked station zone");
+        register(REPAIR_DOORS, QuestObjectiveKind.REPAIR_DOOR, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u0438", "Repair the pressure doors at the marked station zone");
+    }
+
+    public static QuestDefinition register(String id, QuestObjectiveKind kind, String playerText, String samText) {
+        return QuestApi.register(id, Integer.class, kind, playerText, samText);
+    }
+
+    private static String id(String path) {
+        return StationAreNear.MODID + ":" + path;
+    }
+}

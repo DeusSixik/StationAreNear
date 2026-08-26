@@ -35,7 +35,7 @@ public final class QuestObjectiveFormatter {
 
         QuestStationState station = questData.currentStation().get();
         List<Entry> entries = new ArrayList<>();
-        entries.add(new Entry(TerminalHistoryKind.INFO, "Current mission station: " + stationDisplayId(level, station.stationId())));
+        entries.add(new Entry(TerminalHistoryKind.INFO, "Current mission station: " + stationDisplayId(level, station)));
         addTimerLine(station, entries);
         addObjectiveLines(station, entries);
         return entries;
@@ -50,7 +50,7 @@ public final class QuestObjectiveFormatter {
         QuestStationState station = questData.currentStation().get();
         List<String> lines = new ArrayList<>();
         lines.add("\u0417\u0410\u0414\u0410\u041d\u0418\u0415");
-        lines.add("\u0421\u0422\u0410\u041d\u0426\u0418\u042f: " + stationDisplayId(level, station.stationId()));
+        lines.add("\u0421\u0422\u0410\u041d\u0426\u0418\u042f: " + stationDisplayId(level, station));
         if (station.hasTimer()) {
             lines.add(station.timerExpired() ? "\u0412\u0420\u0415\u041c\u042f: \u0418\u0421\u0422\u0415\u041a\u041b\u041e" : "\u0412\u0420\u0415\u041c\u042f: " + formatDuration(station.timerRemainingMillis()));
         }
@@ -88,7 +88,11 @@ public final class QuestObjectiveFormatter {
         }
     }
 
-    private static String stationDisplayId(ServerLevel level, UUID stationId) {
+    private static String stationDisplayId(ServerLevel level, QuestStationState questStation) {
+        if (questStation != null && !questStation.displayStationCode().isBlank()) {
+            return questStation.displayStationCode();
+        }
+        UUID stationId = questStation == null ? null : questStation.stationId();
         return StationSavedData.get(level)
                 .station(stationId)
                 .map(station -> station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE))

@@ -3,11 +3,14 @@ package dev.sixik.stationarenear.terminal.map;
 import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.navigation.StationCodeGenerator;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
+import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
 import dev.sixik.stationarenear.ship.runtime.ShipIntegrityScanner;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
+import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
@@ -29,6 +32,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.HashSet;
 
 public final class StationMapSnapshotFactory {
 
@@ -58,6 +62,7 @@ public final class StationMapSnapshotFactory {
 
         StationInstance station = dockedStation.get();
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        Set<String> questTargetTriggers = activeQuestTargetTriggers(level, station);
         int dockY = station.shuttleDoorCenter().getY();
         int dockX = station.shuttleDoorCenter().getX();
         int dockZ = station.shuttleDoorCenter().getZ();
@@ -81,7 +86,8 @@ public final class StationMapSnapshotFactory {
                     bounds.maxX(),
                     bounds.maxZ(),
                     dockPiece,
-                    connections
+                    connections,
+                    questPieceMarker(piece, questTargetTriggers)
             ));
             minFloor = Math.min(minFloor, pieceMinFloor);
             maxFloor = Math.max(maxFloor, pieceMaxFloor);
@@ -249,8 +255,36 @@ public final class StationMapSnapshotFactory {
                 center.getX() + PLAYER_SHIP_MAP_HALF_SIZE,
                 center.getZ() + PLAYER_SHIP_MAP_HALF_SIZE,
                 true,
-                List.of(new StationMapConnection(0, dock.getX(), dock.getZ(), horizontalOrNorth(stationDirection)))
+                List.of(new StationMapConnection(0, dock.getX(), dock.getZ(), horizontalOrNorth(stationDirection))),
+                ""
         );
+    }
+
+    private static Set<String> activeQuestTargetTriggers(ServerLevel level, StationInstance station) {
+        return QuestSavedData.get(level)
+                .stationIfPresent(station.id())
+                .map(state -> {
+                    Set<String> triggers = new HashSet<>();
+                    for (QuestObjectiveState objective : state.objectives()) {
+                        if (!objective.completed() && !objective.targetTriggerId().isBlank()) {
+                            triggers.add(objective.targetTriggerId());
+                        }
+                    }
+                    return triggers;
+                })
+                .orElse(Set.of());
+    }
+
+    private static String questPieceMarker(PlacedStationPiece piece, Set<String> questTargetTriggers) {
+        if (questTargetTriggers.isEmpty()) {
+            return "";
+        }
+        for (PlacedTriggerZone triggerZone : piece.triggerZones()) {
+            if (questTargetTriggers.contains(triggerZone.id())) {
+                return "quest";
+            }
+        }
+        return "";
     }
 
     private static StationMapData.Room playerShipRoom(BlockPos dock, Direction stationDirection) {

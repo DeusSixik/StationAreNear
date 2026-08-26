@@ -6,6 +6,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +20,7 @@ public final class QuestStationState {
     private long timerDurationMillis = NO_TIMER;
     private long timerRemainingMillis = NO_TIMER;
     private boolean timerExpired;
+    private String displayStationCode = "";
 
     public QuestStationState(UUID stationId) {
         this.stationId = stationId;
@@ -30,6 +32,14 @@ public final class QuestStationState {
 
     public Collection<QuestObjectiveState> objectives() {
         return objectives.values();
+    }
+
+    public String displayStationCode() {
+        return displayStationCode;
+    }
+
+    public void displayStationCode(String displayStationCode) {
+        this.displayStationCode = displayStationCode == null ? "" : displayStationCode.trim();
     }
 
     public Optional<QuestObjectiveState> objective(String id) {
@@ -109,6 +119,9 @@ public final class QuestStationState {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putUUID("stationId", stationId);
+        if (!displayStationCode.isBlank()) {
+            tag.putString("displayStationCode", displayStationCode);
+        }
         ListTag objectiveTags = new ListTag();
         for (QuestObjectiveState objective : objectives.values()) {
             objectiveTags.add(objective.save());
@@ -122,8 +135,23 @@ public final class QuestStationState {
         return tag;
     }
 
+    public QuestStationState copyFor(UUID newStationId, Map<String, String> targetTriggerIds) {
+        QuestStationState copy = new QuestStationState(newStationId);
+        copy.timerDurationMillis = timerDurationMillis;
+        copy.timerRemainingMillis = timerRemainingMillis;
+        copy.timerExpired = timerExpired;
+        copy.displayStationCode = displayStationCode;
+        Map<String, String> targets = targetTriggerIds == null ? Map.of() : new LinkedHashMap<>(targetTriggerIds);
+        for (QuestObjectiveState objective : objectives.values()) {
+            String target = targets.getOrDefault(objective.id(), objective.targetTriggerId());
+            copy.put(objective.withTargetTriggerId(target));
+        }
+        return copy;
+    }
+
     public static QuestStationState load(CompoundTag tag) {
         QuestStationState state = new QuestStationState(tag.getUUID("stationId"));
+        state.displayStationCode = tag.contains("displayStationCode") ? tag.getString("displayStationCode") : "";
         ListTag objectiveTags = tag.getList("objectives", Tag.TAG_COMPOUND);
         for (Tag objectiveTag : objectiveTags) {
             QuestObjectiveState objective = QuestObjectiveState.load((CompoundTag) objectiveTag);

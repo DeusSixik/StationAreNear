@@ -15,8 +15,13 @@ public record StationMapPiece(
         int maxX,
         int maxZ,
         boolean dockPiece,
-        List<StationMapConnection> connections
+        List<StationMapConnection> connections,
+        String markerId
 ) {
+
+    public StationMapPiece(ResourceLocation definitionId, int minFloor, int maxFloor, int minX, int minZ, int maxX, int maxZ, boolean dockPiece, List<StationMapConnection> connections) {
+        this(definitionId, minFloor, maxFloor, minX, minZ, maxX, maxZ, dockPiece, connections, "");
+    }
 
     public StationMapPiece {
         if (definitionId == null) {
@@ -28,6 +33,7 @@ public record StationMapPiece(
             minFloor = swap;
         }
         connections = List.copyOf(connections == null ? List.of() : connections);
+        markerId = markerId == null ? "" : markerId.trim();
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -39,6 +45,7 @@ public record StationMapPiece(
         buffer.writeInt(maxX);
         buffer.writeInt(maxZ);
         buffer.writeBoolean(dockPiece);
+        buffer.writeUtf(markerId, 64);
         buffer.writeVarInt(connections.size());
         for (StationMapConnection connection : connections) {
             connection.encode(buffer);
@@ -54,11 +61,12 @@ public record StationMapPiece(
         int maxX = buffer.readInt();
         int maxZ = buffer.readInt();
         boolean dockPiece = buffer.readBoolean();
+        String markerId = buffer.readUtf(64);
         int connectionCount = buffer.readVarInt();
         List<StationMapConnection> connections = new ArrayList<>(connectionCount);
         for (int i = 0; i < connectionCount; i++) {
             connections.add(StationMapConnection.decode(buffer));
         }
-        return new StationMapPiece(definitionId, minFloor, maxFloor, minX, minZ, maxX, maxZ, dockPiece, connections);
+        return new StationMapPiece(definitionId, minFloor, maxFloor, minX, minZ, maxX, maxZ, dockPiece, connections, markerId);
     }
 }

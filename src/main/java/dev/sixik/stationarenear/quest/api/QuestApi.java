@@ -3,6 +3,8 @@ package dev.sixik.stationarenear.quest.api;
 import dev.sixik.stationarenear.navigation.StationCodeGenerator;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.quest.data.QuestDefinition;
+import dev.sixik.stationarenear.quest.data.QuestLocalization;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.data.QuestTask;
@@ -38,8 +40,17 @@ import java.util.UUID;
 public final class QuestApi {
 
     private static final Map<String, QuestDefinition> DEFINITIONS = new Object2ObjectLinkedOpenHashMap<>();
+    private static final Map<String, QuestLocalization> LOCALIZATIONS = new Object2ObjectLinkedOpenHashMap<>();
 
     private QuestApi() {
+    }
+
+    public static QuestTask quest(String id, int count) {
+        return new QuestTask(id, count);
+    }
+
+    public static QuestTask quest(String id, int count, String targetTriggerId) {
+        return new QuestTask(id, count, targetTriggerId);
     }
 
     /**
@@ -50,29 +61,73 @@ public final class QuestApi {
      * @param progressType поддерживаемый тип значения прогресса, например {@code Boolean.class}
      * @return зарегистрированное описание квестовой задачи
      */
-    /**
-     * ??????? ???????? ?????? ??? {@link #startQuest(ServerLevel, UUID, Collection, Map, long)}.
-     */
-    public static QuestTask quest(String id, int count) {
-        return new QuestTask(id, count);
+    public static QuestDefinition register(String id, Class<?> progressType) {
+        return register(id, progressType, QuestObjectiveKind.CUSTOM, null, false);
     }
 
-    public static QuestDefinition register(String id, Class<?> progressType) {
+    public static QuestDefinition register(String id, Class<?> progressType, QuestObjectiveKind kind) {
+        return register(id, progressType, kind, null, true);
+    }
+
+    public static QuestDefinition register(String id, Class<?> progressType, QuestObjectiveKind kind, QuestLocalization localization) {
+        return register(id, progressType, kind, localization, true);
+    }
+
+    public static QuestDefinition register(String id, Class<?> progressType, QuestObjectiveKind kind, String playerText, String samText) {
+        return register(id, progressType, kind, new QuestLocalization(playerText, samText), true);
+    }
+
+    public static QuestLocalization registerLocalization(String id, String playerText, String samText) {
+        return registerLocalization(id, new QuestLocalization(playerText, samText));
+    }
+
+    public static QuestLocalization registerLocalization(String id, QuestLocalization localization) {
+        String normalizedId = normalizeId(id);
+        localization = localization == null ? QuestLocalization.fallback(normalizedId) : localization;
+        LOCALIZATIONS.put(normalizedId, localization);
+        QuestDefinition existing = DEFINITIONS.get(normalizedId);
+        if (existing != null) {
+            DEFINITIONS.put(normalizedId, new QuestDefinition(existing.id(), existing.progressType(), existing.kind(), localization));
+        }
+        return localization;
+    }
+
+    public static QuestLocalization localization(String id) {
+        String normalizedId = normalizeId(id);
+        QuestDefinition definition = DEFINITIONS.get(normalizedId);
+        if (definition != null) {
+            return definition.localization();
+        }
+        return LOCALIZATIONS.getOrDefault(normalizedId, QuestLocalization.fallback(normalizedId));
+    }
+
+    private static QuestDefinition register(String id, Class<?> progressType, QuestObjectiveKind kind, QuestLocalization localization, boolean overwriteMetadata) {
         String normalizedId = normalizeId(id);
         Class<?> normalizedType = QuestValueCodec.normalize(progressType);
         if (!QuestValueCodec.supports(normalizedType)) {
             throw new IllegalArgumentException("Unsupported quest progress type: " + progressType.getName());
         }
 
+        QuestObjectiveKind normalizedKind = kind == null ? QuestObjectiveKind.CUSTOM : kind;
+        QuestLocalization normalizedLocalization = localization == null
+                ? LOCALIZATIONS.getOrDefault(normalizedId, QuestLocalization.fallback(normalizedId))
+                : localization;
+        LOCALIZATIONS.putIfAbsent(normalizedId, normalizedLocalization);
+
         QuestDefinition existing = DEFINITIONS.get(normalizedId);
         if (existing != null) {
             if (!existing.progressType().equals(normalizedType)) {
                 throw new IllegalArgumentException("Quest `" + normalizedId + "` is already registered as " + existing.progressType().getSimpleName());
             }
+            if (overwriteMetadata) {
+                QuestDefinition updated = new QuestDefinition(normalizedId, normalizedType, normalizedKind, normalizedLocalization);
+                DEFINITIONS.put(normalizedId, updated);
+                return updated;
+            }
             return existing;
         }
 
-        QuestDefinition definition = new QuestDefinition(normalizedId, normalizedType);
+        QuestDefinition definition = new QuestDefinition(normalizedId, normalizedType, normalizedKind, normalizedLocalization);
         DEFINITIONS.put(normalizedId, definition);
         return definition;
     }
@@ -280,6 +335,27 @@ public final class QuestApi {
     }
 
     public static void startQuestMillis(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis) {
+        Map<String, QuestLocalization> localizations = new Object2ObjectLinkedOpenHashMap<>();
+        Map<String, String> sourceTexts = objectiveTexts == null ? Map.of() : objectiveTexts;
+        for (Map.Entry<String, String> entry : sourceTexts.entrySet()) {
+            localizations.put(normalizeId(entry.getKey()), new QuestLocalization(entry.getValue(), ""));
+        }
+        startQuestMillisLocalized(level, stationId, tasks, localizations, durationMillis);
+    }
+
+    public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L));
+    }
+
+    public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds, String stationCode) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L), stationCode);
+    }
+
+    public static void startQuestMillisLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationMillis) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, durationMillis, "");
+    }
+
+    public static void startQuestMillisLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationMillis, String stationCode) {
         if (tasks == null || tasks.isEmpty()) {
             throw new IllegalArgumentException("Quest must contain at least one task");
         }
@@ -289,22 +365,31 @@ public final class QuestApi {
 
         QuestSavedData data = QuestSavedData.get(level);
         QuestStationState stationState = data.station(stationId);
+        stationState.displayStationCode(stationCode);
         List<QuestTask> normalizedTasks = new ArrayList<>();
         Map<String, String> normalizedTexts = new Object2ObjectLinkedOpenHashMap<>();
-        Map<String, String> sourceTexts = objectiveTexts == null ? Map.of() : objectiveTexts;
+        Map<String, String> normalizedSamTexts = new Object2ObjectLinkedOpenHashMap<>();
+        Map<String, QuestLocalization> sourceTexts = objectiveTexts == null ? Map.of() : objectiveTexts;
 
         for (QuestTask task : tasks) {
             QuestDefinition definition = requireDefinition(task.id());
-            String text = sourceTexts.getOrDefault(definition.id(), sourceTexts.getOrDefault(task.id(), definition.id()));
-            QuestTask normalizedTask = new QuestTask(definition.id(), task.count());
+            QuestLocalization definitionLocalization = definition.localization();
+            QuestLocalization sourceLocalization = sourceTexts.getOrDefault(definition.id(), sourceTexts.getOrDefault(task.id(), definitionLocalization));
+            String text = sourceLocalization.playerText(definitionLocalization.playerText(definition.id()));
+            String samText = sourceLocalization.samText().isBlank()
+                    ? definitionLocalization.samText(text)
+                    : sourceLocalization.samText(text);
+            QuestTask normalizedTask = new QuestTask(definition.id(), task.count(), task.targetTriggerId());
             normalizedTasks.add(normalizedTask);
             normalizedTexts.put(definition.id(), text);
+            normalizedSamTexts.put(definition.id(), samText);
             stationState.put(new QuestObjectiveState(
                     definition.id(),
                     false,
                     QuestValueCodec.encode(definition.progressType(), initialProgressValue(definition.progressType())),
                     task.count(),
-                    text
+                    text,
+                    task.targetTriggerId()
             ));
         }
 
@@ -312,7 +397,7 @@ public final class QuestApi {
         data.station(stationState);
         data.currentStationId(stationId);
 
-        String announcement = missionAnnouncement(level, stationId, normalizedTasks, normalizedTexts, durationMillis);
+        String announcement = missionAnnouncement(level, stationId, normalizedTasks, normalizedSamTexts, durationMillis, stationCode);
         MinecraftForge.EVENT_BUS.post(new QuestStartedEvent(level, stationId, normalizedTasks, normalizedTexts, durationMillis, announcement));
     }
 
@@ -557,8 +642,12 @@ public final class QuestApi {
     }
 
     private static String missionAnnouncement(ServerLevel level, UUID stationId, List<QuestTask> tasks, Map<String, String> texts, long durationMillis) {
+        return missionAnnouncement(level, stationId, tasks, texts, durationMillis, "");
+    }
+
+    private static String missionAnnouncement(ServerLevel level, UUID stationId, List<QuestTask> tasks, Map<String, String> texts, long durationMillis, String stationCode) {
         StringBuilder builder = new StringBuilder();
-        builder.append("Team, you have a new assignment. Travel to station code ").append(stationSpeechCode(level, stationId)).append(". ");
+        builder.append("Team, you have a new assignment. Travel to station code ").append(stationCode == null || stationCode.isBlank() ? stationSpeechCode(level, stationId) : stationCode).append(". ");
         builder.append("Use this code in the terminal scan command. ");
         builder.append("Your objectives are: ");
         for (int i = 0; i < tasks.size(); i++) {

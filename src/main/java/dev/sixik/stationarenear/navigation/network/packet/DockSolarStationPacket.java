@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.navigation.network.packet;
 import dev.sixik.stationarenear.navigation.SolarNavigationConfig;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
+import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
@@ -91,11 +92,16 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         float missionDanger = packet.quest() ? 0.55F : 0.35F;
 
         int maxRooms = Math.max(MIN_ROOMS, SolarNavigationConfig.DUNGEON_PREVIEW_MAX_ROOMS.get() + 8);
+        StationGenerationSettings generationSettings = new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed);
+        if (packet.quest()) {
+            generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings);
+        }
+
         StationGenerationResult result = new StationGenerator().generateDockedStation(
                 level,
                 doorCenter,
                 stationDirection,
-                new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed)
+                generationSettings
         );
 
         if (!result.success()) {
@@ -113,6 +119,9 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
             station.customData().putBoolean("navigationShipAnchorBound", dockingAnchor.boundToShip());
             station.customData().putString("navigationShipConnection", dockingAnchor.connectionName());
             dev.sixik.stationarenear.structures.world.StationSavedData.get(level).addStation(station);
+            if (QuestTestScenario.isTestQuestMarker(level, packet.stationSeed())) {
+                QuestTestScenario.startDockedQuest(level, station);
+            }
         });
         SolarNavigationControlManager.forceStop(level, packet.terminalPos());
         ShipManager.setDocking(level, packet.terminalPos(), true);

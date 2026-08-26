@@ -2,10 +2,14 @@ package dev.sixik.stationarenear.quest.data;
 
 import net.minecraft.nbt.CompoundTag;
 
-public record QuestObjectiveState(String id, boolean completed, CompoundTag progress, int targetCount, String text) {
+public record QuestObjectiveState(String id, boolean completed, CompoundTag progress, int targetCount, String text, String targetTriggerId) {
 
     public QuestObjectiveState(String id, boolean completed, CompoundTag progress) {
-        this(id, completed, progress, 1, id);
+        this(id, completed, progress, 1, id, "");
+    }
+
+    public QuestObjectiveState(String id, boolean completed, CompoundTag progress, int targetCount, String text) {
+        this(id, completed, progress, targetCount, text, "");
     }
 
     public QuestObjectiveState {
@@ -15,18 +19,23 @@ public record QuestObjectiveState(String id, boolean completed, CompoundTag prog
         progress = progress == null ? new CompoundTag() : progress.copy();
         targetCount = Math.max(1, targetCount);
         text = text == null || text.isBlank() ? id : text;
+        targetTriggerId = targetTriggerId == null ? "" : targetTriggerId.trim();
     }
 
     public QuestObjectiveState withProgress(CompoundTag progress) {
-        return new QuestObjectiveState(id, completed, progress, targetCount, text);
+        return new QuestObjectiveState(id, completed, progress, targetCount, text, targetTriggerId);
     }
 
     public QuestObjectiveState withDisplay(int targetCount, String text) {
-        return new QuestObjectiveState(id, completed, progress, targetCount, text);
+        return new QuestObjectiveState(id, completed, progress, targetCount, text, targetTriggerId);
+    }
+
+    public QuestObjectiveState withTargetTriggerId(String targetTriggerId) {
+        return new QuestObjectiveState(id, completed, progress, targetCount, text, targetTriggerId);
     }
 
     public QuestObjectiveState complete(CompoundTag progress) {
-        return new QuestObjectiveState(id, true, progress == null ? this.progress : progress, targetCount, text);
+        return new QuestObjectiveState(id, true, progress == null ? this.progress : progress, targetCount, text, targetTriggerId);
     }
 
     public CompoundTag save() {
@@ -36,6 +45,9 @@ public record QuestObjectiveState(String id, boolean completed, CompoundTag prog
         tag.put("progress", progress.copy());
         tag.putInt("targetCount", targetCount);
         tag.putString("text", text);
+        if (!targetTriggerId.isBlank()) {
+            tag.putString("targetTriggerId", targetTriggerId);
+        }
         return tag;
     }
 
@@ -45,7 +57,8 @@ public record QuestObjectiveState(String id, boolean completed, CompoundTag prog
                 tag.getBoolean("completed"),
                 tag.getCompound("progress"),
                 tag.contains("targetCount") ? tag.getInt("targetCount") : 1,
-                tag.contains("text") ? tag.getString("text") : tag.getString("id")
+                tag.contains("text") ? tag.getString("text") : tag.getString("id"),
+                tag.contains("targetTriggerId") ? tag.getString("targetTriggerId") : ""
         );
     }
 }

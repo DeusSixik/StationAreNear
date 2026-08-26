@@ -398,6 +398,7 @@ public final class StationMapScreen {
         public RoomMarker markerFor(StationMapPiece piece) {
             if (piece == null) return marker("room");
             String markerId = pieceBindings.get(pieceKey(piece));
+            if (markerId == null && !piece.dockPiece() && !piece.markerId().isBlank()) markerId = piece.markerId();
             if (markerId == null) markerId = piece.dockPiece() ? "ship" : templateBindings.get(piece.definitionId().toString());
             if (markerId == null) markerId = templateBindings.get(piece.definitionId().getPath());
             if (markerId == null) markerId = fallbackMarkerId(piece);

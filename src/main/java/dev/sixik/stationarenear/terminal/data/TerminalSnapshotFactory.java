@@ -21,7 +21,7 @@ import java.util.Optional;
 
 public final class TerminalSnapshotFactory {
 
-    private static final float STATION_SCAN_RADIUS = 2400.0F;
+    private static final float STATION_SCAN_RADIUS = 6000.0F;
     private static final int STATION_SCAN_LIMIT = 12;
 
     private TerminalSnapshotFactory() {

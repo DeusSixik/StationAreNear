@@ -12,5 +12,12 @@
   "block.stationarenear.ship_television": "Ship Television",
   "item.stationarenear.ship_television": "Ship Television",
   "block.stationarenear.station_map_terminal": "Station Map Terminal",
-  "item.stationarenear.station_map_terminal": "Station Map Terminal"
+  "item.stationarenear.station_map_terminal": "Station Map Terminal",
+  "itemGroup.stationarenear.station_are_near": "Station Are Near",
+  "item.stationarenear.bucket": "Bucket",
+  "item.stationarenear.cutters": "Cutters",
+  "item.stationarenear.engineering_gear": "Engineering Gear",
+  "item.stationarenear.mop": "Mop",
+  "item.stationarenear.putty_bucket": "Putty Bucket",
+  "item.stationarenear.station_sheathing": "Station Sheathing"
 }

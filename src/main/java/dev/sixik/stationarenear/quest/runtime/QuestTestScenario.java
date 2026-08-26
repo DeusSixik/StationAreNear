@@ -21,20 +21,25 @@ import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class QuestTestScenario {
@@ -47,11 +52,18 @@ public final class QuestTestScenario {
     private static final int MAX_DISTANCE = 5000;
     private static final int TERMINAL_SEARCH_RADIUS = 64;
     private static final long DURATION_SECONDS = 10L * 60L;
+    private static final int TEST_TRASH_REQUIRED = 20;
+    private static final int TEST_TRASH_EXTRA = 3;
+    private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
 
     private QuestTestScenario() {
     }
 
     public static SolarNavigationQuestMarker createQuestMarker(ServerLevel level, Vec3 sourcePosition) {
+        return createQuestMarker(level, sourcePosition, 0);
+    }
+
+    public static SolarNavigationQuestMarker createQuestMarker(ServerLevel level, Vec3 sourcePosition, int trashSpawnSkip) {
         Optional<BlockPos> terminal = nearestNavigationTerminal(level, BlockPos.containing(sourcePosition), TERMINAL_SEARCH_RADIUS);
         SolarNavigationShipState shipState = terminal
                 .map(pos -> SolarNavigationSavedData.get(level).shipState(pos))
@@ -65,6 +77,7 @@ public final class QuestTestScenario {
         long seed = level.getSeed() ^ MARKER_ID.hashCode() ^ Mth.getSeed((int) x, 0, (int) y) ^ random.nextLong();
         SolarNavigationQuestMarker marker = SolarNavigationApi.createQuestDungeon(level, MARKER_ID, "TEST QUEST", x, y, 86.0F, 0xFFF7C45A, seed);
         startPendingQuest(level, marker);
+        storePendingTrashSpawnSkip(level, trashSpawnSkip);
         return marker;
     }
 
@@ -81,6 +94,24 @@ public final class QuestTestScenario {
 
     public static StationGenerationSettings applyQuestRoomRequirement(StationGenerationSettings settings) {
         return settings.withRequiredPieces(Map.of(QUEST_ROOM, 1));
+    }
+
+    public static StationGenerationSettings applyQuestRoomRequirement(StationGenerationSettings settings, Map<String, Integer> questElementSpawnSkips) {
+        return applyQuestRoomRequirement(settings).withQuestElementSpawnSkips(questElementSpawnSkips);
+    }
+
+    public static Map<String, Integer> pendingQuestElementSpawnSkips(ServerLevel level) {
+        QuestStationState state = QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID).orElse(null);
+        if (state == null) {
+            return Map.of();
+        }
+        int skip = state.objective(StationQuests.CLEAR_TRASH)
+                .map(objective -> objective.progress().getInt("spawnSkip"))
+                .orElse(0);
+        if (skip <= 0) {
+            return Map.of();
+        }
+        return Map.of(StationQuests.CLEAR_TRASH, skip);
     }
 
     public static boolean isTestQuestMarker(ServerLevel level, long stationSeed) {
@@ -100,23 +131,26 @@ public final class QuestTestScenario {
         List<PlacedTriggerZone> questTriggers = questRoom.get().triggerZones().stream()
                 .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST)
                 .sorted(Comparator.comparing(PlacedTriggerZone::id))
-                .limit(5)
                 .toList();
         if (questTriggers.isEmpty()) {
             return false;
         }
 
-        spawnPseudoTrash(level, questTriggers.get(0), 3);
-        movePendingQuestToStation(level, station, questTriggers);
+        QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
+        movePendingQuestToStation(level, station, questTriggers, spawnPlan);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers);
+        Map<String, String> targets = triggerTargets(questTriggers, spawnPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
+        moved.objective(StationQuests.CLEAR_TRASH).ifPresent(objective -> moved.put(objective.withDisplay(
+                spawnPlan.targetCount(),
+                objective.text()
+        )));
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
         if (!code.isBlank()) {
             moved.displayStationCode(code);
@@ -130,6 +164,20 @@ public final class QuestTestScenario {
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
         QuestApi.startQuestLocalized(level, PENDING_STATION_ID, pendingTasks(), testTexts(), DURATION_SECONDS, code);
         return QuestSavedData.get(level).station(PENDING_STATION_ID);
+    }
+
+    private static void storePendingTrashSpawnSkip(ServerLevel level, int trashSpawnSkip) {
+        if (trashSpawnSkip <= 0) {
+            return;
+        }
+        QuestSavedData data = QuestSavedData.get(level);
+        QuestStationState station = data.station(PENDING_STATION_ID);
+        station.objective(StationQuests.CLEAR_TRASH).ifPresent(objective -> {
+            CompoundTag progress = objective.progress();
+            progress.putInt("spawnSkip", trashSpawnSkip);
+            station.put(objective.withProgress(progress));
+            data.station(station);
+        });
     }
 
     public static int stop(ServerLevel level) {
@@ -169,7 +217,7 @@ public final class QuestTestScenario {
 
     private static List<QuestTask> testTasks(List<PlacedTriggerZone> questTriggers) {
         return List.of(
-                QuestApi.quest(StationQuests.CLEAR_TRASH, 3, triggerId(questTriggers, 0)),
+                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED, triggerId(questTriggers, 0)),
                 QuestApi.quest(StationQuests.PLACE_ITEM, 1, triggerId(questTriggers, 1)),
                 QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1, triggerId(questTriggers, 2)),
                 QuestApi.quest(StationQuests.BUILD_SHEATHING, 1, triggerId(questTriggers, 3)),
@@ -179,17 +227,13 @@ public final class QuestTestScenario {
 
     private static List<QuestTask> pendingTasks() {
         return List.of(
-                QuestApi.quest(StationQuests.CLEAR_TRASH, 3),
-                QuestApi.quest(StationQuests.PLACE_ITEM, 1),
-                QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1),
-                QuestApi.quest(StationQuests.BUILD_SHEATHING, 1),
-                QuestApi.quest(StationQuests.REPAIR_DOORS, 1)
+                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED)
         );
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
-        targets.put(StationQuests.CLEAR_TRASH, triggerId(questTriggers, 0));
+        targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
         targets.put(StationQuests.PLACE_ITEM, triggerId(questTriggers, 1));
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
         targets.put(StationQuests.BUILD_SHEATHING, triggerId(questTriggers, 3));
@@ -199,7 +243,7 @@ public final class QuestTestScenario {
 
     private static Map<String, QuestLocalization> testTexts() {
         Map<String, QuestLocalization> texts = new LinkedHashMap<>();
-        texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 3 \u043a\u0443\u0441\u043a\u0430 \u043f\u0441\u0435\u0432\u0434\u043e-\u043c\u0443\u0441\u043e\u0440\u0430 \u0448\u0432\u0430\u0431\u0440\u043e\u0439", "Clean up three trash piles with the mop."));
+        texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0441\u0435\u0432\u0434\u043e-\u0433\u0440\u044f\u0437\u044c \u0448\u0432\u0430\u0431\u0440\u043e\u0439", "Clean up the test dirt piles with the mop."));
         texts.put(StationQuests.PLACE_ITEM, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u0432 \u0437\u043e\u043d\u0435", "Install the test item in the marked zone."));
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
         texts.put(StationQuests.BUILD_SHEATHING, new QuestLocalization("\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0432 \u0437\u043e\u043d\u0435", "Build station sheathing in the marked zone."));
@@ -215,7 +259,52 @@ public final class QuestTestScenario {
         return QUEST_ROOM.equals(piece.definitionId()) || QUEST_ROOM.equals(piece.template());
     }
 
-    private static void spawnPseudoTrash(ServerLevel level, PlacedTriggerZone zone, int count) {
+    private static QuestSpawnPlan spawnPseudoTrash(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, int requiredCount, int extraCount) {
+        int skip = questElementSpawnSkip(station, StationQuests.CLEAR_TRASH);
+        int requiredToSpawn = Math.max(0, requiredCount - skip);
+        int totalToSpawn = requiredToSpawn + Math.max(0, extraCount);
+        if (totalToSpawn <= 0) {
+            return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, skip)), 0, triggerId(questTriggers, 0));
+        }
+
+        List<PlacedTriggerZone> shuffled = new ArrayList<>(questTriggers);
+        Collections.shuffle(shuffled, new java.util.Random(station.seed() ^ 0x7157A5C0FFEE11L));
+        Set<String> usedTriggers = new LinkedHashSet<>();
+        int requiredPlaced = 0;
+        int totalPlaced = 0;
+        String targetTriggerId = "";
+
+        while (totalPlaced < totalToSpawn) {
+            boolean placedThisPass = false;
+            for (PlacedTriggerZone zone : shuffled) {
+                if (totalPlaced >= totalToSpawn) {
+                    break;
+                }
+                int placed = spawnPseudoTrash(level, zone, 1, totalPlaced);
+                if (placed <= 0) {
+                    continue;
+                }
+                placedThisPass = true;
+                usedTriggers.add(zone.id());
+                if (targetTriggerId.isBlank()) {
+                    targetTriggerId = zone.id();
+                }
+                int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
+                requiredPlaced += requiredPart;
+                totalPlaced += placed;
+            }
+            if (!placedThisPass) {
+                break;
+            }
+        }
+
+        if (targetTriggerId.isBlank()) {
+            targetTriggerId = triggerId(questTriggers, 0);
+        }
+        return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, targetTriggerId);
+    }
+
+    private static int spawnPseudoTrash(ServerLevel level, PlacedTriggerZone zone, int count, int variantOffset) {
         BoundingBox bounds = new BoundingBox(
                 zone.min().getX(), zone.min().getY(), zone.min().getZ(),
                 zone.max().getX(), zone.max().getY(), zone.max().getZ()
@@ -224,13 +313,24 @@ public final class QuestTestScenario {
         int placed = 0;
         for (BlockPos pos : positions) {
             if (placed >= count) {
-                return;
+                return placed;
             }
             if (level.getBlockState(pos).isAir()) {
-                level.setBlock(pos, Blocks.COBWEB.defaultBlockState(), 3);
+                level.setBlock(pos, pseudoTrashState(variantOffset + placed), 3);
                 placed++;
             }
         }
+        return placed;
+    }
+
+    private static BlockState pseudoTrashState(int index) {
+        return (index & 1) == 0 ? Blocks.DIRT.defaultBlockState() : Blocks.COARSE_DIRT.defaultBlockState();
+    }
+
+    private static int questElementSpawnSkip(StationInstance station, String questId) {
+        CompoundTag skips = station.customData().getCompound(KEY_QUEST_ELEMENT_SPAWN_SKIPS);
+        String normalized = StationGenerationSettings.normalizeQuestId(questId);
+        return skips.contains(normalized) ? Math.max(0, skips.getInt(normalized)) : 0;
     }
 
     private static List<BlockPos> candidatePositions(BoundingBox bounds) {
@@ -266,5 +366,8 @@ public final class QuestTestScenario {
             }
         }
         return Optional.ofNullable(best);
+    }
+
+    private record QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId) {
     }
 }

@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.quest.registry;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.quest.item.MopItem;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -33,7 +34,7 @@ public final class QuestItems {
 
     public static final RegistryObject<Item> MOP = ITEMS.register(
             "mop",
-            () -> new Item(new Item.Properties().stacksTo(1))
+            () -> new MopItem(new Item.Properties().stacksTo(1))
     );
 
     public static final RegistryObject<Item> PUTTY_BUCKET = ITEMS.register(

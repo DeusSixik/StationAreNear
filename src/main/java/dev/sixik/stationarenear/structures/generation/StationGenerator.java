@@ -74,6 +74,15 @@ public class StationGenerator {
             placedPieces.add(piece);
         }
 
+        CompoundTag customData = new CompoundTag();
+        if (!settings.questElementSpawnSkips().isEmpty()) {
+            CompoundTag questSpawnSkips = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : settings.questElementSpawnSkips().entrySet()) {
+                questSpawnSkips.putInt(entry.getKey(), entry.getValue());
+            }
+            customData.put("questElementSpawnSkips", questSpawnSkips);
+        }
+
         StationInstance station = new StationInstance(
                 UUID.randomUUID(),
                 settings.pool(),
@@ -82,7 +91,7 @@ public class StationGenerator {
                 danger,
                 settings.seed(),
                 placedPieces,
-                new CompoundTag()
+                customData
         );
         StationSavedData.get(level).addStation(station);
         postStructureSpawnTriggers(level, station);

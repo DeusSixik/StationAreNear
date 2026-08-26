@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
+import dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -113,6 +114,7 @@ public final class SolarNavigationStationCleaner {
 
     private static int clearStations(ServerLevel level, StationSavedData data, List<StationInstance> targets) {
         for (StationInstance station : targets) {
+            QuestStationDepartureHandler.beforeStationCleared(level, station);
             for (var piece : station.pieces()) {
                 clearBounds(level, piece.bounds());
             }

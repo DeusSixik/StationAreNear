@@ -94,7 +94,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         int maxRooms = Math.max(MIN_ROOMS, SolarNavigationConfig.DUNGEON_PREVIEW_MAX_ROOMS.get() + 8);
         StationGenerationSettings generationSettings = new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed);
         if (packet.quest()) {
-            generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings);
+            generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings, QuestTestScenario.pendingQuestElementSpawnSkips(level));
         }
 
         StationGenerationResult result = new StationGenerator().generateDockedStation(

@@ -350,9 +350,10 @@ public final class TerminalCommandProcessor {
 
     private static String formatDuration(long millis) {
         long totalSeconds = millis <= 0L ? 0L : (millis + 999L) / 1000L;
-        long minutes = totalSeconds / 60L;
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds / 60L) % 60L;
         long seconds = totalSeconds % 60L;
-        return minutes + "m " + seconds + "s";
+        return String.format(Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds);
     }
 
     private static String formatNumber(float value) {

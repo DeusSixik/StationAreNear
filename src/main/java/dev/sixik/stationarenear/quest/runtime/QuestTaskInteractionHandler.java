@@ -39,18 +39,11 @@ public final class QuestTaskInteractionHandler {
         if (!(event.getLevel() instanceof ServerLevel level)) {
             return;
         }
-        ItemStack stack = event.getPlayer().getMainHandItem();
         BlockState state = event.getState();
-        if (!stack.is(QuestItems.MOP.get()) && !stack.is(QuestTags.MOPS)) {
-            return;
-        }
         if (!state.is(QuestTags.TRASH_BLOCKS)) {
             return;
         }
-        UUID stationId = stationAt(level, event.getPos()).map(StationInstance::id).orElse(null);
-        if (stationId != null) {
-            increment(level, stationId, StationQuests.CLEAR_TRASH, event.getPos());
-        }
+        stationPieceAt(level, event.getPos()).ifPresent(context -> incrementCleanup(level, context, event.getPos()));
     }
 
     @SubscribeEvent
@@ -178,6 +171,36 @@ public final class QuestTaskInteractionHandler {
         return true;
     }
 
+    private static boolean incrementCleanup(ServerLevel level, StationPieceContext context, BlockPos pos) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.CLEAR_TRASH));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!cleanupPieceMatches(context.piece(), objective.get())) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.CLEAR_TRASH, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.CLEAR_TRASH, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.CLEAR_TRASH);
+        }
+        return true;
+    }
+
+    private static boolean cleanupPieceMatches(PlacedStationPiece piece, QuestObjectiveState objective) {
+        if (objective.targetTriggerId().isBlank()) {
+            return true;
+        }
+        return piece.triggerZones().stream().anyMatch(zone -> objective.targetTriggerId().equals(zone.id()));
+    }
+
     private static boolean alreadyDone(QuestObjectiveState objective, BlockPos pos) {
         return objective.progress().getList(KEY_DONE_POSITIONS, Tag.TAG_LONG).contains(net.minecraft.nbt.LongTag.valueOf(pos.asLong()));
     }
@@ -204,9 +227,23 @@ public final class QuestTaskInteractionHandler {
                 .findFirst();
     }
 
+    private static Optional<StationPieceContext> stationPieceAt(ServerLevel level, BlockPos pos) {
+        for (StationInstance station : StationSavedData.get(level).stations()) {
+            for (PlacedStationPiece piece : station.pieces()) {
+                if (contains(piece, pos)) {
+                    return Optional.of(new StationPieceContext(station, piece));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     private static boolean contains(PlacedStationPiece piece, BlockPos pos) {
         return pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
                 && pos.getY() >= piece.selectionBounds().minY() && pos.getY() <= piece.selectionBounds().maxY()
                 && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ();
+    }
+
+    private record StationPieceContext(StationInstance station, PlacedStationPiece piece) {
     }
 }

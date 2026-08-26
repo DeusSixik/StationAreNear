@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.quest.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.quest.api.QuestApi;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
@@ -40,12 +41,18 @@ public final class QuestCommands {
                 .then(Commands.literal("quests")
                         .then(Commands.literal("test")
                                 .then(Commands.literal("start")
-                                        .executes(context -> startTestQuest(context.getSource())))
+                                        .executes(context -> startTestQuest(context.getSource(), 0))
+                                        .then(Commands.literal("skip_trash")
+                                                .then(Commands.argument("count", IntegerArgumentType.integer(0))
+                                                        .executes(context -> startTestQuest(
+                                                                context.getSource(),
+                                                                IntegerArgumentType.getInteger(context, "count")
+                                                        )))))
                                 .then(Commands.literal("stop")
                                         .executes(context -> stopTestQuest(context.getSource()))))));
     }
 
-    private static int startTestQuest(CommandSourceStack source) {
+    private static int startTestQuest(CommandSourceStack source, int trashSpawnSkip) {
         ServerLevel level = source.getLevel();
         registerTestDefinitions();
 
@@ -55,11 +62,14 @@ public final class QuestCommands {
         }
         QuestTestScenario.stop(level);
 
-        SolarNavigationQuestMarker marker = QuestTestScenario.createQuestMarker(level, source.getPosition());
+        SolarNavigationQuestMarker marker = QuestTestScenario.createQuestMarker(level, source.getPosition(), trashSpawnSkip);
 
         source.sendSuccess(() -> Component.literal("Created test quest station marker " + marker.id()
                 + " code=" + dev.sixik.stationarenear.navigation.StationCodeGenerator.code(marker.seed(), marker.x(), marker.y())
                 + " solar_pos=" + Math.round(marker.x()) + " " + Math.round(marker.y()) + "."), false);
+        if (trashSpawnSkip > 0) {
+            source.sendSuccess(() -> Component.literal("Quest trash spawn skip=" + trashSpawnSkip + "."), false);
+        }
         source.sendSuccess(() -> Component.literal("Fly to it in Solar Navigation and dock. The generated station will require quest_room."), false);
         source.sendSuccess(() -> Component.literal("Terminal command after docking: /objectives. Stop command: /stationarenear quests test stop."), false);
         return 1;

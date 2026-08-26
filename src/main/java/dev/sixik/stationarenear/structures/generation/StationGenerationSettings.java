@@ -16,15 +16,16 @@ public record StationGenerationSettings(
         int maxRooms,
         long seed,
         Map<ResourceLocation, Integer> requiredPieces,
-        Map<String, Integer> requiredPieceTags
+        Map<String, Integer> requiredPieceTags,
+        Map<String, Integer> questElementSpawnSkips
 ) {
 
     public StationGenerationSettings(ResourceLocation pool, float missionDanger, boolean randomStation, int maxPieces, long seed) {
-        this(pool, missionDanger, randomStation, 1, 0, maxPieces, seed, Map.of(), Map.of());
+        this(pool, missionDanger, randomStation, 1, 0, maxPieces, seed, Map.of(), Map.of(), Map.of());
     }
 
     public StationGenerationSettings(ResourceLocation pool, float missionDanger, boolean randomStation, int maxFloors, int minRooms, int maxRooms, long seed) {
-        this(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, Map.of(), Map.of());
+        this(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, Map.of(), Map.of(), Map.of());
     }
 
     public StationGenerationSettings {
@@ -37,18 +38,23 @@ public record StationGenerationSettings(
         }
         requiredPieces = normalizeRequiredPieces(requiredPieces);
         requiredPieceTags = normalizeRequiredTags(requiredPieceTags);
+        questElementSpawnSkips = normalizeQuestElementSpawnSkips(questElementSpawnSkips);
     }
 
     public StationGenerationSettings withRequiredPieces(Map<ResourceLocation, Integer> requiredPieces) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
     }
 
     public StationGenerationSettings withRequiredPieceTags(Map<String, Integer> requiredPieceTags) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
     }
 
     public StationGenerationSettings withRequiredPieces(Map<ResourceLocation, Integer> requiredPieces, Map<String, Integer> requiredPieceTags) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
+    }
+
+    public StationGenerationSettings withQuestElementSpawnSkips(Map<String, Integer> questElementSpawnSkips) {
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
     }
 
     public int requiredPieceCount(ResourceLocation pieceId) {
@@ -65,6 +71,10 @@ public record StationGenerationSettings(
 
     public int requiredPieceTagCount(String tag) {
         return requiredPieceTags.getOrDefault(normalizeTag(tag), 0);
+    }
+
+    public int questElementSpawnSkip(String questId) {
+        return questElementSpawnSkips.getOrDefault(normalizeQuestId(questId), 0);
     }
 
     private static Map<ResourceLocation, Integer> normalizeRequiredPieces(Map<ResourceLocation, Integer> requiredPieces) {
@@ -102,8 +112,28 @@ public record StationGenerationSettings(
         return Map.copyOf(normalized);
     }
 
+    private static Map<String, Integer> normalizeQuestElementSpawnSkips(Map<String, Integer> skips) {
+        if (skips == null || skips.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Integer> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : skips.entrySet()) {
+            String questId = normalizeQuestId(entry.getKey());
+            int count = Math.max(0, entry.getValue() == null ? 0 : entry.getValue());
+            if (!questId.isBlank() && count > 0) {
+                normalized.merge(questId, count, Integer::sum);
+            }
+        }
+        return Map.copyOf(normalized);
+    }
+
     public static String normalizeTag(String tag) {
         return tag == null ? "" : tag.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    public static String normalizeQuestId(String questId) {
+        return questId == null ? "" : questId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     public float rollDanger(RandomSource random) {

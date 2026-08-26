@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.quest.runtime;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.event.QuestTimerExpiredEvent;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
+import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.common.MinecraftForge;
@@ -57,7 +58,7 @@ public final class QuestTimerManager {
         boolean dirty = false;
 
         for (QuestStationState station : data.stations()) {
-            if (station.tickTimer(elapsedMillis)) {
+            if (station.tickTimer(elapsedMillis, isDockedQuestStation(level, station))) {
                 expiredStations.add(station);
                 dirty = true;
             }
@@ -69,5 +70,9 @@ public final class QuestTimerManager {
         for (QuestStationState station : expiredStations) {
             MinecraftForge.EVENT_BUS.post(new QuestTimerExpiredEvent(level, station.stationId(), station));
         }
+    }
+
+    private static boolean isDockedQuestStation(ServerLevel level, QuestStationState station) {
+        return StationSavedData.get(level).station(station.stationId()).isPresent();
     }
 }

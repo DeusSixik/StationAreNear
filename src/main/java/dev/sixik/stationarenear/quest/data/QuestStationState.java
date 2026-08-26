@@ -14,6 +14,7 @@ import java.util.UUID;
 public final class QuestStationState {
 
     private static final long NO_TIMER = -1L;
+    private static final long DOCKED_FAILURE_GRACE_MILLIS = 1000L;
 
     private final UUID stationId;
     private final Map<String, QuestObjectiveState> objectives = new Object2ObjectLinkedOpenHashMap<>();
@@ -103,15 +104,29 @@ public final class QuestStationState {
     }
 
     public boolean tickTimer(long elapsedMillis) {
+        return tickTimer(elapsedMillis, false);
+    }
+
+    public boolean tickTimer(long elapsedMillis, boolean deferFailureWhileDocked) {
         if (!timerRunning() || elapsedMillis <= 0L) {
             return false;
         }
 
-        timerRemainingMillis = Math.max(0L, timerRemainingMillis - elapsedMillis);
+        long minimumRemaining = deferFailureWhileDocked ? DOCKED_FAILURE_GRACE_MILLIS : 0L;
+        timerRemainingMillis = Math.max(minimumRemaining, timerRemainingMillis - elapsedMillis);
         if (timerRemainingMillis > 0L) {
             return false;
         }
 
+        timerExpired = true;
+        return true;
+    }
+
+    public boolean expireTimer() {
+        if (!hasTimer() || timerExpired || !hasActiveObjectives()) {
+            return false;
+        }
+        timerRemainingMillis = 0L;
         timerExpired = true;
         return true;
     }

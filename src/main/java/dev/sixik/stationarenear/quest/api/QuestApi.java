@@ -11,8 +11,11 @@ import dev.sixik.stationarenear.quest.data.QuestTask;
 import dev.sixik.stationarenear.quest.data.QuestValueCodec;
 import dev.sixik.stationarenear.quest.event.QuestAssignedEvent;
 import dev.sixik.stationarenear.quest.event.QuestCompletedEvent;
+import dev.sixik.stationarenear.quest.event.QuestMissionCompletedEvent;
+import dev.sixik.stationarenear.quest.event.QuestMissionFailedEvent;
 import dev.sixik.stationarenear.quest.event.QuestProgressChangedEvent;
 import dev.sixik.stationarenear.quest.event.QuestStartedEvent;
+import dev.sixik.stationarenear.quest.event.QuestTaskCompletedEvent;
 import dev.sixik.stationarenear.quest.event.StationQuestsCompletedEvent;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
@@ -223,10 +226,22 @@ public final class QuestApi {
         stationState.put(objective.complete(progress));
         data.station(stationState);
 
+        MinecraftForge.EVENT_BUS.post(new QuestTaskCompletedEvent(level, stationId, definition, completedValue));
         MinecraftForge.EVENT_BUS.post(new QuestCompletedEvent(level, stationId, definition, completedValue));
         if (!stationState.hasActiveObjectives()) {
+            MinecraftForge.EVENT_BUS.post(new QuestMissionCompletedEvent(level, stationId));
             MinecraftForge.EVENT_BUS.post(new StationQuestsCompletedEvent(level, stationId));
         }
+        return true;
+    }
+
+    public static boolean fail(ServerLevel level, UUID stationId, String reason) {
+        QuestSavedData data = QuestSavedData.get(level);
+        Optional<QuestStationState> stationOptional = data.stationIfPresent(stationId);
+        if (stationOptional.isEmpty() || !stationOptional.get().hasActiveObjectives()) {
+            return false;
+        }
+        MinecraftForge.EVENT_BUS.post(new QuestMissionFailedEvent(level, stationId, stationOptional.get(), reason));
         return true;
     }
 

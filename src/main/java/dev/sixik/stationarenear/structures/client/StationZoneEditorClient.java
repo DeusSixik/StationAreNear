@@ -10,6 +10,9 @@ import dev.sixik.stationarenear.structures.network.packet.TemplateSelectionActio
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.unigui.api.layout.Alignment;
 import dev.sixik.unigui.api.layout.LayoutConstraints;
+import dev.sixik.unigui.api.layout.Overflow;
+import dev.sixik.unigui.api.math.MutableColor;
+import dev.sixik.unigui.api.text.TextOverflowMode;
 import dev.sixik.unigui.api.widget.Widget;
 import dev.sixik.unigui.impl.widget.WidgetBase;
 import dev.sixik.unigui.widgets.containers.*;
@@ -65,70 +68,149 @@ public final class StationZoneEditorClient {
         private final OverlayLayer overlayLayer = new OverlayLayer(viewport);
         private final TreeView hierarchy = new TreeView();
         private final VBox inspector = new VBox();
-        private final Label status = new Label("Ready");
+        private static final MutableColor COLOR_TITLE = MutableColor.rgba(0.78f, 0.90f, 1.0f, 1.0f);
+        private static final MutableColor COLOR_TEXT = MutableColor.rgba(0.74f, 0.80f, 0.88f, 1.0f);
+        private static final MutableColor COLOR_MUTED = MutableColor.rgba(0.45f, 0.54f, 0.66f, 1.0f);
+        private static final MutableColor COLOR_ACCENT = MutableColor.rgba(0.45f, 0.84f, 1.0f, 1.0f);
+        private static final MutableColor COLOR_WARNING = MutableColor.rgba(1.0f, 0.74f, 0.34f, 1.0f);
+
+        private final Label status = new Label("Готово. Выбери Root, connection или trigger.");
+        private final Label headerSummary = new Label("");
+        private final Label connectionStat = new Label("");
+        private final Label triggerStat = new Label("");
+        private final Label draftStat = new Label("");
         private String selectedKey = "root";
         private String pendingOverwriteTemplate = "";
 
         private EditorRoot(CompoundTag source) {
             this.tag = source.copy();
-            viewport.addChild(backgroundFrame());
-            VBox mainPanel = new VBox();
-            viewport.addChild(mainPanel);
-
             StationStructureEditorStick.normalize(this.tag);
             StationEditorClientState.setEditorTag(this.tag);
-            mainPanel.layout(style -> style.size(640.0f, 390.0f).padding(6.0f).gap(4.0f).align(Alignment.CENTER, Alignment.CENTER));
 
-            Label title = new Label("Station Structure Editor");
-            title.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0).flexShrink(0.0f));
-            mainPanel.addChild(backgroundFrame());
-            mainPanel.addChild(title);
+            viewport.addChild(backgroundFrame());
+
+            VBox mainPanel = new VBox();
+            mainPanel.layout(style -> style.sizePercent(92.0f, 88.0f)
+                    .padding(12.0f)
+                    .gap(10.0f)
+                    .align(Alignment.CENTER, Alignment.CENTER));
+            viewport.addChild(mainPanel);
+
+            mainPanel.addChild(buildHeader());
 
             HBox workspace = new HBox();
-            workspace.layout(style -> style.size(LayoutConstraints.AUTO, 328.0f).gap(6.0f).flexGrow(1.0f).flexShrink(1.0f));
+            workspace.layout(style -> style.sizePercent(100.0f, 100.0f)
+                    .gap(10.0f)
+                    .flexGrow(1.0f)
+                    .flexShrink(1.0f));
             workspace.addChild(buildHierarchyPane());
             workspace.addChild(buildInspectorPane());
             mainPanel.addChild(workspace);
-
-            HBox footer = new HBox();
-            footer.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
-            status.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(1.0f).flexShrink(1.0f));
-            Button save = button("Save to wand");
-            Button saveStructure = button("Save Structure");
-            Button clearWand = button("Clear Wand");
-            Button templates = button("Templates");
-            save.onClick(event -> saveTag());
-            saveStructure.onClick(event -> saveStructure());
-            clearWand.onClick(event -> clearWandData());
-            templates.onClick(event -> StationStructureNetwork.sendTemplateAction(new TemplateSelectionActionPacket("", "open")));
-            footer.addChild(status);
-            footer.addChild(save);
-            footer.addChild(saveStructure);
-            footer.addChild(clearWand);
-            footer.addChild(templates);
-            mainPanel.addChild(footer);
+            mainPanel.addChild(buildFooter());
 
             rebuildHierarchy();
             String initialSelection = tag.getString(StationStructureEditorStick.KEY_SELECTED_NODE);
             select(initialSelection.startsWith("trigger:") ? initialSelection : "root");
+            refreshStats();
         }
 
         private Widget root() {
             return overlayLayer;
         }
 
+        private Widget buildHeader() {
+            HBox header = new HBox();
+            header.layout(style -> style.size(LayoutConstraints.AUTO, 62.0f)
+                    .gap(12.0f)
+                    .flexGrow(0.0f)
+                    .flexShrink(0.0f));
+
+            VBox titleBlock = new VBox();
+            titleBlock.layout(style -> style.size(LayoutConstraints.AUTO, 58.0f)
+                    .gap(3.0f)
+                    .flexGrow(1.0f)
+                    .flexShrink(1.0f));
+            Label title = label("Редактор зоны станции", COLOR_TITLE);
+            title.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).flexGrow(0.0f).flexShrink(0.0f));
+            headerSummary.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0.0f).flexShrink(0.0f));
+            headerSummary.color(COLOR_MUTED);
+            headerSummary.noWrap();
+            headerSummary.overflowMode(TextOverflowMode.CLIP);
+            titleBlock.addChild(title);
+            titleBlock.addChild(headerSummary);
+
+            HBox stats = new HBox();
+            stats.layout(style -> style.size(354.0f, 58.0f).gap(6.0f).flexGrow(0.0f).flexShrink(0.0f));
+            stats.addChild(statCard("CONNECTIONS", connectionStat));
+            stats.addChild(statCard("TRIGGERS", triggerStat));
+            stats.addChild(statCard("DRAFTS", draftStat));
+
+            header.addChild(titleBlock);
+            header.addChild(stats);
+            return header;
+        }
+
+        private Widget buildFooter() {
+            HBox footer = new HBox();
+            footer.layout(style -> style.size(LayoutConstraints.AUTO, 32.0f)
+                    .gap(8.0f)
+                    .flexGrow(0.0f)
+                    .flexShrink(0.0f));
+            status.color(COLOR_MUTED);
+            status.noWrap();
+            status.overflowMode(TextOverflowMode.CLIP);
+            status.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).flexGrow(1.0f).flexShrink(1.0f));
+
+            Button templates = button("Templates");
+            Button clearWand = button("Clear Wand");
+            Button saveStructure = button("Save Structure");
+            templates.onClick(event -> StationStructureNetwork.sendTemplateAction(new TemplateSelectionActionPacket("", "open")));
+            clearWand.onClick(event -> clearWandData());
+            saveStructure.onClick(event -> saveStructure());
+
+            footer.addChild(status);
+            footer.addChild(templates);
+            footer.addChild(clearWand);
+            footer.addChild(saveStructure);
+            return footer;
+        }
+
+        private Widget statCard(String title, Label value) {
+            VBox card = new VBox();
+            card.layout(style -> style.size(114.0f, 58.0f)
+                    .padding(6.0f)
+                    .gap(2.0f)
+                    .flexGrow(0.0f)
+                    .flexShrink(0.0f));
+            Label caption = label(title, COLOR_MUTED);
+            caption.layout(style -> style.size(LayoutConstraints.AUTO, 18.0f).flexGrow(0.0f).flexShrink(0.0f));
+            value.color(COLOR_ACCENT);
+            value.noWrap();
+            value.overflowMode(TextOverflowMode.CLIP);
+            value.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).flexGrow(0.0f).flexShrink(0.0f));
+            card.addChild(caption);
+            card.addChild(value);
+            return card;
+        }
+
         private Widget buildHierarchyPane() {
-            VBox pane = pane("Hierarchy");
+            VBox pane = pane("Навигация");
+            pane.layout(style -> style.size(310.0f, LayoutConstraints.AUTO)
+                    .padding(8.0f)
+                    .gap(7.0f)
+                    .flexGrow(0.0f)
+                    .flexShrink(0.0f));
+
             HBox toolbar = new HBox();
-            toolbar.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).gap(4.0f).flexGrow(0).flexShrink(0.0f));
+            toolbar.layout(style -> style.size(LayoutConstraints.AUTO, 30.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
             Button addConnection = button("+ Connection");
-            Button addTrigger = button("Create Trigger");
+            Button addTrigger = button("+ Trigger");
             addConnection.onClick(event -> addConnection());
             addTrigger.onClick(event -> addTrigger(StationEditorNodeType.TRIGGER));
             toolbar.addChild(addConnection);
             toolbar.addChild(addTrigger);
 
-            hierarchy.layout(style -> style.size(230.0f, LayoutConstraints.AUTO).flexGrow(1.0f).flexShrink(1.0f));
+            hierarchy.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).flexGrow(1.0f).flexShrink(1.0f));
             hierarchy.onSelectionChanged(event -> {
                 TreeViewNode node = hierarchy.selectedNode();
                 if (node != null) {
@@ -141,18 +223,31 @@ public final class StationZoneEditorClient {
         }
 
         private Widget buildInspectorPane() {
-            VBox pane = pane("Inspector");
-            ScrollView scroll = new ScrollView(inspector);
-            scroll.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).flexGrow(1.0f).flexShrink(1.0f));
+            VBox pane = pane("Инспектор");
+            inspector.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).gap(7.0f).flexGrow(0.0f).flexShrink(0.0f));
+            ScrollView scroll = new ScrollView(inspector)
+                    .scrollStep(34.0f)
+                    .scrollbarGap(2.0f);
+            scroll.scrollbarTrackColor().set(0.0f, 0.0f, 0.0f, 0.36f);
+            scroll.scrollbarThumbColor().set(0.45f, 0.84f, 1.0f, 0.82f);
+            scroll.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO)
+                    .overflowX(Overflow.HIDDEN)
+                    .overflowY(Overflow.AUTO)
+                    .flexGrow(1.0f)
+                    .flexShrink(1.0f));
             pane.addChild(scroll);
             return pane;
         }
 
         private VBox pane(String title) {
             VBox pane = new VBox();
-            pane.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).padding(6.0f).gap(5.0f).flexGrow(1.0f).flexShrink(1.0f));
-            Label header = new Label(title);
-            header.layout(style -> style.size(LayoutConstraints.AUTO, 20.0f).flexGrow(0).flexShrink(0.0f));
+            pane.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO)
+                    .padding(8.0f)
+                    .gap(7.0f)
+                    .flexGrow(1.0f)
+                    .flexShrink(1.0f));
+            Label header = label(title, COLOR_TITLE);
+            header.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0).flexShrink(0.0f));
             pane.addChild(header);
             return pane;
         }
@@ -182,7 +277,19 @@ public final class StationZoneEditorClient {
                 CompoundTag trigger = triggerTags.getCompound(i);
                 triggers.addChild(trigger.getString("nodeType") + ": " + trigger.getString("id")).value("trigger:" + i);
             }
-            hierarchy.silentSelect(root);
+            TreeViewNode selected = findNodeByValue(root, selectedKey);
+            hierarchy.silentSelect(selected == null ? root : selected);
+            refreshStats();
+        }
+
+        private TreeViewNode findNodeByValue(TreeViewNode node, String value) {
+            if (node == null) return null;
+            if (Objects.equals(node.value(), value)) return node;
+            for (TreeViewNode child : node.children()) {
+                TreeViewNode found = findNodeByValue(child, value);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private void select(String key) {
@@ -204,11 +311,16 @@ public final class StationZoneEditorClient {
             }
             StationStructureEditorStick.normalize(tag);
             StationEditorClientState.setEditorTag(tag);
+            refreshStats();
         }
 
         private void inspectRoot() {
-            inspector.addChild(label("Root defines the actual piece bounds. Children are clamped inside it."));
-            inspector.addChild(label("Mode: " + tag.getString(StationStructureEditorStick.KEY_EDITOR_MODE)));
+            BlockPos min = StationStructureEditorStick.structureMin(tag);
+            BlockPos max = StationStructureEditorStick.structureMax(tag);
+            section("Root zone");
+            hint("Границы структуры: " + min.toShortString() + " -> " + max.toShortString() + " / размер " + rootSizeText() + ".");
+            hint("Режим палки: " + tag.getString(StationStructureEditorStick.KEY_EDITOR_MODE));
+
             TextField template = field(tag.getString(StationStructureToolItem.KEY_TEMPLATE), "stationarenear:stations/piece");
             TextField pool = field(tag.getString(StationStructureToolItem.KEY_POOL), "stationarenear:space_station");
             TextField templateTags = field(tag.getString(StationStructureToolItem.KEY_TEMPLATE_TAGS), "quest,boss,loot");
@@ -219,18 +331,24 @@ public final class StationZoneEditorClient {
             ToggleButton showHandles = new ToggleButton("Render POS handles").silentChecked(!tag.contains(StationStructureEditorStick.KEY_SHOW_HANDLES) || tag.getBoolean(StationStructureEditorStick.KEY_SHOW_HANDLES));
             ToggleButton showRootText = new ToggleButton("Render Root label").silentChecked(!tag.contains(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT) || tag.getBoolean(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT));
             ToggleButton lockRootZone = new ToggleButton("Lock Root zone selection").silentChecked(tag.getBoolean(StationStructureEditorStick.KEY_LOCK_ROOT_ZONE));
+
+            section("Template settings");
             row("Template", template);
             row("Pool", pool);
             row("Tags", templateTags);
             row("Weight", weight);
             row("Floors", floors);
             row("Exterior Side", exteriorSide);
+
+            section("Viewport / selection");
             inspector.addChild(startPiece);
             inspector.addChild(showHandles);
             inspector.addChild(showRootText);
             inspector.addChild(lockRootZone);
+
+            section("Draft cleanup");
             HBox clearActions = new HBox();
-            clearActions.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
+            clearActions.layout(style -> style.size(LayoutConstraints.AUTO, 30.0f).gap(8.0f).flexGrow(0).flexShrink(0.0f));
             Button clearTriggerDraft = button("Clear Trigger draft");
             Button clearConnectionDraft = button("Clear Connection draft");
             Button clearSelection = button("Clear Selection");
@@ -241,16 +359,17 @@ public final class StationZoneEditorClient {
             clearActions.addChild(clearConnectionDraft);
             clearActions.addChild(clearSelection);
             inspector.addChild(clearActions);
+
             bind(template, value -> tag.putString(StationStructureToolItem.KEY_TEMPLATE, value));
             bind(pool, value -> tag.putString(StationStructureToolItem.KEY_POOL, value));
             bind(templateTags, value -> tag.putString(StationStructureToolItem.KEY_TEMPLATE_TAGS, value));
             bind(weight, value -> tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, parseInt(value, 1))));
             bind(floors, value -> tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, parseInt(value, 1))));
-            exteriorSide.onSelectionChanged(event -> { tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, comboSelectedItem(exteriorSide, event)); syncEditorState(); });
-            startPiece.onCheckedChanged(event -> { tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, event.newValue()); syncEditorState(); });
-            showHandles.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_HANDLES, event.newValue()); syncEditorState(); });
-            showRootText.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT, event.newValue()); syncEditorState(); });
-            lockRootZone.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_LOCK_ROOT_ZONE, event.newValue()); syncEditorState(); });
+            exteriorSide.onSelectionChanged(event -> { tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, comboSelectedItem(exteriorSide, event)); syncEditorStateAndSave(); });
+            startPiece.onCheckedChanged(event -> { tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, event.newValue()); syncEditorStateAndSave(); });
+            showHandles.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_HANDLES, event.newValue()); syncEditorStateAndSave(); });
+            showRootText.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_SHOW_ROOT_TEXT, event.newValue()); syncEditorStateAndSave(); });
+            lockRootZone.onCheckedChanged(event -> { tag.putBoolean(StationStructureEditorStick.KEY_LOCK_ROOT_ZONE, event.newValue()); syncEditorStateAndSave(); });
         }
 
         private void inspectTriggerDraft() {
@@ -357,13 +476,13 @@ public final class StationZoneEditorClient {
             editActions.addChild(move);
             inspector.addChild(editActions);
             Button delete = button("Delete connection");
-            delete.onClick(event -> { connectors.remove(index); tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors); rebuildHierarchy(); select("root"); });
+            delete.onClick(event -> { connectors.remove(index); tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors); syncEditorStateAndSave(); rebuildHierarchy(); select("root"); });
             inspector.addChild(delete);
             bind(name, value -> updateConnector(index, connectorTag -> connectorTag.putString("name", value)));
             bind(pos, value -> updateConnector(index, connectorTag -> connectorTag.put("worldPosition", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(connectorTag.getCompound("worldPosition")))))))));
             bind(min, value -> updateConnector(index, connectorTag -> connectorTag.put("worldMin", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(connectorTag.getCompound("worldMin")))))))));
             bind(max, value -> updateConnector(index, connectorTag -> connectorTag.put("worldMax", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(connectorTag.getCompound("worldMax")))))))));
-            direction.onSelectionChanged(event -> { updateConnector(index, connectorTag -> connectorTag.putString("direction", comboSelectedItem(direction, event))); syncEditorState(); });
+            direction.onSelectionChanged(event -> { updateConnector(index, connectorTag -> connectorTag.putString("direction", comboSelectedItem(direction, event))); syncEditorStateAndSave(); });
             bind(tags, value -> updateConnector(index, connectorTag -> connectorTag.putString("tags", value)));
             bind(accepts, value -> updateConnector(index, connectorTag -> connectorTag.putString("accepts", value)));
             bind(priority, value -> updateConnector(index, connectorTag -> connectorTag.putInt("priority", parseInt(value, 0))));
@@ -399,9 +518,9 @@ public final class StationZoneEditorClient {
             editActions.addChild(move);
             inspector.addChild(editActions);
             Button delete = button("Delete trigger");
-            delete.onClick(event -> { triggers.remove(index); tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers); rebuildHierarchy(); select("root"); });
+            delete.onClick(event -> { triggers.remove(index); tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers); syncEditorStateAndSave(); rebuildHierarchy(); select("root"); });
             inspector.addChild(delete);
-            nodeType.onSelectionChanged(event -> { String selected = comboSelectedItem(nodeType, event); StationEditorNodeType selectedType = StationEditorNodeType.valueOf(selected); updateTrigger(index, triggerTag -> { triggerTag.putString("nodeType", selected); triggerTag.putString("type", defaultTriggerType(selectedType)); CompoundTag data = triggerTag.getCompound("data").copy(); mergeDefaultTriggerData(data, selectedType); triggerTag.put("data", data); }); rebuildHierarchy(); syncEditorState(); select("trigger:" + index); });
+            nodeType.onSelectionChanged(event -> { String selected = comboSelectedItem(nodeType, event); StationEditorNodeType selectedType = StationEditorNodeType.valueOf(selected); updateTrigger(index, triggerTag -> { triggerTag.putString("nodeType", selected); triggerTag.putString("type", defaultTriggerType(selectedType)); CompoundTag data = triggerTag.getCompound("data").copy(); mergeDefaultTriggerData(data, selectedType); triggerTag.put("data", data); }); rebuildHierarchy(); syncEditorStateAndSave(); select("trigger:" + index); });
             bind(id, value -> updateTrigger(index, triggerTag -> triggerTag.putString("id", value)));
             bind(min, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMin", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMin")))))))));
             bind(max, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMax", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMax")))))))));
@@ -422,11 +541,11 @@ public final class StationZoneEditorClient {
                 inspector.addChild(place);
                 inspector.addChild(ignoreChance);
                 inspector.addChild(randomRotation);
-                pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorState(); });
+                pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorStateAndSave(); });
                 bind(chance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("placeChance", Math.max(0, Math.min(100, parseInt(value, 50))))));
-                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorState(); });
-                ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorState(); });
-                randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorState(); });
+                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
+                ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorStateAndSave(); });
+                randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 inspector.addChild(label("MobSpawn: default is danger-scaled zombies/skeletons; quest code may override event."));
                 ToggleButton place = new ToggleButton("Place mobs").silentChecked(!data.contains("place") || data.getBoolean("place"));
@@ -437,7 +556,7 @@ public final class StationZoneEditorClient {
                 inspector.addChild(place);
                 bind(mob, value -> updateTriggerData(index, dataTag -> dataTag.putString("mob", value)));
                 bind(count, value -> updateTriggerData(index, dataTag -> dataTag.putInt("count", Math.max(0, parseInt(value, 0)))));
-                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorState(); });
+                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 inspector.addChild(label("QuestTrigger: event-only marker, no default placement logic."));
                 TextField questId = field(data.getString("questId"), "quest/task id");
@@ -451,15 +570,27 @@ public final class StationZoneEditorClient {
 
         private void row(String name, Widget field) {
             HBox row = new HBox();
-            row.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
-            Label label = new Label(name);
-            label.layout(style -> style.size(105.0f, 20.0f).flexGrow(0).flexShrink(0.0f));
+            row.layout(style -> style.size(LayoutConstraints.AUTO, 30.0f).gap(8.0f).flexGrow(0).flexShrink(0.0f));
+            Label label = label(name, COLOR_MUTED);
+            label.layout(style -> style.size(132.0f, 24.0f).flexGrow(0).flexShrink(0.0f));
             if (field instanceof WidgetBase widgetBase) {
-                widgetBase.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(1.0f).flexShrink(1.0f));
+                widgetBase.layout(style -> style.size(LayoutConstraints.AUTO, 24.0f).flexGrow(1.0f).flexShrink(1.0f));
             }
             row.addChild(label);
             row.addChild(field);
             inspector.addChild(row);
+        }
+
+        private void section(String title) {
+            Label label = label(title, COLOR_ACCENT);
+            label.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0.0f).flexShrink(0.0f));
+            inspector.addChild(label);
+        }
+
+        private void hint(String text) {
+            Label label = label(text, COLOR_MUTED);
+            label.layout(style -> style.size(LayoutConstraints.AUTO, 20.0f).flexGrow(0.0f).flexShrink(0.0f));
+            inspector.addChild(label);
         }
 
         private StationEditorNodeType parseEditorNodeType(String value) {
@@ -614,7 +745,7 @@ public final class StationZoneEditorClient {
         private void clearDraftTags() {
             tag.remove(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_1);
             tag.remove(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_2);
-            syncEditorState();
+            syncEditorStateAndSave();
         }
 
         private void clearConnectionDraft() {
@@ -627,7 +758,7 @@ public final class StationZoneEditorClient {
         private void clearConnectionDraftTags() {
             tag.remove(StationStructureEditorStick.KEY_CONNECTION_DRAFT_POS_1);
             tag.remove(StationStructureEditorStick.KEY_CONNECTION_DRAFT_POS_2);
-            syncEditorState();
+            syncEditorStateAndSave();
         }
 
         private void resizeTriggerFromDraft(int index) {
@@ -643,7 +774,7 @@ public final class StationZoneEditorClient {
             trigger.put("worldMax", NbtPos.save(new BlockPos(Math.max(draftA.getX(), draftB.getX()), Math.max(draftA.getY(), draftB.getY()), Math.max(draftA.getZ(), draftB.getZ()))));
             triggers.set(index, trigger);
             tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers);
-            syncEditorState();
+            syncEditorStateAndSave();
             select("trigger:" + index);
             status.text("Trigger size updated from draft.");
         }
@@ -665,7 +796,7 @@ public final class StationZoneEditorClient {
             trigger.put("worldMax", NbtPos.save(clamp(oldMax.offset(dx, dy, dz))));
             triggers.set(index, trigger);
             tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers);
-            syncEditorState();
+            syncEditorStateAndSave();
             select("trigger:" + index);
             status.text("Trigger moved to draft POS_1.");
         }
@@ -684,7 +815,7 @@ public final class StationZoneEditorClient {
             connector.put("worldPosition", NbtPos.save(connectionDraftCenter(draftMin, draftMax)));
             connectors.set(index, connector);
             tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors);
-            syncEditorState();
+            syncEditorStateAndSave();
             select("connection:" + index);
             status.text("Connection size updated from draft.");
         }
@@ -708,16 +839,9 @@ public final class StationZoneEditorClient {
             connector.put("worldPosition", NbtPos.save(clamp(oldAnchor.offset(dx, dy, dz))));
             connectors.set(index, connector);
             tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors);
-            syncEditorState();
+            syncEditorStateAndSave();
             select("connection:" + index);
             status.text("Connection moved to draft POS_1.");
-        }
-
-        private void saveTag() {
-            StationStructureEditorStick.normalize(tag);
-            StationEditorClientState.setEditorTag(tag);
-            StationStructureNetwork.sendEditorSave(new SaveStationZoneEditorPacket(tag.copy()));
-            status.text("Saved to server wand NBT.");
         }
 
         private void saveStructure() {
@@ -755,7 +879,7 @@ public final class StationZoneEditorClient {
             field.onTextChanged(event -> {
                 pendingOverwriteTemplate = "";
                 consumer.accept(event.newText().trim());
-                syncEditorState();
+                syncEditorStateAndSave();
             });
         }
 
@@ -835,6 +959,37 @@ public final class StationZoneEditorClient {
         private void syncEditorState() {
             StationStructureEditorStick.normalize(tag);
             StationEditorClientState.setEditorTag(tag);
+            refreshStats();
+        }
+
+        private void syncEditorStateAndSave() {
+            syncEditorState();
+            StationStructureNetwork.sendEditorSave(new SaveStationZoneEditorPacket(tag.copy()));
+        }
+
+        private void refreshStats() {
+            int connections = tag.getList(StationStructureToolItem.KEY_CONNECTORS, Tag.TAG_COMPOUND).size();
+            int triggers = tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND).size();
+            int drafts = (hasConnectionDraft() ? 1 : 0) + (hasTriggerDraft() ? 1 : 0);
+            connectionStat.text(Integer.toString(connections));
+            triggerStat.text(Integer.toString(triggers));
+            draftStat.text(drafts == 0 ? "none" : Integer.toString(drafts));
+            draftStat.color(drafts == 0 ? COLOR_MUTED : COLOR_WARNING);
+            headerSummary.text("Template: " + safeText(tag.getString(StationStructureToolItem.KEY_TEMPLATE), "<empty>")
+                    + "  |  Pool: " + safeText(tag.getString(StationStructureToolItem.KEY_POOL), "<empty>")
+                    + "  |  Root: " + rootSizeText());
+        }
+
+        private String rootSizeText() {
+            BlockPos min = StationStructureEditorStick.structureMin(tag);
+            BlockPos max = StationStructureEditorStick.structureMax(tag);
+            return (max.getX() - min.getX() + 1) + "x"
+                    + (max.getY() - min.getY() + 1) + "x"
+                    + (max.getZ() - min.getZ() + 1);
+        }
+
+        private String safeText(String value, String fallback) {
+            return value == null || value.isBlank() ? fallback : value;
         }
 
         private boolean hasTriggerDraft() {
@@ -886,11 +1041,15 @@ public final class StationZoneEditorClient {
         }
 
         private TextField field(String value, String placeholder) {
-            return new TextField(value == null ? "" : value).placeholder(placeholder).maxLength(180);
+            return new TextField(value == null ? "" : value).placeholder(placeholder).maxLength(220);
         }
 
         private ComboBox combo(String[] items, String selected) {
-            ComboBox comboBox = new ComboBox().items(String.join(";", items)).useOverlay(overlayLayer).dropDownSameWidth().maxVisibleOptions(Math.min(6, items.length));
+            ComboBox comboBox = new ComboBox()
+                    .items(String.join(";", items))
+                    .useOverlay(overlayLayer)
+                    .dropDownSameWidth()
+                    .maxVisibleOptions(Math.min(8, items.length));
             int selectedIndex = 0;
             for (int i = 0; i < items.length; i++) {
                 if (items[i].equalsIgnoreCase(selected)) {
@@ -904,12 +1063,19 @@ public final class StationZoneEditorClient {
 
         private Button button(String text) {
             Button button = new Button(text);
-            button.layout(style -> style.size(LayoutConstraints.AUTO, 24.0f).flexGrow(0).flexShrink(0.0f));
+            button.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).flexGrow(0).flexShrink(0.0f));
             return button;
         }
 
         private Label label(String text) {
+            return label(text, COLOR_TEXT);
+        }
+
+        private Label label(String text, MutableColor color) {
             Label label = new Label(text);
+            label.color(color);
+            label.noWrap();
+            label.overflowMode(TextOverflowMode.CLIP);
             label.layout(style -> style.size(LayoutConstraints.AUTO, 20.0f).flexGrow(0).flexShrink(0.0f));
             return label;
         }

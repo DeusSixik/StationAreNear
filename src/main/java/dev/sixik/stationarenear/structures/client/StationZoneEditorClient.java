@@ -211,6 +211,7 @@ public final class StationZoneEditorClient {
             inspector.addChild(label("Mode: " + tag.getString(StationStructureEditorStick.KEY_EDITOR_MODE)));
             TextField template = field(tag.getString(StationStructureToolItem.KEY_TEMPLATE), "stationarenear:stations/piece");
             TextField pool = field(tag.getString(StationStructureToolItem.KEY_POOL), "stationarenear:space_station");
+            TextField templateTags = field(tag.getString(StationStructureToolItem.KEY_TEMPLATE_TAGS), "quest,boss,loot");
             TextField weight = field(Integer.toString(tag.getInt(StationStructureToolItem.KEY_WEIGHT)), "1");
             TextField floors = field(Integer.toString(tag.getInt(StationStructureToolItem.KEY_FLOOR_SPAN)), "1");
             ComboBox exteriorSide = combo(exteriorSideNames(), tag.getString(StationStructureToolItem.KEY_EXTERIOR_SIDE));
@@ -220,6 +221,7 @@ public final class StationZoneEditorClient {
             ToggleButton lockRootZone = new ToggleButton("Lock Root zone selection").silentChecked(tag.getBoolean(StationStructureEditorStick.KEY_LOCK_ROOT_ZONE));
             row("Template", template);
             row("Pool", pool);
+            row("Tags", templateTags);
             row("Weight", weight);
             row("Floors", floors);
             row("Exterior Side", exteriorSide);
@@ -241,6 +243,7 @@ public final class StationZoneEditorClient {
             inspector.addChild(clearActions);
             bind(template, value -> tag.putString(StationStructureToolItem.KEY_TEMPLATE, value));
             bind(pool, value -> tag.putString(StationStructureToolItem.KEY_POOL, value));
+            bind(templateTags, value -> tag.putString(StationStructureToolItem.KEY_TEMPLATE_TAGS, value));
             bind(weight, value -> tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, parseInt(value, 1))));
             bind(floors, value -> tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, parseInt(value, 1))));
             exteriorSide.onSelectionChanged(event -> { tag.putString(StationStructureToolItem.KEY_EXTERIOR_SIDE, comboSelectedItem(exteriorSide, event)); syncEditorState(); });

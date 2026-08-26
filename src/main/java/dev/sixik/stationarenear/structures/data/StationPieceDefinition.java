@@ -6,11 +6,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 
-import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public record StationPieceDefinition(
         ResourceLocation id,
@@ -18,6 +20,7 @@ public record StationPieceDefinition(
         ResourceLocation pool,
         List<StationConnector> connectors,
         List<StationTriggerZone> triggerZones,
+        Set<String> tags,
         BlockPos selectionMin,
         BlockPos selectionMax,
         int floorSpan,
@@ -30,6 +33,7 @@ public record StationPieceDefinition(
     public StationPieceDefinition {
         connectors = List.copyOf(connectors);
         triggerZones = List.copyOf(triggerZones);
+        tags = normalizeTags(tags);
         floorSpan = Math.max(1, floorSpan);
         weight = Math.max(1, weight);
     }
@@ -43,6 +47,7 @@ public record StationPieceDefinition(
         tag.putString("id", id.toString());
         tag.putString("template", template.toString());
         tag.putString("pool", pool.toString());
+        tag.put("tags", saveTags(tags));
         tag.putInt("weight", weight);
         tag.put("selectionMin", NbtPos.save(selectionMin));
         tag.put("selectionMax", NbtPos.save(selectionMax));
@@ -88,6 +93,7 @@ public record StationPieceDefinition(
             triggerZones.add(StationTriggerZone.load((CompoundTag) triggerTag));
         }
 
+        Set<String> tags = tag.contains("tags", Tag.TAG_LIST) ? loadTags(tag.getList("tags", Tag.TAG_STRING)) : Set.of();
         BlockPos selectionMin = tag.contains("selectionMin") ? NbtPos.load(tag.getCompound("selectionMin")) : BlockPos.ZERO;
         BlockPos selectionMax = tag.contains("selectionMax") ? NbtPos.load(tag.getCompound("selectionMax")) : BlockPos.ZERO;
         int detectedFloorSpan = Math.max(1, (selectionMax.getY() - selectionMin.getY() + 16) / 16);
@@ -97,6 +103,7 @@ public record StationPieceDefinition(
                 pool,
                 connectors,
                 triggerZones,
+                tags,
                 selectionMin,
                 selectionMax,
                 tag.contains("floorSpan") ? Math.max(1, tag.getInt("floorSpan")) : detectedFloorSpan,
@@ -106,4 +113,40 @@ public record StationPieceDefinition(
                 tag.contains("maxDanger") ? tag.getFloat("maxDanger") : 1.0F
         );
     }
+    private static Set<String> normalizeTags(Set<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String tag : tags) {
+            if (tag == null || tag.isBlank()) {
+                continue;
+            }
+            normalized.add(tag.trim().toLowerCase(java.util.Locale.ROOT));
+        }
+        return Set.copyOf(normalized);
+    }
+
+    private static ListTag saveTags(Set<String> tags) {
+        ListTag list = new ListTag();
+        for (String tag : tags) {
+            list.add(StringTag.valueOf(tag));
+        }
+        return list;
+    }
+
+    private static Set<String> loadTags(ListTag list) {
+        Set<String> tags = new LinkedHashSet<>();
+        for (Tag tag : list) {
+            if (tag instanceof StringTag stringTag) {
+                String value = stringTag.getAsString();
+                if (!value.isBlank()) {
+                    tags.add(value.trim().toLowerCase(java.util.Locale.ROOT));
+                }
+            }
+        }
+        return tags;
+    }
+
 }

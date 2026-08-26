@@ -23,11 +23,12 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 import net.minecraftforge.common.MinecraftForge;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Set;
 
 public class StationGenerator {
 
@@ -35,6 +36,7 @@ public class StationGenerator {
     private static final int START_BOUNDARY_DEAD_END_DISTANCE = 4;
     private static final int START_BOUNDARY_DEAD_END_SCORE_BONUS = 8_000;
     private static final int SECONDARY_CONNECTION_SCORE_BONUS = 650;
+    private static final int REQUIRED_PIECE_SCORE_BONUS = 12_000;
     private static final int EXTERIOR_CLEARANCE_BLOCKS = 10;
 
     public StationGenerationResult generateDockedStation(
@@ -251,6 +253,7 @@ public class StationGenerator {
         IntArrayList parentIndexes = new IntArrayList();
         List<StationConnector> sourceConnectors = new ObjectArrayList<>();
         Object2IntMap<ResourceLocation> pieceUsage = new Object2IntOpenHashMap<>();
+        Object2IntMap<String> tagUsage = new Object2IntOpenHashMap<>();
         boolean allowVerticalConnections = allowVerticalConnections(settings.maxFloors());
 
         PlacedStationPiece startPiece = chooseStartPiece(level, library, pool, shuttleDoorCenter, stationDirection, danger, random, boundary, settings.maxFloors());
@@ -264,15 +267,17 @@ public class StationGenerator {
         occupied.add(startPiece.bounds());
         reserveExteriorClearance(library, startPiece, reservedClearances);
         incrementPieceUsage(pieceUsage, startPiece);
+        incrementTagUsage(library, tagUsage, startPiece);
         openConnectors.addAll(usableOpenConnectors(startPiece.openConnectors(), collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections));
 
         int targetPieces = settings.maxRooms();
         int requiredMinRooms = settings.minRooms() > 0 ? settings.minRooms() : pool.minRooms();
         int minAllowedY = startPiece.bounds().minY() - (settings.maxFloors() - 1) * FLOOR_HEIGHT_BLOCKS;
         int maxAllowedY = startPiece.bounds().maxY() + (settings.maxFloors() - 1) * FLOOR_HEIGHT_BLOCKS;
-        while (!openConnectors.isEmpty() && pieces.size() < targetPieces) {
+        while (!openConnectors.isEmpty() && (pieces.size() < targetPieces || !requiredPiecesSatisfied(settings, pieceUsage, tagUsage))) {
             boolean needsExpandablePiece = pieces.size() + 1 < requiredMinRooms;
-            PlacementCandidate candidate = chooseNextPiece(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), needsExpandablePiece, pieceUsage);
+            boolean forceRequiredPiece = pieces.size() >= targetPieces && !requiredPiecesSatisfied(settings, pieceUsage, tagUsage);
+            PlacementCandidate candidate = chooseNextPiece(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), needsExpandablePiece, pieceUsage, tagUsage, settings, forceRequiredPiece);
             if (candidate == null) {
                 break;
             }
@@ -287,10 +292,11 @@ public class StationGenerator {
             occupied.add(placedPiece.bounds());
             reserveExteriorClearance(library, placedPiece, reservedClearances);
             incrementPieceUsage(pieceUsage, placedPiece);
+            incrementTagUsage(library, tagUsage, placedPiece);
             openConnectors.addAll(usableOpenConnectors(placedPiece.openConnectors(), collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections));
         }
 
-        if (pieces.size() < requiredMinRooms) {
+        if (pieces.size() < requiredMinRooms || !requiredPiecesSatisfied(settings, pieceUsage, tagUsage)) {
             return null;
         }
 
@@ -426,9 +432,12 @@ public class StationGenerator {
             int maxAllowedY,
             int maxFloors,
             boolean needsExpandablePiece,
-            Map<ResourceLocation, Integer> pieceUsage
+            Map<ResourceLocation, Integer> pieceUsage,
+            Map<String, Integer> tagUsage,
+            StationGenerationSettings settings,
+            boolean forceRequiredPiece
     ) {
-        List<StationPieceDefinition> candidates = definitions(library, pool.roomPieces(), danger);
+        List<StationPieceDefinition> candidates = candidateRoomDefinitions(library, pool, settings, danger);
         List<StationPieceDefinition> capCandidates = singleConnectorDefinitions(candidates, maxFloors);
         shuffleWeighted(candidates, random);
 
@@ -441,7 +450,7 @@ public class StationGenerator {
             BlockPos target = openConnector.position().relative(openConnector.direction());
             Direction requiredDirection = openConnector.direction().getOpposite();
             for (StationPieceDefinition definition : candidates) {
-                if (!pieceAllowedForFloors(definition, maxFloors)) {
+                if (!pieceAllowedForFloors(definition, maxFloors) || (forceRequiredPiece && requiredPieceRemaining(settings, pieceUsage, tagUsage, definition) <= 0)) {
                     continue;
                 }
                 Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
@@ -487,9 +496,11 @@ public class StationGenerator {
 
                     int usageCount = pieceUsage.getOrDefault(definition.id(), 0);
                     int secondaryConnections = secondaryConnectorClosureCount(piece, openConnectors, openConnector);
+                    int requiredRemaining = requiredPieceRemaining(settings, pieceUsage, tagUsage, definition);
                     int score = scorePiece(piece, definition, boundary, random, usableConnectors, usageCount, openConnector.direction())
                             + connectorDirectionScore(openConnector, boundary.direction())
                             + secondaryConnections * SECONDARY_CONNECTION_SCORE_BONUS
+                            + requiredPieceScore(requiredRemaining)
                             + exteriorSideScore(definition, piece, rotation, occupied);
                     validPlacements.add(new PlacementCandidate(openConnector, piece, score));
                 }
@@ -1133,12 +1144,66 @@ public class StationGenerator {
         pieceUsage.merge(piece.definitionId(), 1, Integer::sum);
     }
 
+    private void incrementTagUsage(StationStructureLibraryData library, Object2IntMap<String> tagUsage, PlacedStationPiece piece) {
+        library.piece(piece.definitionId()).ifPresent(definition -> {
+            for (String tag : definition.tags()) {
+                tagUsage.merge(tag, 1, Integer::sum);
+            }
+        });
+    }
+
     private List<StationPieceDefinition> definitions(StationStructureLibraryData library, List<ResourceLocation> ids, float danger) {
         List<StationPieceDefinition> definitions = new ObjectArrayList<>();
         for (ResourceLocation id : ids) {
             library.piece(id).filter(piece -> piece.canSpawnAtDanger(danger)).ifPresent(definitions::add);
         }
         return definitions;
+    }
+
+    private List<StationPieceDefinition> candidateRoomDefinitions(StationStructureLibraryData library, StationPoolDefinition pool, StationGenerationSettings settings, float danger) {
+        Set<ResourceLocation> ids = new LinkedHashSet<>(pool.roomPieces());
+        ids.addAll(settings.requiredPieces().keySet());
+        for (StationPieceDefinition definition : library.pieces()) {
+            if (matchesRequiredTag(settings, definition)) {
+                ids.add(definition.id());
+            }
+        }
+        return definitions(library, List.copyOf(ids), danger);
+    }
+
+    private boolean requiredPiecesSatisfied(StationGenerationSettings settings, Map<ResourceLocation, Integer> pieceUsage, Map<String, Integer> tagUsage) {
+        for (Map.Entry<ResourceLocation, Integer> entry : settings.requiredPieces().entrySet()) {
+            if (pieceUsage.getOrDefault(entry.getKey(), 0) < entry.getValue()) {
+                return false;
+            }
+        }
+        for (Map.Entry<String, Integer> entry : settings.requiredPieceTags().entrySet()) {
+            if (tagUsage.getOrDefault(entry.getKey(), 0) < entry.getValue()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private int requiredPieceRemaining(StationGenerationSettings settings, Map<ResourceLocation, Integer> pieceUsage, Map<String, Integer> tagUsage, StationPieceDefinition definition) {
+        int remaining = Math.max(0, settings.requiredPieceCount(definition.id()) - pieceUsage.getOrDefault(definition.id(), 0));
+        for (String tag : definition.tags()) {
+            remaining = Math.max(remaining, Math.max(0, settings.requiredPieceTagCount(tag) - tagUsage.getOrDefault(tag, 0)));
+        }
+        return remaining;
+    }
+
+    private boolean matchesRequiredTag(StationGenerationSettings settings, StationPieceDefinition definition) {
+        for (String tag : definition.tags()) {
+            if (settings.requiredPieceTagCount(tag) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int requiredPieceScore(int requiredRemaining) {
+        return requiredRemaining <= 0 ? 0 : REQUIRED_PIECE_SCORE_BONUS + requiredRemaining * 500;
     }
 
     private void shuffleWeighted(List<StationPieceDefinition> definitions, RandomSource random) {

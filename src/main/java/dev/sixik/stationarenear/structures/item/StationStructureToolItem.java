@@ -31,6 +31,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -38,6 +39,7 @@ public class StationStructureToolItem extends Item {
 
     public static final String KEY_TEMPLATE = "stationTemplate";
     public static final String KEY_POOL = "stationPool";
+    public static final String KEY_TEMPLATE_TAGS = "templateTags";
     public static final String KEY_POS_1 = "pos1";
     public static final String KEY_POS_2 = "pos2";
     public static final String KEY_CONNECTOR_NAME = "connectorName";
@@ -100,6 +102,9 @@ public class StationStructureToolItem extends Item {
         }
         if (tag.contains(KEY_POOL)) {
             tooltip.add(Component.literal("Pool: " + tag.getString(KEY_POOL)).withStyle(ChatFormatting.AQUA));
+        }
+        if (tag.contains(KEY_TEMPLATE_TAGS) && !tag.getString(KEY_TEMPLATE_TAGS).isBlank()) {
+            tooltip.add(Component.literal("Tags: " + tag.getString(KEY_TEMPLATE_TAGS)).withStyle(ChatFormatting.DARK_AQUA));
         }
         if (tag.getBoolean(KEY_START_PIECE)) {
             tooltip.add(Component.literal("Docking/start piece").withStyle(ChatFormatting.GREEN));
@@ -178,6 +183,7 @@ public class StationStructureToolItem extends Item {
                 poolId,
                 loadConnectors(tag, min, fallbackConnector),
                 loadTriggerZones(tag, min),
+                loadTemplateTags(tag),
                 BlockPos.ZERO,
                 max.subtract(min),
                 Math.max(1, tag.contains(KEY_FLOOR_SPAN) ? tag.getInt(KEY_FLOOR_SPAN) : detectFloorSpan(max.subtract(min))),
@@ -191,6 +197,21 @@ public class StationStructureToolItem extends Item {
         dev.sixik.stationarenear.structures.network.StationStructureNetwork.syncTemplateSelections(level);
         player.displayClientMessage(Component.literal("Saved station piece " + templateId + " into pool " + poolId), false);
         return true;
+    }
+
+    private static Set<String> loadTemplateTags(CompoundTag tag) {
+        if (!tag.contains(KEY_TEMPLATE_TAGS) || tag.getString(KEY_TEMPLATE_TAGS).isBlank()) {
+            return Set.of();
+        }
+
+        Set<String> tags = new LinkedHashSet<>();
+        for (String rawTag : tag.getString(KEY_TEMPLATE_TAGS).split(",")) {
+            String normalized = rawTag.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!normalized.isBlank()) {
+                tags.add(normalized);
+            }
+        }
+        return tags;
     }
 
     private static Direction exteriorSide(CompoundTag tag) {

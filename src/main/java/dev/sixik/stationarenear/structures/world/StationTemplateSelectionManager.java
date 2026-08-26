@@ -158,6 +158,7 @@ public final class StationTemplateSelectionManager {
         Rotation rotation = placedPiece.map(PlacedStationPiece::rotation).orElse(Rotation.NONE);
 
         tag.putString(StationStructureToolItem.KEY_POOL, piece.pool().toString());
+        tag.putString(StationStructureToolItem.KEY_TEMPLATE_TAGS, String.join(",", piece.tags()));
         tag.putInt(StationStructureToolItem.KEY_FLOOR_SPAN, Math.max(1, piece.floorSpan()));
         tag.put(StationStructureToolItem.KEY_CONNECTORS, saveEditorConnectors(piece.connectors(), origin, rotation));
         tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, saveEditorTriggers(piece.triggerZones(), origin, rotation));

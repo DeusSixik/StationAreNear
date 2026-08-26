@@ -41,7 +41,9 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -124,8 +126,19 @@ public final class StationStructureCommands {
                                                                 context.getSource(),
                                                                 ResourceLocationArgument.getId(context, "pool"),
                                                                 FloatArgumentType.getFloat(context, "danger"),
-                                                                IntegerArgumentType.getInteger(context, "pieces")
-                                                        ))))))
+                                                                IntegerArgumentType.getInteger(context, "pieces"),
+                                                                RequiredPieceSpec.empty()
+                                                        ))
+                                                        .then(Commands.literal("required")
+                                                                .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                                                                        .suggests(StationStructureCommands::suggestPieces)
+                                                                        .executes(context -> generate(
+                                                                                context.getSource(),
+                                                                                ResourceLocationArgument.getId(context, "pool"),
+                                                                                FloatArgumentType.getFloat(context, "danger"),
+                                                                                IntegerArgumentType.getInteger(context, "pieces"),
+                                                                                parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                                                        ))))))))
                         .then(generateAtCommand())
                         .then(Commands.literal("list_generated")
                                 .executes(context -> listGenerated(context.getSource())))
@@ -148,8 +161,23 @@ public final class StationStructureCommands {
                         IntegerArgumentType.getInteger(context, "max_floors"),
                         IntegerArgumentType.getInteger(context, "max_rooms"),
                         IntegerArgumentType.getInteger(context, "min_rooms"),
-                        FloatArgumentType.getFloat(context, "danger")
-                ));
+                        FloatArgumentType.getFloat(context, "danger"),
+                        RequiredPieceSpec.empty()
+                ))
+                .then(Commands.literal("required")
+                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                                .suggests(StationStructureCommands::suggestPieces)
+                                .executes(context -> generateAt(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                        StringArgumentType.getString(context, "direction"),
+                                        StringArgumentType.getString(context, "pool"),
+                                        IntegerArgumentType.getInteger(context, "max_floors"),
+                                        IntegerArgumentType.getInteger(context, "max_rooms"),
+                                        IntegerArgumentType.getInteger(context, "min_rooms"),
+                                        FloatArgumentType.getFloat(context, "danger"),
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                ))));
         var minRoomsArgument = Commands.argument("min_rooms", IntegerArgumentType.integer(1))
                 .executes(context -> generateAt(
                         context.getSource(),
@@ -159,8 +187,23 @@ public final class StationStructureCommands {
                         IntegerArgumentType.getInteger(context, "max_floors"),
                         IntegerArgumentType.getInteger(context, "max_rooms"),
                         IntegerArgumentType.getInteger(context, "min_rooms"),
-                        0.5F
+                        0.5F,
+                        RequiredPieceSpec.empty()
                 ))
+                .then(Commands.literal("required")
+                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                                .suggests(StationStructureCommands::suggestPieces)
+                                .executes(context -> generateAt(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                        StringArgumentType.getString(context, "direction"),
+                                        StringArgumentType.getString(context, "pool"),
+                                        IntegerArgumentType.getInteger(context, "max_floors"),
+                                        IntegerArgumentType.getInteger(context, "max_rooms"),
+                                        IntegerArgumentType.getInteger(context, "min_rooms"),
+                                        0.5F,
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                ))))
                 .then(dangerArgument);
         var maxRoomsArgument = Commands.argument("max_rooms", IntegerArgumentType.integer(1))
                 .executes(context -> generateAt(
@@ -171,8 +214,23 @@ public final class StationStructureCommands {
                         IntegerArgumentType.getInteger(context, "max_floors"),
                         IntegerArgumentType.getInteger(context, "max_rooms"),
                         10,
-                        0.5F
+                        0.5F,
+                        RequiredPieceSpec.empty()
                 ))
+                .then(Commands.literal("required")
+                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                                .suggests(StationStructureCommands::suggestPieces)
+                                .executes(context -> generateAt(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                        StringArgumentType.getString(context, "direction"),
+                                        StringArgumentType.getString(context, "pool"),
+                                        IntegerArgumentType.getInteger(context, "max_floors"),
+                                        IntegerArgumentType.getInteger(context, "max_rooms"),
+                                        10,
+                                        0.5F,
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                ))))
                 .then(minRoomsArgument);
         return Commands.literal("generate_at")
                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
@@ -193,6 +251,26 @@ public final class StationStructureCommands {
         for (var pool : StationStructureLibraryData.get(context.getSource().getLevel()).pools()) {
             suggestions.add(pool.id().toString());
             suggestions.add(pool.id().getPath());
+        }
+        return SharedSuggestionProvider.suggest(suggestions, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestPieces(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        List<String> suggestions = new ArrayList<>();
+        String existingText = builder.getRemaining();
+        String prefix = "";
+        int lastComma = existingText.lastIndexOf(',');
+        if (lastComma >= 0) {
+            prefix = existingText.substring(0, lastComma + 1);
+        }
+        java.util.Set<String> tagSuggestions = new java.util.LinkedHashSet<>();
+        for (var piece : StationStructureLibraryData.get(context.getSource().getLevel()).pieces()) {
+            suggestions.add(prefix + piece.id() + "=1");
+            suggestions.add(prefix + piece.id().getPath() + "=1");
+            tagSuggestions.addAll(piece.tags());
+        }
+        for (String tag : tagSuggestions) {
+            suggestions.add(prefix + "#" + tag + "=1");
         }
         return SharedSuggestionProvider.suggest(suggestions, builder);
     }
@@ -310,7 +388,7 @@ public final class StationStructureCommands {
         return 1;
     }
 
-    private static int generate(CommandSourceStack source, ResourceLocation pool, float danger, int pieces) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int generate(CommandSourceStack source, ResourceLocation pool, float danger, int pieces, RequiredPieceSpec requiredPieces) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
         BlockPos doorCenter = player.blockPosition();
         Direction stationDirection = player.getDirection();
@@ -318,7 +396,7 @@ public final class StationStructureCommands {
                 source.getLevel(),
                 doorCenter,
                 stationDirection,
-                new StationGenerationSettings(pool, danger, true, pieces, source.getLevel().getRandom().nextLong())
+                new StationGenerationSettings(pool, danger, true, pieces, source.getLevel().getRandom().nextLong()).withRequiredPieces(requiredPieces.pieces(), requiredPieces.tags())
         );
 
         if (!result.success()) {
@@ -330,7 +408,7 @@ public final class StationStructureCommands {
         return result.station().map(station -> station.pieces().size()).orElse(1);
     }
 
-    private static int generateAt(CommandSourceStack source, BlockPos doorCenter, String directionName, String poolText, int maxFloors, int maxRooms, int minRooms, float danger) {
+    private static int generateAt(CommandSourceStack source, BlockPos doorCenter, String directionName, String poolText, int maxFloors, int maxRooms, int minRooms, float danger, RequiredPieceSpec requiredPieces) {
         Direction stationDirection = Direction.byName(directionName);
         if (stationDirection == null || stationDirection.getAxis().isVertical()) {
             source.sendFailure(Component.literal("Direction must be one of: north, south, east, west"));
@@ -342,7 +420,7 @@ public final class StationStructureCommands {
                 source.getLevel(),
                 doorCenter,
                 stationDirection,
-                new StationGenerationSettings(pool, danger, true, maxFloors, minRooms, maxRooms, source.getLevel().getRandom().nextLong())
+                new StationGenerationSettings(pool, danger, true, maxFloors, minRooms, maxRooms, source.getLevel().getRandom().nextLong()).withRequiredPieces(requiredPieces.pieces(), requiredPieces.tags())
         );
 
         if (!result.success()) {
@@ -353,9 +431,69 @@ public final class StationStructureCommands {
         result.station().ifPresent(station -> source.sendSuccess(() -> Component.literal(
                 "Generated station " + station.id() + " pool=" + station.pool()
                         + " pieces=" + station.pieces().size()
+                        + (requiredPieces.isEmpty() ? "" : " required=" + formatRequiredPieces(requiredPieces))
                         + " bounds=" + formatBounds(aggregateBounds(station))
         ), false));
         return result.station().map(station -> station.pieces().size()).orElse(1);
+    }
+
+    private static RequiredPieceSpec parseRequiredPieces(CommandSourceStack source, String text) {
+        Map<ResourceLocation, Integer> requiredPieces = new LinkedHashMap<>();
+        Map<String, Integer> requiredTags = new LinkedHashMap<>();
+        if (text == null || text.isBlank()) {
+            return new RequiredPieceSpec(requiredPieces, requiredTags);
+        }
+
+        for (String rawEntry : text.split(",")) {
+            String entry = rawEntry.trim();
+            if (entry.isEmpty()) {
+                continue;
+            }
+
+            String[] parts = entry.split("=", 2);
+            int count = 1;
+            if (parts.length > 1) {
+                try {
+                    count = Math.max(1, Integer.parseInt(parts[1].trim()));
+                } catch (NumberFormatException exception) {
+                    source.sendFailure(Component.literal("Invalid required piece count: " + entry));
+                    continue;
+                }
+            }
+
+            String key = parts[0].trim();
+            if (key.startsWith("#")) {
+                String tag = StationGenerationSettings.normalizeTag(key.substring(1));
+                if (!tag.isBlank()) {
+                    requiredTags.merge(tag, count, Integer::sum);
+                }
+            } else {
+                ResourceLocation id = StationStructureIds.normalize(key, "stations/new_piece");
+                requiredPieces.merge(id, count, Integer::sum);
+            }
+        }
+        return new RequiredPieceSpec(requiredPieces, requiredTags);
+    }
+
+    private static String formatRequiredPieces(RequiredPieceSpec requiredPieces) {
+        List<String> values = new ArrayList<>();
+        for (Map.Entry<ResourceLocation, Integer> entry : requiredPieces.pieces().entrySet()) {
+            values.add(entry.getKey() + "x" + entry.getValue());
+        }
+        for (Map.Entry<String, Integer> entry : requiredPieces.tags().entrySet()) {
+            values.add("#" + entry.getKey() + "x" + entry.getValue());
+        }
+        return String.join(",", values);
+    }
+
+    private record RequiredPieceSpec(Map<ResourceLocation, Integer> pieces, Map<String, Integer> tags) {
+        static RequiredPieceSpec empty() {
+            return new RequiredPieceSpec(Map.of(), Map.of());
+        }
+
+        boolean isEmpty() {
+            return pieces.isEmpty() && tags.isEmpty();
+        }
     }
 
     private static int listGenerated(CommandSourceStack source) {

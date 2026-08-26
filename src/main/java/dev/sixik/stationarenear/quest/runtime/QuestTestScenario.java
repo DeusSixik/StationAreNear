@@ -35,11 +35,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 public final class QuestTestScenario {
@@ -267,41 +265,56 @@ public final class QuestTestScenario {
             return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, skip)), 0, triggerId(questTriggers, 0));
         }
 
-        List<PlacedTriggerZone> shuffled = new ArrayList<>(questTriggers);
-        Collections.shuffle(shuffled, new java.util.Random(station.seed() ^ 0x7157A5C0FFEE11L));
-        Set<String> usedTriggers = new LinkedHashSet<>();
+        List<PlacedTriggerZone> clusterZones = clusteredQuestZones(questTriggers, station.seed());
         int requiredPlaced = 0;
         int totalPlaced = 0;
         String targetTriggerId = "";
 
-        while (totalPlaced < totalToSpawn) {
-            boolean placedThisPass = false;
-            for (PlacedTriggerZone zone : shuffled) {
-                if (totalPlaced >= totalToSpawn) {
-                    break;
-                }
-                int placed = spawnPseudoTrash(level, zone, 1, totalPlaced);
-                if (placed <= 0) {
-                    continue;
-                }
-                placedThisPass = true;
-                usedTriggers.add(zone.id());
-                if (targetTriggerId.isBlank()) {
-                    targetTriggerId = zone.id();
-                }
-                int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
-                requiredPlaced += requiredPart;
-                totalPlaced += placed;
-            }
-            if (!placedThisPass) {
+        for (PlacedTriggerZone zone : clusterZones) {
+            if (totalPlaced >= totalToSpawn) {
                 break;
             }
+            int placed = spawnPseudoTrash(level, zone, totalToSpawn - totalPlaced, totalPlaced);
+            if (placed <= 0) {
+                continue;
+            }
+            if (targetTriggerId.isBlank()) {
+                targetTriggerId = zone.id();
+            }
+            int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
+            requiredPlaced += requiredPart;
+            totalPlaced += placed;
         }
 
         if (targetTriggerId.isBlank()) {
             targetTriggerId = triggerId(questTriggers, 0);
         }
         return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, targetTriggerId);
+    }
+
+    private static List<PlacedTriggerZone> clusteredQuestZones(List<PlacedTriggerZone> questTriggers, long seed) {
+        List<PlacedTriggerZone> shuffled = new ArrayList<>(questTriggers);
+        Collections.shuffle(shuffled, new java.util.Random(seed ^ 0x7157A5C0FFEE11L));
+        if (shuffled.size() <= 1) {
+            return shuffled;
+        }
+
+        PlacedTriggerZone anchor = shuffled.get(0);
+        shuffled.sort(Comparator
+                .comparingInt((PlacedTriggerZone zone) -> zoneDistance(anchor, zone))
+                .thenComparing(PlacedTriggerZone::id));
+        return shuffled;
+    }
+
+    private static int zoneDistance(PlacedTriggerZone left, PlacedTriggerZone right) {
+        int dx = center(left.min().getX(), left.max().getX()) - center(right.min().getX(), right.max().getX());
+        int dy = center(left.min().getY(), left.max().getY()) - center(right.min().getY(), right.max().getY());
+        int dz = center(left.min().getZ(), left.max().getZ()) - center(right.min().getZ(), right.max().getZ());
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static int center(int min, int max) {
+        return Math.floorDiv(min + max, 2);
     }
 
     private static int spawnPseudoTrash(ServerLevel level, PlacedTriggerZone zone, int count, int variantOffset) {
@@ -335,10 +348,9 @@ public final class QuestTestScenario {
 
     private static List<BlockPos> candidatePositions(BoundingBox bounds) {
         List<BlockPos> positions = new ArrayList<>();
-        int centerX = Math.floorDiv(bounds.minX() + bounds.maxX(), 2);
-        int centerY = Math.floorDiv(bounds.minY() + bounds.maxY(), 2);
-        int centerZ = Math.floorDiv(bounds.minZ() + bounds.maxZ(), 2);
-        positions.add(new BlockPos(centerX, centerY, centerZ));
+        int centerX = center(bounds.minX(), bounds.maxX());
+        int centerY = center(bounds.minY(), bounds.maxY());
+        int centerZ = center(bounds.minZ(), bounds.maxZ());
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
             for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
@@ -347,7 +359,24 @@ public final class QuestTestScenario {
                 }
             }
         }
+        positions.sort(Comparator
+                .comparingInt((BlockPos pos) -> manhattan(pos, centerX, centerY, centerZ))
+                .thenComparingInt(pos -> squaredDistance(pos, centerX, centerY, centerZ))
+                .thenComparingInt(BlockPos::getY)
+                .thenComparingInt(BlockPos::getX)
+                .thenComparingInt(BlockPos::getZ));
         return positions;
+    }
+
+    private static int manhattan(BlockPos pos, int x, int y, int z) {
+        return Math.abs(pos.getX() - x) + Math.abs(pos.getY() - y) + Math.abs(pos.getZ() - z);
+    }
+
+    private static int squaredDistance(BlockPos pos, int x, int y, int z) {
+        int dx = pos.getX() - x;
+        int dy = pos.getY() - y;
+        int dz = pos.getZ() - z;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private static Optional<BlockPos> nearestNavigationTerminal(ServerLevel level, BlockPos center, int radius) {

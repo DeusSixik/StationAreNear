@@ -37,6 +37,9 @@ public class StationGenerator {
     private static final int START_BOUNDARY_DEAD_END_SCORE_BONUS = 8_000;
     private static final int SECONDARY_CONNECTION_SCORE_BONUS = 650;
     private static final int REQUIRED_PIECE_SCORE_BONUS = 12_000;
+    private static final int REQUIRED_GROUP_CLUSTER_SCORE_BONUS = 24_000;
+    private static final int REQUIRED_GROUP_NEARBY_SCORE_BONUS = 6_000;
+    private static final int REQUIRED_GROUP_FOREIGN_OWNER_PENALTY = 4_000;
     private static final int EXTERIOR_CLEARANCE_BLOCKS = 10;
 
     public StationGenerationResult generateDockedStation(
@@ -286,7 +289,7 @@ public class StationGenerator {
         while (!openConnectors.isEmpty() && (pieces.size() < targetPieces || !requiredPiecesSatisfied(settings, pieceUsage, tagUsage))) {
             boolean needsExpandablePiece = pieces.size() + 1 < requiredMinRooms;
             boolean forceRequiredPiece = pieces.size() >= targetPieces && !requiredPiecesSatisfied(settings, pieceUsage, tagUsage);
-            PlacementCandidate candidate = chooseNextPiece(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), needsExpandablePiece, pieceUsage, tagUsage, settings, forceRequiredPiece);
+            PlacementCandidate candidate = chooseNextPiece(level, library, pool, openConnectors, danger, random, pieces, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), needsExpandablePiece, pieceUsage, tagUsage, settings, forceRequiredPiece);
             if (candidate == null) {
                 break;
             }
@@ -434,6 +437,7 @@ public class StationGenerator {
             List<StationConnector> openConnectors,
             float danger,
             RandomSource random,
+            List<PlacedStationPiece> pieces,
             List<BoundingBox> occupied,
             List<BoundingBox> reservedClearances,
             StationBoundary boundary,
@@ -510,6 +514,7 @@ public class StationGenerator {
                             + connectorDirectionScore(openConnector, boundary.direction())
                             + secondaryConnections * SECONDARY_CONNECTION_SCORE_BONUS
                             + requiredPieceScore(requiredRemaining)
+                            + requiredGroupClusterScore(library, settings, pieceUsage, tagUsage, pieces, openConnector, definition, piece)
                             + exteriorSideScore(definition, piece, rotation, occupied);
                     validPlacements.add(new PlacementCandidate(openConnector, piece, score));
                 }
@@ -1213,6 +1218,114 @@ public class StationGenerator {
 
     private int requiredPieceScore(int requiredRemaining) {
         return requiredRemaining <= 0 ? 0 : REQUIRED_PIECE_SCORE_BONUS + requiredRemaining * 500;
+    }
+
+    private int requiredGroupClusterScore(
+            StationStructureLibraryData library,
+            StationGenerationSettings settings,
+            Map<ResourceLocation, Integer> pieceUsage,
+            Map<String, Integer> tagUsage,
+            List<PlacedStationPiece> pieces,
+            StationConnector openConnector,
+            StationPieceDefinition definition,
+            PlacedStationPiece candidate
+    ) {
+        String group = requiredGroup(settings, pieceUsage, tagUsage, definition);
+        if (group.isBlank()) {
+            return 0;
+        }
+
+        PlacedStationPiece owner = connectorOwner(pieces, openConnector);
+        String ownerGroup = owner == null
+                ? ""
+                : library.piece(owner.definitionId()).map(ownerDefinition -> placedRequiredGroup(settings, ownerDefinition)).orElse("");
+        int score = ownerGroup.equals(group) ? REQUIRED_GROUP_CLUSTER_SCORE_BONUS : -REQUIRED_GROUP_FOREIGN_OWNER_PENALTY;
+
+        int nearestSameGroupDistance = nearestGroupDistance(library, settings, pieces, candidate, group);
+        if (nearestSameGroupDistance == 0) {
+            score += REQUIRED_GROUP_CLUSTER_SCORE_BONUS;
+        } else if (nearestSameGroupDistance < Integer.MAX_VALUE) {
+            score += Math.max(0, REQUIRED_GROUP_NEARBY_SCORE_BONUS - nearestSameGroupDistance / 4);
+        }
+        return score;
+    }
+
+    private String requiredGroup(
+            StationGenerationSettings settings,
+            Map<ResourceLocation, Integer> pieceUsage,
+            Map<String, Integer> tagUsage,
+            StationPieceDefinition definition
+    ) {
+        int remainingById = Math.max(0, settings.requiredPieceCount(definition.id()) - pieceUsage.getOrDefault(definition.id(), 0));
+        if (remainingById > 0) {
+            return "piece:" + definition.id();
+        }
+        for (String tag : definition.tags()) {
+            int remainingByTag = Math.max(0, settings.requiredPieceTagCount(tag) - tagUsage.getOrDefault(tag, 0));
+            if (remainingByTag > 0) {
+                return "tag:" + tag;
+            }
+        }
+        return "";
+    }
+
+    private String placedRequiredGroup(StationGenerationSettings settings, StationPieceDefinition definition) {
+        if (settings.requiredPieceCount(definition.id()) > 0) {
+            return "piece:" + definition.id();
+        }
+        for (String tag : definition.tags()) {
+            if (settings.requiredPieceTagCount(tag) > 0) {
+                return "tag:" + tag;
+            }
+        }
+        return "";
+    }
+
+    private PlacedStationPiece connectorOwner(List<PlacedStationPiece> pieces, StationConnector connector) {
+        if (connector == null) {
+            return null;
+        }
+        for (PlacedStationPiece piece : pieces) {
+            if (piece.openConnectors().contains(connector)) {
+                return piece;
+            }
+        }
+        return null;
+    }
+
+    private int nearestGroupDistance(
+            StationStructureLibraryData library,
+            StationGenerationSettings settings,
+            List<PlacedStationPiece> pieces,
+            PlacedStationPiece candidate,
+            String group
+    ) {
+        int nearest = Integer.MAX_VALUE;
+        for (PlacedStationPiece piece : pieces) {
+            String placedGroup = library.piece(piece.definitionId()).map(definition -> placedRequiredGroup(settings, definition)).orElse("");
+            if (!group.equals(placedGroup)) {
+                continue;
+            }
+            nearest = Math.min(nearest, boundsDistance(candidate.bounds(), piece.bounds()));
+        }
+        return nearest;
+    }
+
+    private int boundsDistance(BoundingBox left, BoundingBox right) {
+        int dx = axisGap(left.minX(), left.maxX(), right.minX(), right.maxX());
+        int dy = axisGap(left.minY(), left.maxY(), right.minY(), right.maxY());
+        int dz = axisGap(left.minZ(), left.maxZ(), right.minZ(), right.maxZ());
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private int axisGap(int leftMin, int leftMax, int rightMin, int rightMax) {
+        if (leftMax < rightMin) {
+            return rightMin - leftMax - 1;
+        }
+        if (rightMax < leftMin) {
+            return leftMin - rightMax - 1;
+        }
+        return 0;
     }
 
     private void shuffleWeighted(List<StationPieceDefinition> definitions, RandomSource random) {

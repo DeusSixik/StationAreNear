@@ -54,6 +54,7 @@ public final class QuestTestScenario {
     private static final long DURATION_SECONDS = 10L * 60L;
     private static final int TEST_TRASH_REQUIRED = 20;
     private static final int TEST_TRASH_EXTRA = 3;
+    private static final String TEST_PLACE_TAG = "install";
     private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
 
     private QuestTestScenario() {
@@ -136,21 +137,27 @@ public final class QuestTestScenario {
             return false;
         }
 
+        List<PlacedTriggerZone> placeTriggers = station.pieces().stream()
+                .flatMap(piece -> piece.triggerZones().stream())
+                .filter(QuestTestScenario::isQuestPlaceTrigger)
+                .sorted(Comparator.comparing(PlacedTriggerZone::id))
+                .toList();
         List<PlacedTriggerZone> doorTriggers = station.pieces().stream()
                 .flatMap(piece -> piece.triggerZones().stream())
                 .filter(QuestTestScenario::isDoorTrigger)
                 .sorted(Comparator.comparing(PlacedTriggerZone::id))
                 .toList();
 
+        PlaceTargetPlan placePlan = selectPlaceTarget(placeTriggers, station.seed(), TEST_PLACE_TAG);
         DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
         QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
-        movePendingQuestToStation(level, station, questTriggers, spawnPlan, doorPlan);
+        movePendingQuestToStation(level, station, questTriggers, placePlan, spawnPlan, doorPlan);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan placePlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers, spawnPlan, doorPlan);
+        Map<String, String> targets = triggerTargets(questTriggers, placePlan, spawnPlan, doorPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
@@ -158,6 +165,9 @@ public final class QuestTestScenario {
                 spawnPlan.targetCount(),
                 objective.text()
         )));
+        if (!placePlan.present()) {
+            moved.objective(StationQuests.PLACE_ITEM).ifPresent(objective -> moved.put(objective.complete(null)));
+        }
         if (!doorPlan.placed()) {
             moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> moved.put(objective.complete(null)));
         }
@@ -225,16 +235,6 @@ public final class QuestTestScenario {
                 || state.objective(StationQuests.REPAIR_DOORS).isPresent();
     }
 
-    private static List<QuestTask> testTasks(List<PlacedTriggerZone> questTriggers) {
-        return List.of(
-                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED, triggerId(questTriggers, 0)),
-                QuestApi.quest(StationQuests.PLACE_ITEM, 1, triggerId(questTriggers, 1)),
-                QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1, triggerId(questTriggers, 2)),
-                QuestApi.quest(StationQuests.BUILD_SHEATHING, 1, triggerId(questTriggers, 3)),
-                QuestApi.quest(StationQuests.REPAIR_DOORS, 1, triggerId(questTriggers, 4))
-        );
-    }
-
     private static List<QuestTask> pendingTasks() {
         return List.of(
                 QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED),
@@ -245,10 +245,10 @@ public final class QuestTestScenario {
         );
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan placePlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
         targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
-        targets.put(StationQuests.PLACE_ITEM, triggerId(questTriggers, 1));
+        targets.put(StationQuests.PLACE_ITEM, placePlan.targetTriggerId());
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
         targets.put(StationQuests.BUILD_SHEATHING, triggerId(questTriggers, 3));
         targets.put(StationQuests.REPAIR_DOORS, doorPlan.targetTriggerId());
@@ -258,7 +258,7 @@ public final class QuestTestScenario {
     private static Map<String, QuestLocalization> testTexts() {
         Map<String, QuestLocalization> texts = new LinkedHashMap<>();
         texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0441\u0435\u0432\u0434\u043e-\u0433\u0440\u044f\u0437\u044c \u0448\u0432\u0430\u0431\u0440\u043e\u0439", "Clean up the test dirt piles with the mop."));
-        texts.put(StationQuests.PLACE_ITEM, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u0432 \u0437\u043e\u043d\u0435", "Install the test item in the marked zone."));
+        texts.put(StationQuests.PLACE_ITEM, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0432 \u0437\u043e\u043d\u0435 QUEST_PLACE", "Place a block near the marked install point."));
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
         texts.put(StationQuests.BUILD_SHEATHING, new QuestLocalization("\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0432 \u0437\u043e\u043d\u0435", "Build station sheathing in the marked zone."));
         texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
@@ -271,6 +271,42 @@ public final class QuestTestScenario {
 
     private static boolean isDoorTrigger(PlacedTriggerZone zone) {
         return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.DOOR_TRIGGER;
+    }
+
+    private static boolean isQuestPlaceTrigger(PlacedTriggerZone zone) {
+        return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE;
+    }
+
+    private static PlaceTargetPlan selectPlaceTarget(List<PlacedTriggerZone> placeTriggers, long seed, String requiredTag) {
+        List<PlacedTriggerZone> candidates = placeTriggers.stream()
+                .filter(zone -> hasTriggerTag(zone, requiredTag))
+                .toList();
+        if (candidates.isEmpty()) {
+            candidates = placeTriggers;
+        }
+        if (candidates.isEmpty()) {
+            return new PlaceTargetPlan(false, "");
+        }
+
+        List<PlacedTriggerZone> shuffled = new ArrayList<>(candidates);
+        Collections.shuffle(shuffled, new java.util.Random(seed ^ 0x91ACE51A11L));
+        return new PlaceTargetPlan(true, shuffled.get(0).id());
+    }
+
+    private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
+        if (requiredTag == null || requiredTag.isBlank()) {
+            return true;
+        }
+        String tags = zone.data().contains("tags") ? zone.data().getString("tags") : zone.data().getString("tag");
+        if (tags == null || tags.isBlank()) {
+            return false;
+        }
+        for (String tag : tags.split(",")) {
+            if (requiredTag.equalsIgnoreCase(tag.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isQuestRoom(PlacedStationPiece piece) {
@@ -500,6 +536,9 @@ public final class QuestTestScenario {
     }
 
     private record QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId) {
+    }
+
+    private record PlaceTargetPlan(boolean present, String targetTriggerId) {
     }
 
     private record DoorSpawnPlan(boolean placed, String targetTriggerId) {

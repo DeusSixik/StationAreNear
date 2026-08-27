@@ -382,15 +382,17 @@ public final class StationZoneEditorClient {
             inspector.addChild(label("Draft local zone: " + draftMin.toShortString() + " -> " + draftMax.toShortString()));
             ComboBox nodeType = combo(triggerNodeTypes(), StationEditorNodeType.TRIGGER.name());
             TextField id = field("trigger_" + tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND).size(), "trigger_id");
+            TextField tags = field("", "install,reactor");
             row("Node type", nodeType);
             row("ID", id);
+            row("Tags", tags);
             HBox actions = new HBox();
             actions.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
             Button create = button("Create trigger");
             Button clear = button("Clear draft");
             create.onClick(event -> {
                 StationEditorNodeType selectedType = StationEditorNodeType.valueOf(nodeType.selectedItem());
-                createTriggerFromDraft(selectedType, id.text().trim(), defaultTriggerType(selectedType));
+                createTriggerFromDraft(selectedType, id.text().trim(), defaultTriggerType(selectedType), tags.text().trim());
             });
             clear.onClick(event -> clearTriggerDraft());
             actions.addChild(create);
@@ -498,13 +500,16 @@ public final class StationZoneEditorClient {
                 return;
             }
             CompoundTag trigger = triggers.getCompound(index);
+            CompoundTag triggerData = trigger.getCompound("data");
             inspector.addChild(label("Trigger zone is rendered inside Root and cannot leave Root bounds."));
             ComboBox nodeType = combo(Arrays.stream(StationEditorNodeType.values()).filter(type -> type != StationEditorNodeType.STRUCTURE && type != StationEditorNodeType.CONNECTION).map(Enum::name).toArray(String[]::new), parseEditorNodeType(trigger.getString("nodeType")).name());
             TextField id = field(trigger.getString("id"), "trigger_id");
+            TextField tags = field(triggerData.getString("tags"), "install,reactor");
             TextField min = field(localPosText(NbtPos.load(trigger.getCompound("worldMin"))), "local x y z");
             TextField max = field(localPosText(NbtPos.load(trigger.getCompound("worldMax"))), "local x y z");
             row("Node type", nodeType);
             row("ID", id);
+            row("Tags", tags);
             row("Min", min);
             row("Max", max);
             inspectTriggerData(index, trigger);
@@ -522,6 +527,7 @@ public final class StationZoneEditorClient {
             inspector.addChild(delete);
             nodeType.onSelectionChanged(event -> { String selected = comboSelectedItem(nodeType, event); StationEditorNodeType selectedType = StationEditorNodeType.valueOf(selected); updateTrigger(index, triggerTag -> { triggerTag.putString("nodeType", selected); triggerTag.putString("type", defaultTriggerType(selectedType)); CompoundTag data = triggerTag.getCompound("data").copy(); mergeDefaultTriggerData(data, selectedType); triggerTag.put("data", data); }); rebuildHierarchy(); syncEditorStateAndSave(); select("trigger:" + index); });
             bind(id, value -> updateTrigger(index, triggerTag -> triggerTag.putString("id", value)));
+            bind(tags, value -> updateTriggerData(index, dataTag -> dataTag.putString("tags", value)));
             bind(min, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMin", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMin")))))))));
             bind(max, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMax", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMax")))))))));
         }
@@ -580,6 +586,21 @@ public final class StationZoneEditorClient {
                     }
                 }));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
+            } else if (nodeType == StationEditorNodeType.QUEST_PLACE) {
+                inspector.addChild(label("QuestPlace: target marker for placing blocks in a 3x3 area."));
+                TextField item = field(data.contains("item") ? data.getString("item") : data.getString("requiredItem"), "optional item/block id");
+                TextField radius = field(Integer.toString(data.contains("radius") ? data.getInt("radius") : 1), "1 = 3x3");
+                row("Required Item", item);
+                row("Radius", radius);
+                bind(item, value -> updateTriggerData(index, dataTag -> {
+                    if (value.isBlank()) {
+                        dataTag.remove("item");
+                        dataTag.remove("requiredItem");
+                    } else {
+                        dataTag.putString("item", value.trim());
+                    }
+                }));
+                bind(radius, value -> updateTriggerData(index, dataTag -> dataTag.putInt("radius", Math.max(0, Math.min(16, parseInt(value, 1))))));
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 inspector.addChild(label("QuestTrigger: event-only marker, no default placement logic."));
                 TextField questId = field(data.getString("questId"), "quest/task id");
@@ -633,6 +654,7 @@ public final class StationZoneEditorClient {
                 case MOB_SPAWN -> "mob_spawn";
                 case DOOR_TRIGGER -> "door_trigger";
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
+                case QUEST_PLACE -> "quest_place";
                 default -> nodeType.name().toLowerCase(Locale.ROOT);
             };
         }
@@ -679,6 +701,13 @@ public final class StationZoneEditorClient {
                 }
                 if (!data.contains("direction") || data.getString("direction").isBlank()) {
                     data.putString("direction", "north");
+                }
+            } else if (nodeType == StationEditorNodeType.QUEST_PLACE) {
+                if (!data.contains("tags") || data.getString("tags").isBlank()) {
+                    data.putString("tags", "default");
+                }
+                if (!data.contains("radius")) {
+                    data.putInt("radius", 1);
                 }
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 if (!data.contains("questId")) {
@@ -738,10 +767,10 @@ public final class StationZoneEditorClient {
                 select("root");
                 return;
             }
-            createTriggerFromDraft(nodeType, nodeType.name().toLowerCase(Locale.ROOT) + "_" + tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND).size(), defaultTriggerType(nodeType));
+            createTriggerFromDraft(nodeType, nodeType.name().toLowerCase(Locale.ROOT) + "_" + tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND).size(), defaultTriggerType(nodeType), "");
         }
 
-        private void createTriggerFromDraft(StationEditorNodeType nodeType, String id, String type) {
+        private void createTriggerFromDraft(StationEditorNodeType nodeType, String id, String type, String tags) {
             ListTag triggers = tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
             CompoundTag trigger = new CompoundTag();
             trigger.putString("nodeType", nodeType.name());
@@ -754,6 +783,9 @@ public final class StationZoneEditorClient {
             trigger.put("worldMin", NbtPos.save(triggerMin));
             trigger.put("worldMax", NbtPos.save(triggerMax));
             CompoundTag data = defaultTriggerData(nodeType);
+            if (tags != null && !tags.isBlank()) {
+                data.putString("tags", tags.trim());
+            }
             if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
                 Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
                 data.putString("direction", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());

@@ -7,6 +7,7 @@ public enum StationStructureTriggerType {
     OBJECT_PLACER,
     DOOR_TRIGGER,
     QUEST,
+    QUEST_PLACE,
     OTHER;
 
     public static StationStructureTriggerType from(String value) {
@@ -16,6 +17,7 @@ public enum StationStructureTriggerType {
             case "object_placer", "loot", "object_place", "object_pool" -> OBJECT_PLACER;
             case "door_trigger", "door_spawner", "door", "pressure_door", "pressure_tight_door" -> DOOR_TRIGGER;
             case "quest", "quest_trigger", "trigger_quest" -> QUEST;
+            case "quest_place", "place_quest", "quest_place_trigger", "place_trigger" -> QUEST_PLACE;
             default -> OTHER;
         };
     }

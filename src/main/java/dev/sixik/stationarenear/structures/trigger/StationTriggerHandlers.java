@@ -70,7 +70,7 @@ public final class StationTriggerHandlers {
             case OBJECT_PLACER -> placeObject(event);
             case MOB_SPAWN -> placeMobs(event);
             case DOOR_TRIGGER -> placeDoor(event);
-            case QUEST -> {
+            case QUEST, QUEST_PLACE -> {
                 // Quest triggers intentionally only publish StationStructureSpawnTriggerEvent for quest code.
             }
             default -> {

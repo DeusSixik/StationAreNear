@@ -19,6 +19,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.event.level.BlockEvent;
@@ -51,16 +52,18 @@ public final class QuestTaskInteractionHandler {
         if (!(event.getLevel() instanceof ServerLevel level)) {
             return;
         }
-        UUID stationId = stationAt(level, event.getPos()).map(StationInstance::id).orElse(null);
-        if (stationId == null) {
+        Optional<StationPieceContext> context = stationPieceAt(level, event.getPos());
+        if (context.isEmpty()) {
             return;
         }
+
         BlockState state = event.getPlacedBlock();
+        incrementPlaceItem(level, context.get(), event.getPos(), state);
         if (state.is(QuestTags.REPAIRABLE_BLOCKS)) {
-            increment(level, stationId, StationQuests.REPAIR_BLOCKS, event.getPos());
+            increment(level, context.get().station().id(), StationQuests.REPAIR_BLOCKS, event.getPos());
         }
         if (state.is(QuestTags.BUILD_TARGET_BLOCKS)) {
-            increment(level, stationId, StationQuests.BUILD_SHEATHING, event.getPos());
+            increment(level, context.get().station().id(), StationQuests.BUILD_SHEATHING, event.getPos());
         }
     }
 
@@ -76,11 +79,6 @@ public final class QuestTaskInteractionHandler {
         String questId = zone.data().contains("quest", Tag.TAG_STRING) ? zone.data().getString("quest") : zone.id();
         if (questId == null || questId.isBlank()) {
             return;
-        }
-        if (QuestApi.isActive(level, stationId, StationQuests.PLACE_ITEM)) {
-            if (zoneMatches(level, stationId, StationQuests.PLACE_ITEM, zone) && itemMatches(zone, stack)) {
-                increment(level, stationId, StationQuests.PLACE_ITEM, zone.min());
-            }
         }
         if (stack.is(QuestItems.PUTTY_BUCKET.get()) && QuestApi.isActive(level, stationId, StationQuests.REPAIR_BLOCKS)) {
             if (zoneMatches(level, stationId, StationQuests.REPAIR_BLOCKS, zone)) {
@@ -120,6 +118,79 @@ public final class QuestTaskInteractionHandler {
         }
         ResourceLocation location = ResourceLocation.tryParse(itemId.contains(":") ? itemId : "stationarenear:" + itemId);
         return location != null && ForgeRegistries.ITEMS.getValue(location) == stack.getItem();
+    }
+
+    private static boolean incrementPlaceItem(ServerLevel level, StationPieceContext context, BlockPos pos, BlockState placedState) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.PLACE_ITEM));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!placeTargetMatches(context.piece(), objective.get(), pos, placedState)) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.PLACE_ITEM, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.PLACE_ITEM, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.PLACE_ITEM);
+        }
+        return true;
+    }
+
+    private static boolean placeTargetMatches(PlacedStationPiece piece, QuestObjectiveState objective, BlockPos pos, BlockState placedState) {
+        return piece.triggerZones().stream()
+                .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE)
+                .filter(zone -> objective.targetTriggerId().isBlank() || objective.targetTriggerId().equals(zone.id()))
+                .anyMatch(zone -> placeZoneContains(zone, pos) && placedBlockMatches(zone, placedState));
+    }
+
+    private static boolean placeZoneContains(PlacedTriggerZone zone, BlockPos pos) {
+        int radius = Math.max(0, Math.min(16, zone.data().contains("radius") ? zone.data().getInt("radius") : 1));
+        int heightRadius = Math.max(0, Math.min(16, zone.data().contains("heightRadius") ? zone.data().getInt("heightRadius") : 1));
+        int minX = zone.min().getX() == zone.max().getX() ? zone.min().getX() - radius : zone.min().getX();
+        int maxX = zone.min().getX() == zone.max().getX() ? zone.max().getX() + radius : zone.max().getX();
+        int minY = zone.min().getY() == zone.max().getY() ? zone.min().getY() - heightRadius : zone.min().getY();
+        int maxY = zone.min().getY() == zone.max().getY() ? zone.max().getY() + heightRadius : zone.max().getY();
+        int minZ = zone.min().getZ() == zone.max().getZ() ? zone.min().getZ() - radius : zone.min().getZ();
+        int maxZ = zone.min().getZ() == zone.max().getZ() ? zone.max().getZ() + radius : zone.max().getZ();
+        return pos.getX() >= minX && pos.getX() <= maxX
+                && pos.getY() >= minY && pos.getY() <= maxY
+                && pos.getZ() >= minZ && pos.getZ() <= maxZ;
+    }
+
+    private static boolean placedBlockMatches(PlacedTriggerZone zone, BlockState state) {
+        String required = requiredPlacedId(zone);
+        if (required.isBlank()) {
+            return true;
+        }
+        ResourceLocation location = ResourceLocation.tryParse(required.contains(":") ? required : "stationarenear:" + required);
+        if (location == null) {
+            return false;
+        }
+        Block block = state.getBlock();
+        return location.equals(ForgeRegistries.BLOCKS.getKey(block)) || location.equals(ForgeRegistries.ITEMS.getKey(block.asItem()));
+    }
+
+    private static String requiredPlacedId(PlacedTriggerZone zone) {
+        if (zone.data().contains("block", Tag.TAG_STRING)) {
+            return zone.data().getString("block");
+        }
+        if (zone.data().contains("requiredBlock", Tag.TAG_STRING)) {
+            return zone.data().getString("requiredBlock");
+        }
+        if (zone.data().contains("item", Tag.TAG_STRING)) {
+            return zone.data().getString("item");
+        }
+        if (zone.data().contains("requiredItem", Tag.TAG_STRING)) {
+            return zone.data().getString("requiredItem");
+        }
+        return "";
     }
 
     @SubscribeEvent

@@ -2,6 +2,7 @@ package dev.sixik.stationarenear.quest;
 
 import dev.sixik.stationarenear.quest.command.QuestCommands;
 import dev.sixik.stationarenear.quest.runtime.QuestAnnouncementHandler;
+import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.quest.registry.StationQuests;
 import dev.sixik.stationarenear.quest.runtime.QuestTaskInteractionHandler;
@@ -15,6 +16,7 @@ public final class QuestModule {
     }
 
     public static void register(IEventBus modEventBus) {
+        QuestBlocks.register(modEventBus);
         QuestItems.register(modEventBus);
         StationQuests.register();
         QuestCommands.register();

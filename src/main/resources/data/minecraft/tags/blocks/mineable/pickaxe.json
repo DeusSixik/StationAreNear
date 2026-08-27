@@ -3,6 +3,9 @@
   "values": [
     "stationarenear:pressure_tight_door",
     "stationarenear:ship_television",
-    "stationarenear:station_map_terminal"
+    "stationarenear:station_map_terminal",
+    "stationarenear:fridge",
+    "stationarenear:kitchen_sink",
+    "stationarenear:microwave"
   ]
 }

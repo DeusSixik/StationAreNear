@@ -1,8 +1,11 @@
 package dev.sixik.stationarenear.quest.runtime;
 
 import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.data.QuestDefinition;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
+import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.quest.registry.QuestTags;
 import dev.sixik.stationarenear.quest.registry.StationQuests;
@@ -15,6 +18,7 @@ import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.trigger.StationTriggerEvent;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -58,7 +62,7 @@ public final class QuestTaskInteractionHandler {
         }
 
         BlockState state = event.getPlacedBlock();
-        incrementPlaceItem(level, context.get(), event.getPos(), state);
+        incrementPlaceItems(level, context.get(), event.getPos(), state);
         if (state.is(QuestTags.REPAIRABLE_BLOCKS)) {
             increment(level, context.get().station().id(), StationQuests.REPAIR_BLOCKS, event.getPos());
         }
@@ -120,25 +124,41 @@ public final class QuestTaskInteractionHandler {
         return location != null && ForgeRegistries.ITEMS.getValue(location) == stack.getItem();
     }
 
-    private static boolean incrementPlaceItem(ServerLevel level, StationPieceContext context, BlockPos pos, BlockState placedState) {
-        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
-                .stationIfPresent(context.station().id())
-                .flatMap(state -> state.objective(StationQuests.PLACE_ITEM));
-        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+    private static void incrementPlaceItems(ServerLevel level, StationPieceContext context, BlockPos pos, BlockState placedState) {
+        Optional<QuestStationState> station = QuestSavedData.get(level).stationIfPresent(context.station().id());
+        if (station.isEmpty()) {
+            return;
+        }
+        for (QuestObjectiveState objective : new java.util.ArrayList<>(station.get().objectives())) {
+            if (isPlaceItemObjective(objective)) {
+                incrementPlaceItem(level, context, objective, pos, placedState);
+            }
+        }
+    }
+
+    private static boolean isPlaceItemObjective(QuestObjectiveState objective) {
+        return QuestApi.definition(objective.id())
+                .map(QuestDefinition::kind)
+                .map(kind -> kind == QuestObjectiveKind.PLACE_ITEM)
+                .orElse(StationQuests.PLACE_ITEM.equals(objective.id()));
+    }
+
+    private static boolean incrementPlaceItem(ServerLevel level, StationPieceContext context, QuestObjectiveState objective, BlockPos pos, BlockState placedState) {
+        if (objective.completed() || alreadyDone(objective, pos)) {
             return false;
         }
-        if (!placeTargetMatches(context.piece(), objective.get(), pos, placedState)) {
+        if (!placeTargetMatches(context.piece(), objective, pos, placedState)) {
             return false;
         }
 
-        int current = objective.get().progress().getInt("value");
-        int next = Math.min(objective.get().targetCount(), current + 1);
-        if (!QuestApi.progress(level, context.station().id(), StationQuests.PLACE_ITEM, next)) {
+        int current = objective.progress().getInt("value");
+        int next = Math.min(objective.targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), objective.id(), next)) {
             return false;
         }
-        markDone(level, context.station().id(), StationQuests.PLACE_ITEM, pos);
-        if (next >= objective.get().targetCount()) {
-            QuestApi.complete(level, context.station().id(), StationQuests.PLACE_ITEM);
+        markDone(level, context.station().id(), objective.id(), pos);
+        if (next >= objective.targetCount()) {
+            QuestApi.complete(level, context.station().id(), objective.id());
         }
         return true;
     }
@@ -147,7 +167,7 @@ public final class QuestTaskInteractionHandler {
         return piece.triggerZones().stream()
                 .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE)
                 .filter(zone -> objective.targetTriggerId().isBlank() || objective.targetTriggerId().equals(zone.id()))
-                .anyMatch(zone -> placeZoneContains(zone, pos) && placedBlockMatches(zone, placedState));
+                .anyMatch(zone -> placeZoneContains(zone, pos) && placedBlockMatches(objective, zone, placedState));
     }
 
     private static boolean placeZoneContains(PlacedTriggerZone zone, BlockPos pos) {
@@ -164,8 +184,8 @@ public final class QuestTaskInteractionHandler {
                 && pos.getZ() >= minZ && pos.getZ() <= maxZ;
     }
 
-    private static boolean placedBlockMatches(PlacedTriggerZone zone, BlockState state) {
-        String required = requiredPlacedId(zone);
+    private static boolean placedBlockMatches(QuestObjectiveState objective, PlacedTriggerZone zone, BlockState state) {
+        String required = requiredPlacedId(objective, zone);
         if (required.isBlank()) {
             return true;
         }
@@ -177,20 +197,42 @@ public final class QuestTaskInteractionHandler {
         return location.equals(ForgeRegistries.BLOCKS.getKey(block)) || location.equals(ForgeRegistries.ITEMS.getKey(block.asItem()));
     }
 
-    private static String requiredPlacedId(PlacedTriggerZone zone) {
-        if (zone.data().contains("block", Tag.TAG_STRING)) {
-            return zone.data().getString("block");
+    private static String requiredPlacedId(QuestObjectiveState objective, PlacedTriggerZone zone) {
+        String progressRequired = requiredPlacedId(objective.progress());
+        if (!progressRequired.isBlank()) {
+            return progressRequired;
         }
-        if (zone.data().contains("requiredBlock", Tag.TAG_STRING)) {
-            return zone.data().getString("requiredBlock");
+        if (StationQuests.PLACE_FRIDGE.equals(objective.id())) {
+            return registryId(QuestBlocks.FRIDGE.get());
         }
-        if (zone.data().contains("item", Tag.TAG_STRING)) {
-            return zone.data().getString("item");
+        if (StationQuests.PLACE_MICROWAVE.equals(objective.id())) {
+            return registryId(QuestBlocks.MICROWAVE.get());
         }
-        if (zone.data().contains("requiredItem", Tag.TAG_STRING)) {
-            return zone.data().getString("requiredItem");
+        if (StationQuests.PLACE_KITCHEN_SINK.equals(objective.id())) {
+            return registryId(QuestBlocks.KITCHEN_SINK.get());
+        }
+        return requiredPlacedId(zone.data());
+    }
+
+    private static String requiredPlacedId(CompoundTag data) {
+        if (data.contains("block", Tag.TAG_STRING)) {
+            return data.getString("block");
+        }
+        if (data.contains("requiredBlock", Tag.TAG_STRING)) {
+            return data.getString("requiredBlock");
+        }
+        if (data.contains("item", Tag.TAG_STRING)) {
+            return data.getString("item");
+        }
+        if (data.contains("requiredItem", Tag.TAG_STRING)) {
+            return data.getString("requiredItem");
         }
         return "";
+    }
+
+    private static String registryId(Block block) {
+        ResourceLocation key = ForgeRegistries.BLOCKS.getKey(block);
+        return key == null ? "" : key.toString();
     }
 
     @SubscribeEvent

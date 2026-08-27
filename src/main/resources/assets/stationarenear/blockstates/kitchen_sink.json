@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "stationarenear:block/kitchen_sink"
+    },
+    "facing=east": {
+      "model": "stationarenear:block/kitchen_sink",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "stationarenear:block/kitchen_sink",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "stationarenear:block/kitchen_sink",
+      "y": 270
+    }
+  }
+}

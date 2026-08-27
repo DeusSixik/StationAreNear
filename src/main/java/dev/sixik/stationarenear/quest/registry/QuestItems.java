@@ -59,6 +59,9 @@ public final class QuestItems {
                         output.accept(MOP.get());
                         output.accept(PUTTY_BUCKET.get());
                         output.accept(STATION_SHEATHING.get());
+                        output.accept(QuestBlocks.FRIDGE_ITEM.get());
+                        output.accept(QuestBlocks.KITCHEN_SINK_ITEM.get());
+                        output.accept(QuestBlocks.MICROWAVE_ITEM.get());
                     })
                     .build()
     );

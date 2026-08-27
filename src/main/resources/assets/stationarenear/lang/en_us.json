@@ -19,5 +19,11 @@
   "item.stationarenear.engineering_gear": "Engineering Gear",
   "item.stationarenear.mop": "Mop",
   "item.stationarenear.putty_bucket": "Putty Bucket",
-  "item.stationarenear.station_sheathing": "Station Sheathing"
+  "item.stationarenear.station_sheathing": "Station Sheathing",
+  "block.stationarenear.fridge": "Fridge",
+  "item.stationarenear.fridge": "Fridge",
+  "block.stationarenear.kitchen_sink": "Kitchen Sink",
+  "item.stationarenear.kitchen_sink": "Kitchen Sink",
+  "block.stationarenear.microwave": "Microwave",
+  "item.stationarenear.microwave": "Microwave"
 }

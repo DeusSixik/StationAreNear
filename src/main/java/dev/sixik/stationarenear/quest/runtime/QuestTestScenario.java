@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class QuestTestScenario {
@@ -54,7 +55,8 @@ public final class QuestTestScenario {
     private static final long DURATION_SECONDS = 10L * 60L;
     private static final int TEST_TRASH_REQUIRED = 20;
     private static final int TEST_TRASH_EXTRA = 3;
-    private static final String TEST_PLACE_TAG = "install";
+    private static final String TEST_FRIDGE_TAG = "socket";
+    private static final String TEST_SINK_TAG = "pipes";
     private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
 
     private QuestTestScenario() {
@@ -148,16 +150,18 @@ public final class QuestTestScenario {
                 .sorted(Comparator.comparing(PlacedTriggerZone::id))
                 .toList();
 
-        PlaceTargetPlan placePlan = selectPlaceTarget(placeTriggers, station.seed(), TEST_PLACE_TAG);
+        PlaceTargetPlan fridgePlan = selectPlaceTarget(placeTriggers, station.seed(), TEST_FRIDGE_TAG);
+        PlaceTargetPlan microwavePlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()));
+        PlaceTargetPlan sinkPlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG);
         DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
         QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
-        movePendingQuestToStation(level, station, questTriggers, placePlan, spawnPlan, doorPlan);
+        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan placePlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers, placePlan, spawnPlan, doorPlan);
+        Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
@@ -165,8 +169,14 @@ public final class QuestTestScenario {
                 spawnPlan.targetCount(),
                 objective.text()
         )));
-        if (!placePlan.present()) {
-            moved.objective(StationQuests.PLACE_ITEM).ifPresent(objective -> moved.put(objective.complete(null)));
+        if (!fridgePlan.present()) {
+            moved.objective(StationQuests.PLACE_FRIDGE).ifPresent(objective -> moved.put(objective.complete(null)));
+        }
+        if (!microwavePlan.present()) {
+            moved.objective(StationQuests.PLACE_MICROWAVE).ifPresent(objective -> moved.put(objective.complete(null)));
+        }
+        if (!sinkPlan.present()) {
+            moved.objective(StationQuests.PLACE_KITCHEN_SINK).ifPresent(objective -> moved.put(objective.complete(null)));
         }
         if (!doorPlan.placed()) {
             moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> moved.put(objective.complete(null)));
@@ -230,6 +240,9 @@ public final class QuestTestScenario {
     public static boolean isTestQuest(QuestStationState state) {
         return state.objective(StationQuests.CLEAR_TRASH).isPresent()
                 || state.objective(StationQuests.PLACE_ITEM).isPresent()
+                || state.objective(StationQuests.PLACE_FRIDGE).isPresent()
+                || state.objective(StationQuests.PLACE_MICROWAVE).isPresent()
+                || state.objective(StationQuests.PLACE_KITCHEN_SINK).isPresent()
                 || state.objective(StationQuests.REPAIR_BLOCKS).isPresent()
                 || state.objective(StationQuests.BUILD_SHEATHING).isPresent()
                 || state.objective(StationQuests.REPAIR_DOORS).isPresent();
@@ -238,19 +251,21 @@ public final class QuestTestScenario {
     private static List<QuestTask> pendingTasks() {
         return List.of(
                 QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED),
-                QuestApi.quest(StationQuests.PLACE_ITEM, 1),
+                QuestApi.quest(StationQuests.PLACE_FRIDGE, 1),
+                QuestApi.quest(StationQuests.PLACE_MICROWAVE, 1),
+                QuestApi.quest(StationQuests.PLACE_KITCHEN_SINK, 1),
                 QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1),
-                QuestApi.quest(StationQuests.BUILD_SHEATHING, 1),
                 QuestApi.quest(StationQuests.REPAIR_DOORS, 1)
         );
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan placePlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
         targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
-        targets.put(StationQuests.PLACE_ITEM, placePlan.targetTriggerId());
+        targets.put(StationQuests.PLACE_FRIDGE, fridgePlan.targetTriggerId());
+        targets.put(StationQuests.PLACE_MICROWAVE, microwavePlan.targetTriggerId());
+        targets.put(StationQuests.PLACE_KITCHEN_SINK, sinkPlan.targetTriggerId());
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
-        targets.put(StationQuests.BUILD_SHEATHING, triggerId(questTriggers, 3));
         targets.put(StationQuests.REPAIR_DOORS, doorPlan.targetTriggerId());
         return targets;
     }
@@ -258,9 +273,10 @@ public final class QuestTestScenario {
     private static Map<String, QuestLocalization> testTexts() {
         Map<String, QuestLocalization> texts = new LinkedHashMap<>();
         texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0441\u0435\u0432\u0434\u043e-\u0433\u0440\u044f\u0437\u044c \u0448\u0432\u0430\u0431\u0440\u043e\u0439", "Clean up the test dirt piles with the mop."));
-        texts.put(StationQuests.PLACE_ITEM, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0432 \u0437\u043e\u043d\u0435 QUEST_PLACE", "Place a block near the marked install point."));
+        texts.put(StationQuests.PLACE_FRIDGE, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0445\u043e\u043b\u043e\u0434\u0438\u043b\u044c\u043d\u0438\u043a \u0440\u044f\u0434\u043e\u043c \u0441 \u0440\u043e\u0437\u0435\u0442\u043a\u043e\u0439", "Install the fridge near the marked power socket."));
+        texts.put(StationQuests.PLACE_MICROWAVE, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u043c\u0438\u043a\u0440\u043e\u0432\u043e\u043b\u043d\u043e\u0432\u043a\u0443 \u0440\u044f\u0434\u043e\u043c \u0441 \u0440\u043e\u0437\u0435\u0442\u043a\u043e\u0439", "Install the microwave near the marked power socket."));
+        texts.put(StationQuests.PLACE_KITCHEN_SINK, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0440\u0430\u043a\u043e\u0432\u0438\u043d\u0443 \u0440\u044f\u0434\u043e\u043c \u0441 \u0442\u0440\u0443\u0431\u0430\u043c\u0438", "Install the kitchen sink near the marked pipes."));
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
-        texts.put(StationQuests.BUILD_SHEATHING, new QuestLocalization("\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0432 \u0437\u043e\u043d\u0435", "Build station sheathing in the marked zone."));
         texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
         return texts;
     }
@@ -278,9 +294,20 @@ public final class QuestTestScenario {
     }
 
     private static PlaceTargetPlan selectPlaceTarget(List<PlacedTriggerZone> placeTriggers, long seed, String requiredTag) {
+        return selectPlaceTarget(placeTriggers, seed, requiredTag, Set.of());
+    }
+
+    private static PlaceTargetPlan selectPlaceTarget(List<PlacedTriggerZone> placeTriggers, long seed, String requiredTag, Set<String> excludedIds) {
+        Set<String> excluded = excludedIds == null ? Set.of() : excludedIds;
         List<PlacedTriggerZone> candidates = placeTriggers.stream()
                 .filter(zone -> hasTriggerTag(zone, requiredTag))
+                .filter(zone -> !excluded.contains(zone.id()))
                 .toList();
+        if (candidates.isEmpty()) {
+            candidates = placeTriggers.stream()
+                    .filter(zone -> hasTriggerTag(zone, requiredTag))
+                    .toList();
+        }
         if (candidates.isEmpty()) {
             candidates = placeTriggers;
         }

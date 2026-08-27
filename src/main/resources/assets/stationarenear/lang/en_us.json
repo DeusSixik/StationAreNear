@@ -25,5 +25,7 @@
   "block.stationarenear.kitchen_sink": "Kitchen Sink",
   "item.stationarenear.kitchen_sink": "Kitchen Sink",
   "block.stationarenear.microwave": "Microwave",
-  "item.stationarenear.microwave": "Microwave"
+  "item.stationarenear.microwave": "Microwave",
+  "block.stationarenear.energy_panel": "Energy Panel",
+  "item.stationarenear.energy_panel": "Energy Panel"
 }

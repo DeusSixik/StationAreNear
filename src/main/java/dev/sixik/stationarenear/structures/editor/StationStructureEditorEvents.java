@@ -107,6 +107,7 @@ public final class StationStructureEditorEvents {
             case ZONE_SELECTION -> handleZoneSelection(player, stack, clickedPos, shiftDown);
             case TRIGGER_MANAGER_CREATE -> handleTriggerCreate(player, stack, clickedPos, shiftDown);
             case TRIGGER_MANAGER_EDIT -> handleTriggerEdit(player, stack, clickedPos);
+            case TRIGGER_SHAPE_POINTS -> handleTriggerShapePoints(player, stack, clickedPos, shiftDown);
             case CONNECTION_MANAGER -> handleConnectionManager(player, stack, clickedPos, shiftDown);
             case STRUCTURE_COPY -> handleStructureCopy(player, stack, clickedPos);
         }
@@ -153,6 +154,54 @@ public final class StationStructureEditorEvents {
         stack.getOrCreateTag().putString(StationStructureEditorStick.KEY_SELECTED_NODE, "trigger:" + triggerIndex);
         syncClientPreview(stack);
         StationStructureNetwork.sendOpenEditor(player, OpenStationZoneEditorPacket.fromStack(stack));
+    }
+
+    private static void handleTriggerShapePoints(ServerPlayer player, ItemStack stack, BlockPos clickedPos, boolean shiftDown) {
+        if (!StationStructureEditorStick.hasSelection(stack)) {
+            player.displayClientMessage(Component.literal("Create a Structure Zone first."), true);
+            return;
+        }
+
+        CompoundTag tag = stack.getOrCreateTag();
+        StationStructureEditorStick.normalize(tag);
+        ListTag triggers = tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
+        int triggerIndex = selectedTriggerIndex(tag);
+        if (triggerIndex < 0 || triggerIndex >= triggers.size() || !triggerContains(triggers.getCompound(triggerIndex), clickedPos)) {
+            triggerIndex = findTriggerAt(stack, clickedPos);
+        }
+        if (triggerIndex < 0 || triggerIndex >= triggers.size()) {
+            player.displayClientMessage(Component.literal("Click inside trigger zone to edit its shape points."), true);
+            return;
+        }
+
+        CompoundTag trigger = triggers.getCompound(triggerIndex);
+        if (!triggerContains(trigger, clickedPos)) {
+            player.displayClientMessage(Component.literal("Shape point must be inside selected trigger zone."), true);
+            return;
+        }
+
+        CompoundTag data = trigger.getCompound("data").copy();
+        if (shiftDown) {
+            data.remove("shape");
+            data.remove("shapePoints");
+            trigger.put("data", data);
+            triggers.set(triggerIndex, trigger);
+            tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers);
+            tag.putString(StationStructureEditorStick.KEY_SELECTED_NODE, "trigger:" + triggerIndex);
+            syncClientPreview(stack);
+            player.displayClientMessage(Component.literal("Trigger shape points cleared."), true);
+            return;
+        }
+
+        BlockPos min = NbtPos.load(trigger.getCompound("worldMin"));
+        BlockPos offset = clickedPos.subtract(min);
+        ToggleResult result = toggleShapePoint(data, offset);
+        trigger.put("data", data);
+        triggers.set(triggerIndex, trigger);
+        tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers);
+        tag.putString(StationStructureEditorStick.KEY_SELECTED_NODE, "trigger:" + triggerIndex);
+        syncClientPreview(stack);
+        player.displayClientMessage(Component.literal((result.added() ? "Added" : "Removed") + " shape point " + clickedPos.toShortString() + " (" + result.count() + " total)."), true);
     }
 
     private static void handleConnectionManager(ServerPlayer player, ItemStack stack, BlockPos clickedPos, boolean shiftDown) {
@@ -281,6 +330,7 @@ public final class StationStructureEditorEvents {
             connectorTag.putInt("width", connector.width());
             connectorTag.putInt("height", connector.height());
             connectorTag.putString("acceptedSizes", connector.acceptedSizes());
+            connectorTag.putBoolean(StationConnector.KEY_REQUIRES_PASSAGE, connector.requiresPassage());
             list.add(connectorTag);
         }
         return list;
@@ -298,12 +348,38 @@ public final class StationStructureEditorEvents {
             triggerTag.putString("nodeType", nodeType.name());
             triggerTag.putString("id", triggerZone.id());
             triggerTag.putString("type", triggerZone.type());
-            triggerTag.put("worldMin", NbtPos.save(min(worldMin, worldMax)));
-            triggerTag.put("worldMax", NbtPos.save(max(worldMin, worldMax)));
-            triggerTag.put("data", triggerZone.data().copy());
+            BlockPos normalizedWorldMin = min(worldMin, worldMax);
+            BlockPos normalizedWorldMax = max(worldMin, worldMax);
+            triggerTag.put("worldMin", NbtPos.save(normalizedWorldMin));
+            triggerTag.put("worldMax", NbtPos.save(normalizedWorldMax));
+            CompoundTag data = triggerZone.data().copy();
+            rebaseShapePoints(data, triggerZone, source, targetBounds, normalizedWorldMin);
+            triggerTag.put("data", data);
             list.add(triggerTag);
         }
         return list;
+    }
+
+    private static void rebaseShapePoints(CompoundTag data, StationTriggerZone triggerZone, CopySource source, BoundingBox targetBounds, BlockPos targetMin) {
+        if (!data.contains("shapePoints", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag sourcePoints = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        ListTag rebasedPoints = new ListTag();
+        BlockPos sourceMin = minPos(source.selectionBounds());
+        for (int i = 0; i < sourcePoints.size(); i++) {
+            CompoundTag point = sourcePoints.getCompound(i);
+            if (!point.contains("x", Tag.TAG_INT) || !point.contains("y", Tag.TAG_INT) || !point.contains("z", Tag.TAG_INT)) {
+                continue;
+            }
+            BlockPos offset = NbtPos.load(point);
+            BlockPos localPos = triggerZone.min().offset(offset.getX(), offset.getY(), offset.getZ());
+            BlockPos sourceWorldPos = source.origin().offset(StructureTemplate.transform(localPos, Mirror.NONE, source.rotation(), BlockPos.ZERO));
+            BlockPos targetWorldPos = rebaseToTarget(sourceWorldPos, sourceMin, targetBounds);
+            rebasedPoints.add(NbtPos.save(targetWorldPos.subtract(targetMin)));
+        }
+        data.put("shapePoints", rebasedPoints);
+        data.putString("shape", "points");
     }
 
     private static StationEditorNodeType triggerNodeType(String type) {
@@ -378,6 +454,52 @@ public final class StationStructureEditorEvents {
                 && pos.getZ() >= min.getZ() && pos.getZ() <= max.getZ();
     }
 
+    private static int selectedTriggerIndex(CompoundTag tag) {
+        String selected = tag.getString(StationStructureEditorStick.KEY_SELECTED_NODE);
+        if (!selected.startsWith("trigger:")) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(selected.substring("trigger:".length()));
+        } catch (NumberFormatException exception) {
+            return -1;
+        }
+    }
+
+    private static ToggleResult toggleShapePoint(CompoundTag data, BlockPos offset) {
+        ListTag oldPoints = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        ListTag newPoints = new ListTag();
+        boolean removed = false;
+        for (int i = 0; i < oldPoints.size(); i++) {
+            CompoundTag point = oldPoints.getCompound(i);
+            if (point.getInt("x") == offset.getX() && point.getInt("y") == offset.getY() && point.getInt("z") == offset.getZ()) {
+                removed = true;
+                continue;
+            }
+            newPoints.add(point.copy());
+        }
+        if (!removed) {
+            newPoints.add(NbtPos.save(offset));
+        }
+        if (newPoints.isEmpty()) {
+            data.remove("shape");
+            data.remove("shapePoints");
+        } else {
+            data.putString("shape", "points");
+            data.put("shapePoints", newPoints);
+        }
+        return new ToggleResult(!removed, newPoints.size());
+    }
+
+    private static boolean triggerContains(CompoundTag trigger, BlockPos pos) {
+        if (!trigger.contains("worldMin", Tag.TAG_COMPOUND) || !trigger.contains("worldMax", Tag.TAG_COMPOUND)) {
+            return false;
+        }
+        BlockPos min = NbtPos.load(trigger.getCompound("worldMin"));
+        BlockPos max = NbtPos.load(trigger.getCompound("worldMax"));
+        return new AABB(min, max.offset(1, 1, 1)).contains(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
+    }
+
     private static int findTriggerAt(ItemStack stack, BlockPos pos) {
         ListTag triggers = StationStructureEditorStick.editorTag(stack).getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
         for (int i = 0; i < triggers.size(); i++) {
@@ -407,6 +529,9 @@ public final class StationStructureEditorEvents {
     private static void syncClientPreview(ItemStack stack) {
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> StationEditorClientState.setEditorTag(StationStructureEditorStick.editorTag(stack)));
     }
+    private record ToggleResult(boolean added, int count) {
+    }
+
     private record CopySource(StationPieceDefinition definition, BlockPos origin, Rotation rotation, BoundingBox selectionBounds, boolean startPiece) {
     }
 }

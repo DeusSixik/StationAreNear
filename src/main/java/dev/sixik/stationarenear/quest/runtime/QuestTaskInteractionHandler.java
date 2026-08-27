@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.quest.data.QuestDefinition;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
+import dev.sixik.stationarenear.quest.event.EnergyPanelRepairedEvent;
 import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.quest.registry.QuestTags;
@@ -16,6 +17,7 @@ import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationInstance;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.trigger.StationTriggerEvent;
+import dev.sixik.stationarenear.structures.trigger.StationTriggerZoneShape;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -179,9 +181,7 @@ public final class QuestTaskInteractionHandler {
         int maxY = zone.min().getY() == zone.max().getY() ? zone.max().getY() + heightRadius : zone.max().getY();
         int minZ = zone.min().getZ() == zone.max().getZ() ? zone.min().getZ() - radius : zone.min().getZ();
         int maxZ = zone.min().getZ() == zone.max().getZ() ? zone.max().getZ() + radius : zone.max().getZ();
-        return pos.getX() >= minX && pos.getX() <= maxX
-                && pos.getY() >= minY && pos.getY() <= maxY
-                && pos.getZ() >= minZ && pos.getZ() <= maxZ;
+        return StationTriggerZoneShape.contains(zone.data(), new BlockPos(minX, minY, minZ), new BlockPos(maxX, maxY, maxZ), pos);
     }
 
     private static boolean placedBlockMatches(QuestObjectiveState objective, PlacedTriggerZone zone, BlockState state) {
@@ -241,6 +241,12 @@ public final class QuestTaskInteractionHandler {
                 .ifPresent(context -> incrementRepairDoor(event.getLevel(), context, event.getMasterPos()));
     }
 
+    @SubscribeEvent
+    public static void onEnergyPanelRepaired(EnergyPanelRepairedEvent event) {
+        stationPieceAt(event.getLevel(), event.getPos())
+                .ifPresent(context -> incrementRepairElectricPanel(event.getLevel(), context, event.getPos()));
+    }
+
     private static boolean increment(ServerLevel level, UUID stationId, String questId, BlockPos pos) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(stationId)
@@ -280,6 +286,29 @@ public final class QuestTaskInteractionHandler {
         markDone(level, context.station().id(), StationQuests.CLEAR_TRASH, pos);
         if (next >= objective.get().targetCount()) {
             QuestApi.complete(level, context.station().id(), StationQuests.CLEAR_TRASH);
+        }
+        return true;
+    }
+
+    private static boolean incrementRepairElectricPanel(ServerLevel level, StationPieceContext context, BlockPos pos) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.REPAIR_ELECTRIC_PANEL));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!triggerZoneMatches(context.piece(), objective.get(), pos)) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL);
         }
         return true;
     }

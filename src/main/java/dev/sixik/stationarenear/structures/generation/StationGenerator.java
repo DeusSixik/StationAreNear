@@ -40,6 +40,12 @@ public class StationGenerator {
     private static final int REQUIRED_GROUP_CLUSTER_SCORE_BONUS = 24_000;
     private static final int REQUIRED_GROUP_NEARBY_SCORE_BONUS = 6_000;
     private static final int REQUIRED_GROUP_FOREIGN_OWNER_PENALTY = 4_000;
+    private static final int SIDE_PASSAGE_SCORE_BONUS = 10_000;
+    private static final int SIDE_PASSAGE_LOOP_SCORE_BONUS = 4_000;
+    private static final int SIDE_PASSAGE_DISTANCE_SCORE = 8_000;
+    private static final int SIDE_PASSAGE_ROUTE_ATTEMPTS = 32;
+    private static final int SIDE_PASSAGE_MIN_PIECE_LIMIT = 48;
+    private static final int SIDE_PASSAGE_MAX_PIECE_LIMIT = 256;
     private static final int EXTERIOR_CLEARANCE_BLOCKS = 10;
 
     public StationGenerationResult generateDockedStation(
@@ -312,12 +318,20 @@ public class StationGenerator {
             return null;
         }
 
+        if (!extendSidePassages(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), settings, pieces, parentIndexes, sourceConnectors, pieceUsage, tagUsage)) {
+            return null;
+        }
+
         capRemainingOpenConnectors(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors, pieceUsage);
-        openConnectors.removeIf(connector -> !isUsableConnector(connector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections));
+        pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
         repairDanglingSections(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors);
-        openConnectors.removeIf(connector -> !isUsableConnector(connector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections));
+        pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
         syncPieceOpenConnectors(pieces, openConnectors);
         return new StationLayout(new ObjectArrayList<>(pieces), new ObjectArrayList<>(openConnectors), scoreLayout(pieces, openConnectors, boundary, requiredMinRooms, targetPieces));
+    }
+
+    private void pruneUnusableOpenConnectors(List<StationConnector> openConnectors, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
+        openConnectors.removeIf(connector -> !connector.requiresPassage() && !isUsableConnector(connector, occupied, boundary, allowVerticalConnections));
     }
 
     private int scoreLayout(List<PlacedStationPiece> pieces, List<StationConnector> openConnectors, StationBoundary boundary, int requiredMinRooms, int targetPieces) {
@@ -410,6 +424,9 @@ public class StationGenerator {
             }
 
             for (StationConnector connector : definition.connectors()) {
+                if (connector.requiresPassage()) {
+                    continue;
+                }
                 Rotation rotation = StationPlacementUtil.rotationBetween(connector.direction(), requiredConnectorDirection);
                 if (rotation == null) {
                     continue;
@@ -420,7 +437,15 @@ public class StationGenerator {
                 if (!boundary.allowsBounds(piece.bounds()) || !exteriorSideAllowed(definition, piece, rotation, List.of(), List.of())) {
                     continue;
                 }
-                int score = scorePiece(piece, definition, boundary, random, usableOpenConnectors(piece.openConnectors(), List.of(piece.bounds()), boundary, allowVerticalConnections(maxFloors)).size(), 0, stationDirection)
+                List<BoundingBox> startCollisionBounds = List.of(piece.bounds());
+                if (!requiredPassageConnectorsUsable(piece.openConnectors(), startCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
+                    continue;
+                }
+                int normalContinuations = normalUsableOpenConnectors(piece.openConnectors(), startCollisionBounds, boundary, allowVerticalConnections(maxFloors)).size();
+                if (normalContinuations == 0) {
+                    continue;
+                }
+                int score = scorePiece(piece, definition, boundary, random, normalContinuations, 0, stationDirection)
                         + exteriorSideScore(definition, piece, rotation, List.of());
                 if (best == null || score > best.score()) {
                     best = new PlacementCandidate(connector, piece, score);
@@ -454,9 +479,10 @@ public class StationGenerator {
         List<StationPieceDefinition> capCandidates = singleConnectorDefinitions(candidates, maxFloors);
         shuffleWeighted(candidates, random);
 
+        List<BoundingBox> currentCollisionBounds = collisionBounds(occupied, reservedClearances);
         List<PlacementCandidate> validPlacements = new ObjectArrayList<>();
         for (StationConnector openConnector : new ObjectArrayList<>(openConnectors)) {
-            if (!isUsableConnector(openConnector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections(maxFloors))) {
+            if (openConnector.requiresPassage() || !isUsableConnector(openConnector, currentCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
                 continue;
             }
             boolean shouldUseDeadEndNearBoundary = false;
@@ -472,7 +498,7 @@ public class StationGenerator {
                 }
 
                 for (StationConnector candidateConnector : definition.connectors()) {
-                    if (!openConnector.isCompatibleWith(candidateConnector)) {
+                    if (candidateConnector.requiresPassage() || !openConnector.isCompatibleWith(candidateConnector)) {
                         continue;
                     }
 
@@ -497,18 +523,22 @@ public class StationGenerator {
                     occupiedWithCandidate.add(piece.bounds());
                     List<BoundingBox> reservedWithCandidate = new ObjectArrayList<>(reservedClearances);
                     reserveExteriorClearance(definition, piece, reservedWithCandidate);
-                    List<StationConnector> usable = usableOpenConnectors(piece.openConnectors(), collisionBounds(occupiedWithCandidate, reservedWithCandidate), boundary, allowVerticalConnections(maxFloors));
+                    List<BoundingBox> candidateCollisionBounds = collisionBounds(occupiedWithCandidate, reservedWithCandidate);
+                    if (!requiredPassageConnectorsUsable(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
+                        continue;
+                    }
+                    List<StationConnector> usable = normalUsableOpenConnectors(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections(maxFloors));
                     int usableConnectors = usable.size();
+                    int secondaryConnections = secondaryConnectorClosureCount(piece, openConnectors, openConnector);
                     if (shouldReplaceWithDeadEndNearBoundary(openConnector, piece, usable, boundary)) {
                         shouldUseDeadEndNearBoundary = true;
                         continue;
                     }
-                    if (needsExpandablePiece && usableConnectors == 0) {
+                    if (needsExpandablePiece && usableConnectors == 0 && secondaryConnections == 0) {
                         continue;
                     }
 
                     int usageCount = pieceUsage.getOrDefault(definition.id(), 0);
-                    int secondaryConnections = secondaryConnectorClosureCount(piece, openConnectors, openConnector);
                     int requiredRemaining = requiredPieceRemaining(settings, pieceUsage, tagUsage, definition);
                     int score = scorePiece(piece, definition, boundary, random, usableConnectors, usageCount, openConnector.direction())
                             + connectorDirectionScore(openConnector, boundary.direction())
@@ -538,6 +568,25 @@ public class StationGenerator {
             }
         }
         return usable;
+    }
+
+    private List<StationConnector> normalUsableOpenConnectors(List<StationConnector> connectors, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
+        List<StationConnector> usable = new ObjectArrayList<>();
+        for (StationConnector connector : connectors) {
+            if (!connector.requiresPassage() && isUsableConnector(connector, occupied, boundary, allowVerticalConnections)) {
+                usable.add(connector);
+            }
+        }
+        return usable;
+    }
+
+    private boolean requiredPassageConnectorsUsable(List<StationConnector> connectors, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
+        for (StationConnector connector : connectors) {
+            if (connector.requiresPassage() && !isUsableConnector(connector, occupied, boundary, allowVerticalConnections)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isUsableConnector(StationConnector connector, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
@@ -595,7 +644,7 @@ public class StationGenerator {
 
     private StationConnector findMatchingOpenConnector(List<StationConnector> openConnectors, StationConnector connector, StationConnector sourceConnector) {
         for (StationConnector openConnector : openConnectors) {
-            if (openConnector.equals(sourceConnector)) {
+            if (openConnector.equals(sourceConnector) || openConnector.requiresPassage() || connector.requiresPassage()) {
                 continue;
             }
             if (connectorsCanCloseLoop(openConnector, connector)) {
@@ -667,6 +716,15 @@ public class StationGenerator {
         return connector.direction().getAxis().isHorizontal();
     }
 
+    private boolean hasRequiredPassageConnector(List<StationConnector> connectors) {
+        for (StationConnector connector : connectors) {
+            if (connector.requiresPassage()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private int roomLinkConnectorCount(List<StationConnector> connectors) {
         int count = 0;
         for (StationConnector connector : connectors) {
@@ -685,6 +743,325 @@ public class StationGenerator {
             }
         }
         return roomLinks;
+    }
+
+    private boolean extendSidePassages(
+            ServerLevel level,
+            StationStructureLibraryData library,
+            StationPoolDefinition pool,
+            List<StationConnector> openConnectors,
+            float danger,
+            RandomSource random,
+            List<BoundingBox> occupied,
+            List<BoundingBox> reservedClearances,
+            StationBoundary boundary,
+            int minAllowedY,
+            int maxAllowedY,
+            int maxFloors,
+            StationGenerationSettings settings,
+            List<PlacedStationPiece> pieces,
+            IntArrayList parentIndexes,
+            List<StationConnector> sourceConnectors,
+            Object2IntMap<ResourceLocation> pieceUsage,
+            Object2IntMap<String> tagUsage
+    ) {
+        boolean allowVerticalConnections = allowVerticalConnections(maxFloors);
+        int routePieceLimit = sidePassagePieceLimit(settings, pool, pieces);
+        while (true) {
+            pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
+            StationConnector sideConnector = firstSideConnector(openConnectors);
+            if (sideConnector == null) {
+                return true;
+            }
+
+            List<StationConnector> mainTargets = mainRouteTargets(openConnectors, sideConnector);
+            if (mainTargets.isEmpty() || !tryConnectSidePassage(level, library, pool, sideConnector, mainTargets, danger, random, openConnectors, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, maxFloors, routePieceLimit, pieces, parentIndexes, sourceConnectors, pieceUsage, tagUsage)) {
+                return false;
+            }
+        }
+    }
+
+    private int sidePassagePieceLimit(StationGenerationSettings settings, StationPoolDefinition pool, List<PlacedStationPiece> pieces) {
+        int requestedSize = Math.max(settings.maxRooms(), Math.max(settings.minRooms(), pool.minRooms()));
+        int dynamicLimit = Math.max(SIDE_PASSAGE_MIN_PIECE_LIMIT, Math.max(requestedSize * 8, pieces.size() * 4));
+        return Math.min(SIDE_PASSAGE_MAX_PIECE_LIMIT, dynamicLimit);
+    }
+
+    private boolean tryConnectSidePassage(
+            ServerLevel level,
+            StationStructureLibraryData library,
+            StationPoolDefinition pool,
+            StationConnector sideConnector,
+            List<StationConnector> mainTargets,
+            float danger,
+            RandomSource random,
+            List<StationConnector> openConnectors,
+            List<BoundingBox> occupied,
+            List<BoundingBox> reservedClearances,
+            StationBoundary boundary,
+            int minAllowedY,
+            int maxAllowedY,
+            int maxFloors,
+            int routePieceLimit,
+            List<PlacedStationPiece> pieces,
+            IntArrayList parentIndexes,
+            List<StationConnector> sourceConnectors,
+            Object2IntMap<ResourceLocation> pieceUsage,
+            Object2IntMap<String> tagUsage
+    ) {
+        List<PlacedStationPiece> piecesSnapshot = new ObjectArrayList<>(pieces);
+        List<StationConnector> openSnapshot = new ObjectArrayList<>(openConnectors);
+        List<BoundingBox> occupiedSnapshot = new ObjectArrayList<>(occupied);
+        List<BoundingBox> reservedSnapshot = new ObjectArrayList<>(reservedClearances);
+        IntArrayList parentSnapshot = new IntArrayList(parentIndexes);
+        List<StationConnector> sourceSnapshot = new ObjectArrayList<>(sourceConnectors);
+        Object2IntOpenHashMap<ResourceLocation> pieceUsageSnapshot = new Object2IntOpenHashMap<>(pieceUsage);
+        Object2IntOpenHashMap<String> tagUsageSnapshot = new Object2IntOpenHashMap<>(tagUsage);
+
+        for (int attempt = 0; attempt < SIDE_PASSAGE_ROUTE_ATTEMPTS; attempt++) {
+            restoreLayoutState(pieces, openConnectors, occupied, reservedClearances, parentIndexes, sourceConnectors, pieceUsage, tagUsage, piecesSnapshot, openSnapshot, occupiedSnapshot, reservedSnapshot, parentSnapshot, sourceSnapshot, pieceUsageSnapshot, tagUsageSnapshot);
+            StationConnector currentConnector = sideConnector;
+            boolean routeFailed = false;
+
+            for (int depth = 0; depth < routePieceLimit; depth++) {
+                PlacementCandidate candidate = chooseSidePassagePiece(level, library, pool, currentConnector, mainTargets, danger, random, openConnectors, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, maxFloors);
+                if (candidate == null) {
+                    routeFailed = true;
+                    break;
+                }
+
+                int parentIndex = indexOfConnectorOwner(pieces, candidate.sourceConnector());
+                int mainClosures = secondaryConnectorClosureCountToTargets(candidate.piece(), mainTargets, candidate.sourceConnector());
+                openConnectors.remove(candidate.sourceConnector());
+                markConnectorConsumed(pieces, candidate.sourceConnector());
+                PlacedStationPiece placedPiece = consumeSecondaryConnectorClosures(pieces, openConnectors, candidate.piece(), candidate.sourceConnector());
+                pieces.add(placedPiece);
+                parentIndexes.add(parentIndex);
+                sourceConnectors.add(candidate.sourceConnector());
+                occupied.add(placedPiece.bounds());
+                reserveExteriorClearance(library, placedPiece, reservedClearances);
+                incrementPieceUsage(pieceUsage, placedPiece);
+                incrementTagUsage(library, tagUsage, placedPiece);
+
+                List<StationConnector> usableNewConnectors = normalUsableOpenConnectors(placedPiece.openConnectors(), collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections(maxFloors));
+                openConnectors.addAll(usableNewConnectors);
+                if (mainClosures > 0) {
+                    return true;
+                }
+
+                currentConnector = closestConnectorToTargets(usableNewConnectors, mainTargets);
+                if (currentConnector == null) {
+                    routeFailed = true;
+                    break;
+                }
+            }
+
+            if (!routeFailed) {
+                break;
+            }
+        }
+
+        restoreLayoutState(pieces, openConnectors, occupied, reservedClearances, parentIndexes, sourceConnectors, pieceUsage, tagUsage, piecesSnapshot, openSnapshot, occupiedSnapshot, reservedSnapshot, parentSnapshot, sourceSnapshot, pieceUsageSnapshot, tagUsageSnapshot);
+        return false;
+    }
+
+    private void restoreLayoutState(
+            List<PlacedStationPiece> pieces,
+            List<StationConnector> openConnectors,
+            List<BoundingBox> occupied,
+            List<BoundingBox> reservedClearances,
+            IntArrayList parentIndexes,
+            List<StationConnector> sourceConnectors,
+            Object2IntMap<ResourceLocation> pieceUsage,
+            Object2IntMap<String> tagUsage,
+            List<PlacedStationPiece> piecesSnapshot,
+            List<StationConnector> openSnapshot,
+            List<BoundingBox> occupiedSnapshot,
+            List<BoundingBox> reservedSnapshot,
+            IntArrayList parentSnapshot,
+            List<StationConnector> sourceSnapshot,
+            Object2IntMap<ResourceLocation> pieceUsageSnapshot,
+            Object2IntMap<String> tagUsageSnapshot
+    ) {
+        pieces.clear();
+        pieces.addAll(piecesSnapshot);
+        openConnectors.clear();
+        openConnectors.addAll(openSnapshot);
+        occupied.clear();
+        occupied.addAll(occupiedSnapshot);
+        reservedClearances.clear();
+        reservedClearances.addAll(reservedSnapshot);
+        parentIndexes.clear();
+        parentIndexes.addAll(parentSnapshot);
+        sourceConnectors.clear();
+        sourceConnectors.addAll(sourceSnapshot);
+        pieceUsage.clear();
+        pieceUsage.putAll(pieceUsageSnapshot);
+        tagUsage.clear();
+        tagUsage.putAll(tagUsageSnapshot);
+    }
+
+    private StationConnector firstSideConnector(List<StationConnector> openConnectors) {
+        for (StationConnector connector : openConnectors) {
+            if (connector.requiresPassage()) {
+                return connector;
+            }
+        }
+        return null;
+    }
+
+    private List<StationConnector> mainRouteTargets(List<StationConnector> openConnectors, StationConnector sideConnector) {
+        List<StationConnector> targets = new ObjectArrayList<>();
+        for (StationConnector connector : openConnectors) {
+            if (!connector.equals(sideConnector) && !connector.requiresPassage()) {
+                targets.add(connector);
+            }
+        }
+        return targets;
+    }
+
+    private PlacementCandidate chooseSidePassagePiece(
+            ServerLevel level,
+            StationStructureLibraryData library,
+            StationPoolDefinition pool,
+            StationConnector openConnector,
+            List<StationConnector> mainTargets,
+            float danger,
+            RandomSource random,
+            List<StationConnector> openConnectors,
+            List<BoundingBox> occupied,
+            List<BoundingBox> reservedClearances,
+            StationBoundary boundary,
+            int minAllowedY,
+            int maxAllowedY,
+            int maxFloors
+    ) {
+        BlockPos target = openConnector.position().relative(openConnector.direction());
+        Direction requiredDirection = openConnector.direction().getOpposite();
+        int currentDistance = nearestConnectorDistance(openConnector, mainTargets);
+        List<PlacementCandidate> validPlacements = new ObjectArrayList<>();
+        List<StationPieceDefinition> candidates = definitions(library, pool.roomPieces(), danger);
+        shuffleWeighted(candidates, random);
+
+        for (StationPieceDefinition definition : candidates) {
+            if (!pieceAllowedForFloors(definition, maxFloors) || roomLinkConnectorCount(definition.connectors()) <= 1 || hasRequiredPassageConnector(definition.connectors())) {
+                continue;
+            }
+            Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+            if (template.isEmpty()) {
+                continue;
+            }
+
+            for (StationConnector candidateConnector : definition.connectors()) {
+                if (!isRoomLinkConnector(candidateConnector) || !openConnector.isCompatibleWith(candidateConnector)) {
+                    continue;
+                }
+
+                Rotation rotation = StationPlacementUtil.rotationBetween(candidateConnector.direction(), requiredDirection);
+                if (rotation == null) {
+                    continue;
+                }
+
+                BlockPos origin = target.subtract(StationPlacementUtil.transform(candidateConnector.position(), rotation));
+                PlacedStationPiece piece = buildPlacedPiece(definition, template.get(), origin, rotation, danger, candidateConnector);
+                if (!insideFloorLimit(piece.bounds(), minAllowedY, maxAllowedY)
+                        || !boundary.allowsBounds(piece.bounds())
+                        || StationPlacementUtil.intersectsAny(piece.bounds(), collisionBounds(occupied, reservedClearances))
+                        || !exteriorSideAllowed(definition, piece, rotation, occupied, reservedClearances)) {
+                    continue;
+                }
+
+                List<BoundingBox> occupiedWithCandidate = new ObjectArrayList<>(occupied);
+                occupiedWithCandidate.add(piece.bounds());
+                List<BoundingBox> reservedWithCandidate = new ObjectArrayList<>(reservedClearances);
+                reserveExteriorClearance(definition, piece, reservedWithCandidate);
+                List<StationConnector> usable = normalUsableOpenConnectors(piece.openConnectors(), collisionBounds(occupiedWithCandidate, reservedWithCandidate), boundary, allowVerticalConnections(maxFloors));
+                int mainClosures = secondaryConnectorClosureCountToTargets(piece, mainTargets, openConnector);
+                if (usable.isEmpty() && mainClosures == 0) {
+                    continue;
+                }
+
+                int bestNextDistance = nearestConnectorDistance(usable, mainTargets);
+                int distanceImprovement = currentDistance == Integer.MAX_VALUE || bestNextDistance == Integer.MAX_VALUE ? 0 : currentDistance - bestNextDistance;
+                int score = definition.weight() * 12
+                        + SIDE_PASSAGE_SCORE_BONUS
+                        + connectorTargetScore(usable, mainTargets)
+                        + distanceImprovement * 260
+                        + mainClosures * SIDE_PASSAGE_LOOP_SCORE_BONUS
+                        + Math.max(0, roomLinkConnectorCount(definition.connectors()) - 2) * 1_200
+                        + (mainClosures > 0 ? SIDE_PASSAGE_SCORE_BONUS * 4 : 0)
+                        + exteriorSideScore(definition, piece, rotation, occupied)
+                        + random.nextInt(16);
+                validPlacements.add(new PlacementCandidate(openConnector, piece, score));
+            }
+        }
+
+        return selectWeightedCandidate(validPlacements, random);
+    }
+
+    private int secondaryConnectorClosureCountToTargets(PlacedStationPiece piece, List<StationConnector> targets, StationConnector sourceConnector) {
+        int count = 0;
+        for (StationConnector connector : piece.openConnectors()) {
+            if (connector.requiresPassage()) {
+                continue;
+            }
+            for (StationConnector target : targets) {
+                if (!target.equals(sourceConnector) && !target.requiresPassage() && connectorsCanCloseLoop(target, connector)) {
+                    count++;
+                    break;
+                }
+            }
+        }
+        return count;
+    }
+
+    private StationConnector closestConnectorToTargets(List<StationConnector> connectors, List<StationConnector> targets) {
+        StationConnector best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (StationConnector connector : connectors) {
+            if (connector.requiresPassage()) {
+                continue;
+            }
+            int distance = nearestConnectorDistance(connector, targets);
+            if (distance < bestDistance) {
+                best = connector;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    private int connectorTargetScore(List<StationConnector> connectors, List<StationConnector> targets) {
+        int nearest = Integer.MAX_VALUE;
+        for (StationConnector connector : connectors) {
+            nearest = Math.min(nearest, nearestConnectorDistance(connector, targets));
+        }
+        if (nearest == Integer.MAX_VALUE) {
+            return 0;
+        }
+        return Math.max(0, SIDE_PASSAGE_DISTANCE_SCORE - nearest * 120);
+    }
+
+    private int nearestConnectorDistance(StationConnector connector, List<StationConnector> targets) {
+        int nearest = Integer.MAX_VALUE;
+        for (StationConnector target : targets) {
+            nearest = Math.min(nearest, connectorDistance(connector, target));
+        }
+        return nearest;
+    }
+
+    private int nearestConnectorDistance(List<StationConnector> connectors, List<StationConnector> targets) {
+        int nearest = Integer.MAX_VALUE;
+        for (StationConnector connector : connectors) {
+            nearest = Math.min(nearest, nearestConnectorDistance(connector, targets));
+        }
+        return nearest;
+    }
+
+    private int connectorDistance(StationConnector left, StationConnector right) {
+        return Math.abs(left.position().getX() - right.position().getX())
+                + Math.abs(left.position().getY() - right.position().getY())
+                + Math.abs(left.position().getZ() - right.position().getZ());
     }
 
     private void capRemainingOpenConnectors(

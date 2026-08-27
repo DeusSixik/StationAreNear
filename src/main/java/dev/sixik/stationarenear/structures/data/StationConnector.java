@@ -22,11 +22,18 @@ public record StationConnector(
         BlockPos max,
         int width,
         int height,
-        String acceptedSizes
+        String acceptedSizes,
+        boolean requiresPassage
 ) {
 
+    public static final String KEY_REQUIRES_PASSAGE = "requiresPassage";
+
     public StationConnector(String name, BlockPos position, Direction direction, Set<String> tags, Set<String> accepts, int priority) {
-        this(name, position, direction, tags, accepts, priority, position, position, 1, 1, "1x1");
+        this(name, position, direction, tags, accepts, priority, position, position, 1, 1, "1x1", false);
+    }
+
+    public StationConnector(String name, BlockPos position, Direction direction, Set<String> tags, Set<String> accepts, int priority, BlockPos min, BlockPos max, int width, int height, String acceptedSizes) {
+        this(name, position, direction, tags, accepts, priority, min, max, width, height, acceptedSizes, false);
     }
 
     public StationConnector {
@@ -84,6 +91,7 @@ public record StationConnector(
         tag.putInt("width", width);
         tag.putInt("height", height);
         tag.putString("acceptedSizes", acceptedSizes);
+        tag.putBoolean(KEY_REQUIRES_PASSAGE, requiresPassage);
         return tag;
     }
 
@@ -110,8 +118,15 @@ public record StationConnector(
                 max,
                 width,
                 height,
-                acceptedSizes
+                acceptedSizes,
+                loadRequiresPassage(tag)
         );
+    }
+
+    public static boolean loadRequiresPassage(CompoundTag tag) {
+        return tag.getBoolean(KEY_REQUIRES_PASSAGE)
+                || tag.getBoolean("requiredPassage")
+                || tag.getBoolean("mustBuildPassage");
     }
 
     static ListTag saveStrings(Set<String> strings) {

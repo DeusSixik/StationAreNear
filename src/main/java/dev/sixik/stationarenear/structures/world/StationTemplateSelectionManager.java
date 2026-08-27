@@ -20,6 +20,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -190,6 +191,7 @@ public final class StationTemplateSelectionManager {
             connectorTag.putInt("width", connector.width());
             connectorTag.putInt("height", connector.height());
             connectorTag.putString("acceptedSizes", connector.acceptedSizes());
+            connectorTag.putBoolean(StationConnector.KEY_REQUIRES_PASSAGE, connector.requiresPassage());
             list.add(connectorTag);
         }
         return list;
@@ -206,10 +208,42 @@ public final class StationTemplateSelectionManager {
             triggerTag.putString("type", triggerZone.type());
             triggerTag.put("worldMin", NbtPos.save(new BlockPos(triggerBounds.minX(), triggerBounds.minY(), triggerBounds.minZ())));
             triggerTag.put("worldMax", NbtPos.save(new BlockPos(triggerBounds.maxX(), triggerBounds.maxY(), triggerBounds.maxZ())));
-            triggerTag.put("data", triggerZone.data().copy());
+            CompoundTag data = triggerZone.data().copy();
+            rotateShapePoints(triggerZone, origin, data, triggerBounds, rotation);
+            rotateDataDirection(data, "direction", rotation);
+            rotateDataDirection(data, "shapeDirection", rotation);
+            triggerTag.put("data", data);
             list.add(triggerTag);
         }
         return list;
+    }
+
+    private static void rotateShapePoints(StationTriggerZone triggerZone, BlockPos origin, CompoundTag data, BoundingBox transformedBounds, Rotation rotation) {
+        if (!data.contains("shapePoints", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag sourcePoints = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        ListTag transformedPoints = new ListTag();
+        BlockPos transformedMin = new BlockPos(transformedBounds.minX(), transformedBounds.minY(), transformedBounds.minZ());
+        for (int i = 0; i < sourcePoints.size(); i++) {
+            CompoundTag point = sourcePoints.getCompound(i);
+            if (!point.contains("x", Tag.TAG_INT) || !point.contains("y", Tag.TAG_INT) || !point.contains("z", Tag.TAG_INT)) {
+                continue;
+            }
+            BlockPos offset = NbtPos.load(point);
+            BlockPos localPos = triggerZone.min().offset(offset.getX(), offset.getY(), offset.getZ());
+            BlockPos worldPos = origin.offset(StructureTemplate.transform(localPos, Mirror.NONE, rotation, BlockPos.ZERO));
+            transformedPoints.add(NbtPos.save(worldPos.subtract(transformedMin)));
+        }
+        data.put("shapePoints", transformedPoints);
+        data.putString("shape", "points");
+    }
+
+    private static void rotateDataDirection(CompoundTag data, String key, Rotation rotation) {
+        Direction direction = Direction.byName(data.getString(key).toLowerCase(java.util.Locale.ROOT));
+        if (direction != null && direction.getAxis().isHorizontal()) {
+            data.putString(key, rotation.rotate(direction).getSerializedName());
+        }
     }
 
     private static StationEditorNodeType triggerNodeType(String type) {

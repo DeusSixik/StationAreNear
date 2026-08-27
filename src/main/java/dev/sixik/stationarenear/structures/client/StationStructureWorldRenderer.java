@@ -2,6 +2,7 @@ package dev.sixik.stationarenear.structures.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.TemplateSelectionEntry;
 import dev.sixik.stationarenear.structures.editor.StationEditorNodeType;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
@@ -114,11 +115,12 @@ public final class StationStructureWorldRenderer {
             if (direction == null) {
                 direction = Direction.NORTH;
             }
+            boolean requiresPassage = connector.getBoolean(StationConnector.KEY_REQUIRES_PASSAGE);
             AABB connectionBox = boxFromInclusive(min, max).inflate(0.012D);
-            renderBox(poseStack, buffers, connectionBox, 0.15F, 0.55F, 1.0F, 0.22F, 1.0F, selected);
-            renderBox(poseStack, buffers, new AABB(anchor).inflate(0.035D), 0.15F, 0.85F, 1.0F, 0.22F, 1.0F, false);
+            renderBox(poseStack, buffers, connectionBox, requiresPassage ? 1.0F : 0.15F, requiresPassage ? 0.85F : 0.55F, requiresPassage ? 0.15F : 1.0F, 0.22F, 1.0F, selected);
+            renderBox(poseStack, buffers, new AABB(anchor).inflate(0.035D), requiresPassage ? 1.0F : 0.15F, requiresPassage ? 0.85F : 0.85F, requiresPassage ? 0.15F : 1.0F, 0.22F, 1.0F, false);
             renderDirectionArrow(poseStack, buffers, connectionBox, direction, selected);
-            renderBoxText(poseStack, camera, minecraft.font, buffers, connectionBox, "Connection: " + connector.getString("name"), 0xFF55AAFF);
+            renderBoxText(poseStack, camera, minecraft.font, buffers, connectionBox, "Connection: " + connector.getString("name") + (requiresPassage ? " [PATH]" : ""), requiresPassage ? 0xFFFFDD55 : 0xFF55AAFF);
         }
 
         ListTag triggers = editorTag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
@@ -128,13 +130,36 @@ public final class StationStructureWorldRenderer {
             BlockPos max = NbtPos.load(trigger.getCompound("worldMax"));
             String key = "trigger:" + i;
             TriggerRenderColor color = triggerColor(trigger.getString("nodeType"));
+            boolean selected = StationEditorClientState.selectedKey().equals(key);
             AABB triggerBox = boxFromInclusive(min, max).inflate(0.01D);
-            renderBox(poseStack, buffers, triggerBox, color.red(), color.green(), color.blue(), 0.18F, 1.0F, StationEditorClientState.selectedKey().equals(key));
+            renderBox(poseStack, buffers, triggerBox, color.red(), color.green(), color.blue(), 0.18F, 1.0F, selected);
+            renderShapePoints(poseStack, buffers, trigger, min, max, color, selected);
             renderBoxText(poseStack, camera, minecraft.font, buffers, triggerBox, trigger.getString("nodeType") + ": " + trigger.getString("id"), color.textColor());
         }
 
         buffers.endBatch();
         poseStack.popPose();
+    }
+
+    private static void renderShapePoints(PoseStack poseStack, MultiBufferSource.BufferSource buffers, CompoundTag trigger, BlockPos min, BlockPos max, TriggerRenderColor color, boolean selected) {
+        CompoundTag data = trigger.getCompound("data");
+        if (!data.contains("shapePoints", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag points = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        for (int i = 0; i < points.size(); i++) {
+            CompoundTag point = points.getCompound(i);
+            if (!point.contains("x", Tag.TAG_INT) || !point.contains("y", Tag.TAG_INT) || !point.contains("z", Tag.TAG_INT)) {
+                continue;
+            }
+            BlockPos worldPos = min.offset(point.getInt("x"), point.getInt("y"), point.getInt("z"));
+            if (worldPos.getX() < min.getX() || worldPos.getX() > max.getX()
+                    || worldPos.getY() < min.getY() || worldPos.getY() > max.getY()
+                    || worldPos.getZ() < min.getZ() || worldPos.getZ() > max.getZ()) {
+                continue;
+            }
+            renderBox(poseStack, buffers, boxFromInclusive(worldPos, worldPos).inflate(0.025D), color.red(), color.green(), color.blue(), selected ? 0.42F : 0.28F, 1.0F, false);
+        }
     }
 
     private static AABB boxFromInclusive(BlockPos min, BlockPos max) {

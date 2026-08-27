@@ -62,6 +62,7 @@ public final class QuestItems {
                         output.accept(QuestBlocks.FRIDGE_ITEM.get());
                         output.accept(QuestBlocks.KITCHEN_SINK_ITEM.get());
                         output.accept(QuestBlocks.MICROWAVE_ITEM.get());
+                        output.accept(QuestBlocks.ENERGY_PANEL_ITEM.get());
                     })
                     .build()
     );

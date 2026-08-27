@@ -20,6 +20,7 @@ public final class StationEditorModeOverlay {
     private static final int ZONE_ICON = 0xFF78D6FF;
     private static final int TRIGGER_ICON = 0xFFFFC857;
     private static final int EDIT_ICON = 0xFFFF7A7A;
+    private static final int SHAPE_ICON = 0xFFFF8FD8;
     private static final int CONNECTION_ICON = 0xFF84F08E;
     private static final int COPY_ICON = 0xFFD38BFF;
 
@@ -93,6 +94,7 @@ public final class StationEditorModeOverlay {
             case ZONE_SELECTION -> renderZoneIcon(graphics, centerX, centerY, applyAlpha(ZONE_ICON, alpha), muted);
             case TRIGGER_MANAGER_CREATE -> renderTriggerCreateIcon(graphics, centerX, centerY, applyAlpha(TRIGGER_ICON, alpha), muted);
             case TRIGGER_MANAGER_EDIT -> renderTriggerEditIcon(graphics, centerX, centerY, applyAlpha(EDIT_ICON, alpha), muted);
+            case TRIGGER_SHAPE_POINTS -> renderTriggerShapeIcon(graphics, centerX, centerY, applyAlpha(SHAPE_ICON, alpha), muted);
             case CONNECTION_MANAGER -> renderConnectionIcon(graphics, centerX, centerY, applyAlpha(CONNECTION_ICON, alpha), muted);
             case STRUCTURE_COPY -> renderCopyIcon(graphics, centerX, centerY, applyAlpha(COPY_ICON, alpha), muted);
         }
@@ -134,6 +136,18 @@ public final class StationEditorModeOverlay {
         fill(graphics, centerX - 8, centerY + 7, centerX + 8, centerY + 10, muted);
     }
 
+    private static void renderTriggerShapeIcon(GuiGraphics graphics, int centerX, int centerY, int color, int muted) {
+        fill(graphics, centerX - 10, centerY - 10, centerX - 5, centerY - 5, color);
+        fill(graphics, centerX - 4, centerY - 10, centerX + 1, centerY - 5, muted);
+        fill(graphics, centerX + 2, centerY - 10, centerX + 7, centerY - 5, color);
+        fill(graphics, centerX - 10, centerY - 4, centerX - 5, centerY + 1, muted);
+        fill(graphics, centerX - 4, centerY - 4, centerX + 1, centerY + 1, color);
+        fill(graphics, centerX + 2, centerY - 4, centerX + 7, centerY + 1, muted);
+        fill(graphics, centerX - 10, centerY + 2, centerX - 5, centerY + 7, color);
+        fill(graphics, centerX - 4, centerY + 2, centerX + 1, centerY + 7, color);
+        fill(graphics, centerX + 2, centerY + 2, centerX + 7, centerY + 7, muted);
+    }
+
     private static void renderConnectionIcon(GuiGraphics graphics, int centerX, int centerY, int color, int muted) {
         fill(graphics, centerX - 12, centerY - 2, centerX + 13, centerY + 2, color);
         fill(graphics, centerX - 2, centerY - 10, centerX + 2, centerY + 11, muted);
@@ -149,6 +163,7 @@ public final class StationEditorModeOverlay {
             case ZONE_SELECTION -> "\u0412\u044b\u0431\u043e\u0440 \u0437\u043e\u043d\u044b \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u044b";
             case TRIGGER_MANAGER_CREATE -> "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
             case TRIGGER_MANAGER_EDIT -> "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
+            case TRIGGER_SHAPE_POINTS -> "\u0424\u043e\u0440\u043c\u0430 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u0430";
             case CONNECTION_MANAGER -> "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0439";
             case STRUCTURE_COPY -> "\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u044b";
         };

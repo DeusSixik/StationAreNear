@@ -4,10 +4,13 @@ import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
+import dev.sixik.stationarenear.structures.util.NbtPos;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -55,7 +58,8 @@ public final class StationPlacementUtil {
                 new BlockPos(bounds.maxX(), bounds.maxY(), bounds.maxZ()),
                 connector.width(),
                 connector.height(),
-                connector.acceptedSizes()
+                connector.acceptedSizes(),
+                connector.requiresPassage()
         );
     }
 
@@ -90,7 +94,8 @@ public final class StationPlacementUtil {
     static PlacedTriggerZone transformTrigger(StationTriggerZone triggerZone, BlockPos origin, Rotation rotation, float danger, BlockPos selectionMin, BlockPos selectionMax) {
         BoundingBox bounds = transformBox(origin, triggerZone.min(), triggerZone.max(), rotation);
         CompoundTag data = triggerZone.data().copy();
-        rotateDoorDirection(triggerZone, data, rotation, selectionMin, selectionMax);
+        rotateTriggerDirection(triggerZone, data, rotation, selectionMin, selectionMax);
+        rotateShapePoints(triggerZone, origin, data, bounds, rotation);
         data.putFloat("stationDanger", danger);
         return new PlacedTriggerZone(
                 triggerZone.id(),
@@ -101,23 +106,44 @@ public final class StationPlacementUtil {
         );
     }
 
-    private static void rotateDoorDirection(StationTriggerZone triggerZone, CompoundTag data, Rotation rotation, BlockPos selectionMin, BlockPos selectionMax) {
-        if (StationStructureTriggerType.from(triggerZone.type()) != StationStructureTriggerType.DOOR_TRIGGER) {
+    private static void rotateShapePoints(StationTriggerZone triggerZone, BlockPos origin, CompoundTag data, BoundingBox transformedBounds, Rotation rotation) {
+        if (!data.contains("shapePoints", Tag.TAG_LIST)) {
             return;
         }
+        ListTag sourcePoints = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        ListTag transformedPoints = new ListTag();
+        BlockPos transformedMin = new BlockPos(transformedBounds.minX(), transformedBounds.minY(), transformedBounds.minZ());
+        for (int i = 0; i < sourcePoints.size(); i++) {
+            BlockPos offset = NbtPos.load(sourcePoints.getCompound(i));
+            BlockPos localPos = triggerZone.min().offset(offset.getX(), offset.getY(), offset.getZ());
+            BlockPos worldPos = origin.offset(transform(localPos, rotation));
+            transformedPoints.add(NbtPos.save(worldPos.subtract(transformedMin)));
+        }
+        data.put("shapePoints", transformedPoints);
+        data.putString("shape", "points");
+    }
 
-        Direction direction = doorLocalDirection(triggerZone, data, selectionMin, selectionMax);
+    private static void rotateTriggerDirection(StationTriggerZone triggerZone, CompoundTag data, Rotation rotation, BlockPos selectionMin, BlockPos selectionMax) {
+        Direction direction = configuredHorizontalDirection(data);
+        if (direction == null && StationStructureTriggerType.from(triggerZone.type()) == StationStructureTriggerType.DOOR_TRIGGER) {
+            direction = inferHorizontalFaceDirection(triggerZone.min(), triggerZone.max(), selectionMin, selectionMax);
+        }
         if (direction != null && direction.getAxis().isHorizontal()) {
             data.putString("direction", rotation.rotate(direction).getSerializedName());
         }
+        rotateHorizontalDirection(data, "shapeDirection", rotation);
     }
 
-    private static Direction doorLocalDirection(StationTriggerZone triggerZone, CompoundTag data, BlockPos selectionMin, BlockPos selectionMax) {
+    private static Direction configuredHorizontalDirection(CompoundTag data) {
         Direction configured = Direction.byName(data.getString("direction").toLowerCase(java.util.Locale.ROOT));
+        return configured != null && configured.getAxis().isHorizontal() ? configured : null;
+    }
+
+    private static void rotateHorizontalDirection(CompoundTag data, String key, Rotation rotation) {
+        Direction configured = Direction.byName(data.getString(key).toLowerCase(java.util.Locale.ROOT));
         if (configured != null && configured.getAxis().isHorizontal()) {
-            return configured;
+            data.putString(key, rotation.rotate(configured).getSerializedName());
         }
-        return inferHorizontalFaceDirection(triggerZone.min(), triggerZone.max(), selectionMin, selectionMax);
     }
 
     private static Direction inferHorizontalFaceDirection(BlockPos min, BlockPos max, BlockPos selectionMin, BlockPos selectionMax) {

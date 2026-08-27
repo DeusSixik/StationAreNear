@@ -270,16 +270,17 @@ public class StationStructureToolItem extends Item {
                 continue;
             }
 
-            BlockPos worldPosition = connectorTag.contains("worldPosition", Tag.TAG_COMPOUND)
-                    ? NbtPos.load(connectorTag.getCompound("worldPosition"))
-                    : NbtPos.load(connectorTag.getCompound("worldMin"));
-            BlockPos worldMin = connectorTag.contains("worldMin", Tag.TAG_COMPOUND) ? NbtPos.load(connectorTag.getCompound("worldMin")) : worldPosition;
-            BlockPos worldMax = connectorTag.contains("worldMax", Tag.TAG_COMPOUND) ? NbtPos.load(connectorTag.getCompound("worldMax")) : worldPosition;
-            BlockPos localPosition = worldPosition.subtract(structureMin);
-            BlockPos localMin = worldMin.subtract(structureMin);
-            BlockPos localMax = worldMax.subtract(structureMin);
-            int width = Math.max(1, connectorTag.contains("width") ? connectorTag.getInt("width") : localMax.getX() - localMin.getX() + 1);
-            int height = Math.max(1, connectorTag.contains("height") ? connectorTag.getInt("height") : localMax.getY() - localMin.getY() + 1);
+            BlockPos localPosition = connectorLocalPos(connectorTag, structureMin);
+            if (localPosition == null) {
+                continue;
+            }
+            BlockPos localMin = connectorLocalMin(connectorTag, structureMin, localPosition);
+            BlockPos localMax = connectorLocalMax(connectorTag, structureMin, localMin);
+            BlockPos normalizedLocalMin = new BlockPos(Math.min(localMin.getX(), localMax.getX()), Math.min(localMin.getY(), localMax.getY()), Math.min(localMin.getZ(), localMax.getZ()));
+            BlockPos normalizedLocalMax = new BlockPos(Math.max(localMin.getX(), localMax.getX()), Math.max(localMin.getY(), localMax.getY()), Math.max(localMin.getZ(), localMax.getZ()));
+            localPosition = clampPos(localPosition, normalizedLocalMin, normalizedLocalMax);
+            int width = Math.max(1, connectorTag.contains("width") ? connectorTag.getInt("width") : normalizedLocalMax.getX() - normalizedLocalMin.getX() + 1);
+            int height = Math.max(1, connectorTag.contains("height") ? connectorTag.getInt("height") : normalizedLocalMax.getY() - normalizedLocalMin.getY() + 1);
             String acceptedSizes = connectorTag.contains("acceptedSizes") && !connectorTag.getString("acceptedSizes").isBlank()
                     ? connectorTag.getString("acceptedSizes")
                     : width + "x" + height;
@@ -291,15 +292,59 @@ public class StationStructureToolItem extends Item {
                     StationPlacementUtil.parseTags(connectorTag.getString("tags")),
                     StationPlacementUtil.parseTags(connectorTag.getString("accepts")),
                     connectorTag.getInt("priority"),
-                    localMin,
-                    localMax,
+                    normalizedLocalMin,
+                    normalizedLocalMax,
                     width,
                     height,
-                    acceptedSizes
+                    acceptedSizes,
+                    StationConnector.loadRequiresPassage(connectorTag)
             ));
         }
 
         return connectors.isEmpty() ? (fallback == null ? List.of() : List.of(fallback)) : connectors;
+    }
+
+    private static BlockPos connectorLocalPos(CompoundTag tag, BlockPos structureMin) {
+        return firstConnectorLocalPos(tag, structureMin, null, "worldPosition", "position", "worldMin", "min", "worldMax", "max");
+    }
+
+    private static BlockPos connectorLocalMin(CompoundTag tag, BlockPos structureMin, BlockPos fallback) {
+        return firstConnectorLocalPos(tag, structureMin, fallback, "worldMin", "min");
+    }
+
+    private static BlockPos connectorLocalMax(CompoundTag tag, BlockPos structureMin, BlockPos fallback) {
+        return firstConnectorLocalPos(tag, structureMin, fallback, "worldMax", "max");
+    }
+
+    private static BlockPos firstConnectorLocalPos(CompoundTag tag, BlockPos structureMin, BlockPos fallback, String... keyPairs) {
+        for (int i = 0; i + 1 < keyPairs.length; i += 2) {
+            String worldKey = keyPairs[i];
+            if (hasPos(tag, worldKey)) {
+                return NbtPos.load(tag.getCompound(worldKey)).subtract(structureMin);
+            }
+        }
+        for (int i = 0; i + 1 < keyPairs.length; i += 2) {
+            String localKey = keyPairs[i + 1];
+            if (hasPos(tag, localKey)) {
+                return NbtPos.load(tag.getCompound(localKey));
+            }
+        }
+        return fallback;
+    }
+
+    private static boolean hasPos(CompoundTag tag, String key) {
+        return tag.contains(key, Tag.TAG_COMPOUND)
+                && tag.getCompound(key).contains("x", Tag.TAG_INT)
+                && tag.getCompound(key).contains("y", Tag.TAG_INT)
+                && tag.getCompound(key).contains("z", Tag.TAG_INT);
+    }
+
+    private static BlockPos clampPos(BlockPos pos, BlockPos min, BlockPos max) {
+        return new BlockPos(
+                net.minecraft.util.Mth.clamp(pos.getX(), min.getX(), max.getX()),
+                net.minecraft.util.Mth.clamp(pos.getY(), min.getY(), max.getY()),
+                net.minecraft.util.Mth.clamp(pos.getZ(), min.getZ(), max.getZ())
+        );
     }
 
     private static List<StationTriggerZone> loadTriggerZones(CompoundTag tag, BlockPos structureMin) {

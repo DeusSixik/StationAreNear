@@ -1,8 +1,11 @@
 package dev.sixik.stationarenear.structures.trigger;
 
 import dev.sixik.stationarenear.mob.registry.StationMobEntities;
+import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
+import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.registry.ShipBlocks;
+import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
@@ -25,6 +28,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraftforge.common.MinecraftForge;
@@ -37,6 +41,9 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class StationTriggerHandlers {
+
+    private static final String ENERGY_SWITCH_TAG = "electric_switch";
+    private static final int ENERGY_PANEL_DEFAULT_CHANCE = 80;
 
     private StationTriggerHandlers() {
     }
@@ -70,12 +77,108 @@ public final class StationTriggerHandlers {
             case OBJECT_PLACER -> placeObject(event);
             case MOB_SPAWN -> placeMobs(event);
             case DOOR_TRIGGER -> placeDoor(event);
-            case QUEST, QUEST_PLACE -> {
+            case QUEST_PLACE -> placeEnergyPanel(event);
+            case QUEST -> {
                 // Quest triggers intentionally only publish StationStructureSpawnTriggerEvent for quest code.
             }
             default -> {
             }
         }
+    }
+
+    private static void placeEnergyPanel(StationStructureSpawnTriggerEvent event) {
+        if (!isEnergySwitchTrigger(event.getZone())) {
+            return;
+        }
+        CompoundTag data = event.getZone().data();
+        if (data.contains("energyPanel") && !data.getBoolean("energyPanel")) {
+            return;
+        }
+
+        Optional<EnergyPanelTarget> selected = selectEnergyPanelTarget(event.getStation());
+        if (selected.isEmpty() || !selected.get().matches(event.getPiece(), event.getZone())) {
+            return;
+        }
+
+        RandomSource random = RandomSource.create(event.getStation().seed() ^ 0xE1EC7A11B0A2L);
+        int chance = Mth.clamp(data.contains("energyPanelChance") ? data.getInt("energyPanelChance") : ENERGY_PANEL_DEFAULT_CHANCE, 0, 100);
+        if (random.nextInt(100) >= chance) {
+            return;
+        }
+
+        boolean powered = !data.contains("powered") || data.getBoolean("powered");
+        placeEnergyPanel(event.getLevel(), event.getStation(), event.getZone(), powered);
+    }
+
+    public static Optional<PlacedTriggerZone> selectEnergyPanelTrigger(dev.sixik.stationarenear.structures.data.StationInstance station) {
+        return selectEnergyPanelTarget(station).map(EnergyPanelTarget::zone);
+    }
+
+    public static boolean placeEnergyPanel(net.minecraft.server.level.ServerLevel level, dev.sixik.stationarenear.structures.data.StationInstance station, PlacedTriggerZone zone, boolean powered) {
+        BlockPos pos = centerPos(zone);
+        net.minecraft.world.level.block.state.BlockState current = level.getBlockState(pos);
+        if (!current.isAir() && !current.is(QuestBlocks.ENERGY_PANEL.get())) {
+            return false;
+        }
+        Direction facing = panelFacing(zone.data(), station.stationDirection());
+        level.setBlock(pos, QuestBlocks.ENERGY_PANEL.get().defaultBlockState()
+                .setValue(EnergyPanelBlock.FACING, facing)
+                .setValue(EnergyPanelBlock.POWERED, powered), 3);
+        return true;
+    }
+
+    private static Optional<EnergyPanelTarget> selectEnergyPanelTarget(dev.sixik.stationarenear.structures.data.StationInstance station) {
+        List<EnergyPanelTarget> candidates = new ObjectArrayList<>();
+        for (PlacedStationPiece piece : station.pieces()) {
+            for (PlacedTriggerZone zone : piece.triggerZones()) {
+                if (StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE && isEnergySwitchTrigger(zone)) {
+                    candidates.add(new EnergyPanelTarget(piece, zone));
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        candidates.sort(java.util.Comparator
+                .comparing((EnergyPanelTarget target) -> target.zone().id())
+                .thenComparingInt(target -> target.zone().min().getX())
+                .thenComparingInt(target -> target.zone().min().getY())
+                .thenComparingInt(target -> target.zone().min().getZ()));
+        RandomSource random = RandomSource.create(station.seed() ^ 0xE13C7A11B0A2L);
+        return Optional.of(candidates.get(random.nextInt(candidates.size())));
+    }
+
+    private static boolean isEnergySwitchTrigger(PlacedTriggerZone zone) {
+        return hasTriggerTag(zone, ENERGY_SWITCH_TAG);
+    }
+
+    private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
+        String tags = zone.data().contains("tags") ? zone.data().getString("tags") : zone.data().getString("tag");
+        if (tags == null || tags.isBlank()) {
+            return false;
+        }
+        for (String tag : tags.split(",")) {
+            if (requiredTag.equalsIgnoreCase(tag.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Direction panelFacing(CompoundTag data, Direction fallback) {
+        Direction parsed = Direction.byName(data.getString("direction").toLowerCase(Locale.ROOT));
+        if (parsed != null && parsed.getAxis().isHorizontal()) {
+            return parsed;
+        }
+        return fallback.getAxis().isHorizontal() ? fallback : Direction.NORTH;
+    }
+
+    private static BlockPos centerPos(PlacedTriggerZone zone) {
+        return new BlockPos(
+                Math.floorDiv(zone.min().getX() + zone.max().getX(), 2),
+                Math.floorDiv(zone.min().getY() + zone.max().getY(), 2),
+                Math.floorDiv(zone.min().getZ() + zone.max().getZ(), 2)
+        );
     }
 
     private static void placeDoor(StationStructureSpawnTriggerEvent event) {
@@ -156,20 +259,15 @@ public final class StationTriggerHandlers {
             return;
         }
 
-        StationPieceDefinition definition = selectWeighted(candidates, random);
-        Optional<StructureTemplate> template = event.getLevel().getStructureManager().get(definition.template());
-        if (template.isEmpty()) {
+        Optional<ObjectPlacement> placement = selectObjectPlacement(event, candidates, random);
+        if (placement.isEmpty()) {
             return;
         }
 
-        Rotation rotation = data.getBoolean("randomRotation") ? randomHorizontalRotation(random) : Rotation.NONE;
-        Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random);
-        if (origin.isEmpty()) {
-            return;
-        }
-
-        StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation);
-        template.get().placeInWorld(event.getLevel(), origin.get(), origin.get(), settings, random, 2);
+        StructurePlaceSettings settings = new StructurePlaceSettings()
+                .setRotation(placement.get().rotation())
+                .addProcessor(BlockIgnoreProcessor.AIR);
+        placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
     }
 
     private static void placeMobs(StationStructureSpawnTriggerEvent event) {
@@ -189,6 +287,51 @@ public final class StationTriggerHandlers {
         for (int i = 0; i < count; i++) {
             spawnDangerMob(event.getLevel(), event.getZone(), danger, random, mobId);
         }
+    }
+
+    private static Optional<ObjectPlacement> selectObjectPlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random) {
+        List<StationPieceDefinition> remaining = new java.util.ArrayList<>(candidates);
+        while (!remaining.isEmpty()) {
+            StationPieceDefinition definition = selectWeighted(remaining, random);
+            remaining.remove(definition);
+            Optional<StructureTemplate> template = event.getLevel().getStructureManager().get(definition.template());
+            if (template.isEmpty()) {
+                continue;
+            }
+
+            for (Rotation rotation : objectRotations(event.getZone().data(), random)) {
+                Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random);
+                if (origin.isPresent()) {
+                    return Optional.of(new ObjectPlacement(template.get(), origin.get(), rotation));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static List<Rotation> objectRotations(CompoundTag data, RandomSource random) {
+        boolean randomRotation = data.getBoolean("randomRotation");
+        if (!objectRotationEnabled(data)) {
+            return List.of(randomRotation ? randomHorizontalRotation(random) : Rotation.NONE);
+        }
+
+        List<Rotation> rotations = new java.util.ArrayList<>(List.of(Rotation.NONE, Rotation.CLOCKWISE_90, Rotation.CLOCKWISE_180, Rotation.COUNTERCLOCKWISE_90));
+        if (randomRotation) {
+            for (int i = rotations.size() - 1; i > 0; i--) {
+                java.util.Collections.swap(rotations, i, random.nextInt(i + 1));
+            }
+        }
+        return rotations;
+    }
+
+    private static boolean objectRotationEnabled(CompoundTag data) {
+        if (data.contains("objectRotation")) {
+            return data.getBoolean("objectRotation");
+        }
+        if (data.contains("OBJECT_ROTATION")) {
+            return data.getBoolean("OBJECT_ROTATION");
+        }
+        return true;
     }
 
     private static List<StationPieceDefinition> objectCandidates(StationStructureLibraryData library, StationPoolDefinition pool, float danger) {
@@ -240,12 +383,32 @@ public final class StationTriggerHandlers {
             return Optional.empty();
         }
 
-        BlockPos targetMin = new BlockPos(
-                zone.min().getX() + Mth.nextInt(random, 0, availableX),
-                zone.min().getY() + Mth.nextInt(random, 0, availableY),
-                zone.min().getZ() + Mth.nextInt(random, 0, availableZ)
-        );
-        return Optional.of(targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ()));
+        if (!StationTriggerZoneShape.hasShape(zone.data())) {
+            BlockPos targetMin = new BlockPos(
+                    zone.min().getX() + Mth.nextInt(random, 0, availableX),
+                    zone.min().getY() + Mth.nextInt(random, 0, availableY),
+                    zone.min().getZ() + Mth.nextInt(random, 0, availableZ)
+            );
+            return Optional.of(targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ()));
+        }
+
+        BlockPos selected = null;
+        int matches = 0;
+        for (int x = 0; x <= availableX; x++) {
+            for (int y = 0; y <= availableY; y++) {
+                for (int z = 0; z <= availableZ; z++) {
+                    BlockPos targetMin = new BlockPos(zone.min().getX() + x, zone.min().getY() + y, zone.min().getZ() + z);
+                    BlockPos targetMax = targetMin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
+                    if (StationTriggerZoneShape.containsBox(zone.data(), zone.min(), zone.max(), targetMin, targetMax) && random.nextInt(++matches) == 0) {
+                        selected = targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(selected);
+    }
+
+    private record ObjectPlacement(StructureTemplate template, BlockPos origin, Rotation rotation) {
     }
 
     private static Rotation randomHorizontalRotation(RandomSource random) {
@@ -305,6 +468,13 @@ public final class StationTriggerHandlers {
         }
         if (mob.getAttribute(Attributes.ATTACK_DAMAGE) != null) {
             mob.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(mob.getAttribute(Attributes.ATTACK_DAMAGE).getBaseValue() * multiplier);
+        }
+    }
+
+    private record EnergyPanelTarget(PlacedStationPiece piece, PlacedTriggerZone zone) {
+
+        private boolean matches(PlacedStationPiece piece, PlacedTriggerZone zone) {
+            return this.piece.equals(piece) && this.zone.equals(zone);
         }
     }
 }

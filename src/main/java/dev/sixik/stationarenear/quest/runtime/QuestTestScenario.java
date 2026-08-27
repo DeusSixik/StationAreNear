@@ -21,6 +21,7 @@ import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationInstance;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
+import dev.sixik.stationarenear.structures.trigger.StationTriggerHandlers;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -154,14 +155,15 @@ public final class QuestTestScenario {
         PlaceTargetPlan microwavePlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()));
         PlaceTargetPlan sinkPlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG);
         DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
+        EnergyPanelPlan energyPanelPlan = spawnRepairEnergyPanel(level, station);
         QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
-        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan);
+        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan);
+        Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
@@ -180,6 +182,9 @@ public final class QuestTestScenario {
         }
         if (!doorPlan.placed()) {
             moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> moved.put(objective.complete(null)));
+        }
+        if (!energyPanelPlan.placed()) {
+            moved.objective(StationQuests.REPAIR_ELECTRIC_PANEL).ifPresent(objective -> moved.put(objective.complete(null)));
         }
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
         if (!code.isBlank()) {
@@ -245,7 +250,8 @@ public final class QuestTestScenario {
                 || state.objective(StationQuests.PLACE_KITCHEN_SINK).isPresent()
                 || state.objective(StationQuests.REPAIR_BLOCKS).isPresent()
                 || state.objective(StationQuests.BUILD_SHEATHING).isPresent()
-                || state.objective(StationQuests.REPAIR_DOORS).isPresent();
+                || state.objective(StationQuests.REPAIR_DOORS).isPresent()
+                || state.objective(StationQuests.REPAIR_ELECTRIC_PANEL).isPresent();
     }
 
     private static List<QuestTask> pendingTasks() {
@@ -255,11 +261,12 @@ public final class QuestTestScenario {
                 QuestApi.quest(StationQuests.PLACE_MICROWAVE, 1),
                 QuestApi.quest(StationQuests.PLACE_KITCHEN_SINK, 1),
                 QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1),
-                QuestApi.quest(StationQuests.REPAIR_DOORS, 1)
+                QuestApi.quest(StationQuests.REPAIR_DOORS, 1),
+                QuestApi.quest(StationQuests.REPAIR_ELECTRIC_PANEL, 1)
         );
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
         targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
         targets.put(StationQuests.PLACE_FRIDGE, fridgePlan.targetTriggerId());
@@ -267,6 +274,7 @@ public final class QuestTestScenario {
         targets.put(StationQuests.PLACE_KITCHEN_SINK, sinkPlan.targetTriggerId());
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
         targets.put(StationQuests.REPAIR_DOORS, doorPlan.targetTriggerId());
+        targets.put(StationQuests.REPAIR_ELECTRIC_PANEL, energyPanelPlan.targetTriggerId());
         return targets;
     }
 
@@ -278,6 +286,7 @@ public final class QuestTestScenario {
         texts.put(StationQuests.PLACE_KITCHEN_SINK, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0440\u0430\u043a\u043e\u0432\u0438\u043d\u0443 \u0440\u044f\u0434\u043e\u043c \u0441 \u0442\u0440\u0443\u0431\u0430\u043c\u0438", "Install the kitchen sink near the marked pipes."));
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
         texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
+        texts.put(StationQuests.REPAIR_ELECTRIC_PANEL, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0449\u0438\u0442\u043e\u043a", "Repair the electrical panel with engineering gear."));
         return texts;
     }
 
@@ -398,6 +407,15 @@ public final class QuestTestScenario {
 
     private static int center(int min, int max) {
         return Math.floorDiv(min + max, 2);
+    }
+
+    private static EnergyPanelPlan spawnRepairEnergyPanel(ServerLevel level, StationInstance station) {
+        Optional<PlacedTriggerZone> target = StationTriggerHandlers.selectEnergyPanelTrigger(station);
+        if (target.isEmpty()) {
+            return new EnergyPanelPlan(false, "");
+        }
+        boolean placed = StationTriggerHandlers.placeEnergyPanel(level, station, target.get(), false);
+        return new EnergyPanelPlan(placed, placed ? target.get().id() : "");
     }
 
     private static DoorSpawnPlan spawnBrokenRepairDoor(ServerLevel level, StationInstance station, List<PlacedTriggerZone> doorTriggers) {
@@ -569,5 +587,8 @@ public final class QuestTestScenario {
     }
 
     private record DoorSpawnPlan(boolean placed, String targetTriggerId) {
+    }
+
+    private record EnergyPanelPlan(boolean placed, String targetTriggerId) {
     }
 }

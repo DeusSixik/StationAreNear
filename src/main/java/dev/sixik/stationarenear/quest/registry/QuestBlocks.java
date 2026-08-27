@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.quest.registry;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.block.FridgeBlock;
 import dev.sixik.stationarenear.quest.block.KitchenSinkBlock;
 import dev.sixik.stationarenear.quest.block.MicrowaveBlock;
@@ -56,6 +57,20 @@ public final class QuestBlocks {
     public static final RegistryObject<Item> MICROWAVE_ITEM = ITEMS.register(
             "microwave",
             () -> new BlockItem(MICROWAVE.get(), new Item.Properties())
+    );
+
+
+    public static final RegistryObject<EnergyPanelBlock> ENERGY_PANEL = BLOCKS.register(
+            "energy_panel",
+            () -> new EnergyPanelBlock(BlockBehaviour.Properties.of()
+                    .strength(1.6F, 6.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion())
+    );
+
+    public static final RegistryObject<Item> ENERGY_PANEL_ITEM = ITEMS.register(
+            "energy_panel",
+            () -> new BlockItem(ENERGY_PANEL.get(), new Item.Properties())
     );
 
     private QuestBlocks() {

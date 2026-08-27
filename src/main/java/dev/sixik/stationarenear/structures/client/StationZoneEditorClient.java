@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.client;
 
+import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.editor.StationEditorNodeType;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
@@ -50,7 +51,7 @@ public final class StationZoneEditorClient {
         Widget root = new EditorRoot(packet.editorTag()).root();
 
         try {
-            Object screen = Class.forName("dev.sixik.unigui.backend.minecraft.MinecraftWidgetScreen")
+            Object screen = Class.forName("dev.sixik.unigui.backend.minecraft_impl.MinecraftWidgetScreen")
                     .getConstructor(Component.class, Widget.class)
                     .newInstance(Component.literal("Station Structure Editor"), root);
             minecraft.setScreen((Screen) screen);
@@ -268,7 +269,7 @@ public final class StationZoneEditorClient {
             ListTag connectorTags = tag.getList(StationStructureToolItem.KEY_CONNECTORS, Tag.TAG_COMPOUND);
             for (int i = 0; i < connectorTags.size(); i++) {
                 CompoundTag connector = connectorTags.getCompound(i);
-                connections.addChild("Connection: " + connector.getString("name")).value("connection:" + i);
+                connections.addChild("Connection: " + connector.getString("name") + (StationConnector.loadRequiresPassage(connector) ? " [PATH]" : "")).value("connection:" + i);
             }
 
             TreeViewNode triggers = root.addChild("Triggers").value("triggers").expanded(true).selectable(false);
@@ -419,6 +420,7 @@ public final class StationZoneEditorClient {
             TextField tags = field("corridor", "corridor,dock");
             TextField accepts = field("corridor,dock", "corridor,dock");
             TextField priority = field("0", "0");
+            ToggleButton requiresPassage = new ToggleButton("Requires passage").silentChecked(false);
             row("Name", name);
             row("Direction", direction);
             row("Size W", width);
@@ -427,11 +429,12 @@ public final class StationZoneEditorClient {
             row("Tags", tags);
             row("Accepts", accepts);
             row("Priority", priority);
+            row("Passage", requiresPassage);
             HBox actions = new HBox();
             actions.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
             Button create = button("Create connection");
             Button clear = button("Clear draft");
-            create.onClick(event -> createConnectionFromDraft(name.text().trim(), direction.selectedItem(), tags.text().trim(), accepts.text().trim(), parseInt(priority.text(), 0), Math.max(1, parseInt(width.text(), 3)), Math.max(1, parseInt(height.text(), 3)), acceptedSizes.text().trim()));
+            create.onClick(event -> createConnectionFromDraft(name.text().trim(), direction.selectedItem(), tags.text().trim(), accepts.text().trim(), parseInt(priority.text(), 0), Math.max(1, parseInt(width.text(), 3)), Math.max(1, parseInt(height.text(), 3)), acceptedSizes.text().trim(), requiresPassage.checked()));
             clear.onClick(event -> clearConnectionDraft());
             actions.addChild(create);
             actions.addChild(clear);
@@ -457,6 +460,7 @@ public final class StationZoneEditorClient {
             TextField width = field(Integer.toString(connector.getInt("width")), "3");
             TextField height = field(Integer.toString(connector.getInt("height")), "3");
             TextField acceptedSizes = field(connector.getString("acceptedSizes"), "3x3,2x1");
+            ToggleButton requiresPassage = new ToggleButton("Requires passage").silentChecked(StationConnector.loadRequiresPassage(connector));
             row("Name", name);
             row("Anchor", pos);
             row("Min", min);
@@ -468,6 +472,7 @@ public final class StationZoneEditorClient {
             row("Tags", tags);
             row("Accepts", accepts);
             row("Priority", priority);
+            row("Passage", requiresPassage);
             HBox editActions = new HBox();
             editActions.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
             Button editSize = button("Edit Size from draft");
@@ -491,6 +496,7 @@ public final class StationZoneEditorClient {
             bind(width, value -> updateConnector(index, connectorTag -> connectorTag.putInt("width", Math.max(1, parseInt(value, 3)))));
             bind(height, value -> updateConnector(index, connectorTag -> connectorTag.putInt("height", Math.max(1, parseInt(value, 3)))));
             bind(acceptedSizes, value -> updateConnector(index, connectorTag -> connectorTag.putString("acceptedSizes", value)));
+            requiresPassage.onCheckedChanged(event -> { updateConnector(index, connectorTag -> connectorTag.putBoolean(StationConnector.KEY_REQUIRES_PASSAGE, event.newValue())); syncEditorStateAndSave(); });
         }
 
         private void inspectTrigger(int index) {
@@ -539,18 +545,22 @@ public final class StationZoneEditorClient {
                 inspector.addChild(label("ObjectPlacer: places one random object template from pool inside this zone."));
                 ToggleButton place = new ToggleButton("Place objects").silentChecked(!data.contains("place") || data.getBoolean("place"));
                 ToggleButton ignoreChance = new ToggleButton("IgnoreChancePlace").silentChecked(data.getBoolean("ignoreChancePlace"));
+                ToggleButton objectRotation = new ToggleButton("OBJECT_ROTATION fit zone").silentChecked(!data.contains("objectRotation") || data.getBoolean("objectRotation"));
                 ToggleButton randomRotation = new ToggleButton("Random rotation").silentChecked(data.getBoolean("randomRotation"));
                 ComboBox pool = combo(poolItems(data.getString("pool")), data.getString("pool"));
                 TextField chance = field(Integer.toString(data.contains("placeChance") ? data.getInt("placeChance") : 50), "0-100");
                 row("Object Pool", pool);
                 row("Place Chance", chance);
+                addShapeControls(index, data);
                 inspector.addChild(place);
                 inspector.addChild(ignoreChance);
+                inspector.addChild(objectRotation);
                 inspector.addChild(randomRotation);
                 pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorStateAndSave(); });
                 bind(chance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("placeChance", Math.max(0, Math.min(100, parseInt(value, 50))))));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
                 ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorStateAndSave(); });
+                objectRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("objectRotation", event.newValue())); syncEditorStateAndSave(); });
                 randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 inspector.addChild(label("MobSpawn: default is danger-scaled zombies/skeletons; quest code may override event."));
@@ -587,11 +597,12 @@ public final class StationZoneEditorClient {
                 }));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.QUEST_PLACE) {
-                inspector.addChild(label("QuestPlace: target marker for placing blocks in a 3x3 area."));
+                inspector.addChild(label("QuestPlace: target marker for placing blocks in shaped area."));
                 TextField item = field(data.contains("item") ? data.getString("item") : data.getString("requiredItem"), "optional item/block id");
                 TextField radius = field(Integer.toString(data.contains("radius") ? data.getInt("radius") : 1), "1 = 3x3");
                 row("Required Item", item);
                 row("Radius", radius);
+                addShapeControls(index, data);
                 bind(item, value -> updateTriggerData(index, dataTag -> {
                     if (value.isBlank()) {
                         dataTag.remove("item");
@@ -610,6 +621,39 @@ public final class StationZoneEditorClient {
                 bind(questId, value -> updateTriggerData(index, dataTag -> dataTag.putString("questId", value)));
                 bind(place, value -> updateTriggerData(index, dataTag -> dataTag.putString("place", value)));
             }
+        }
+
+        private void addShapeControls(int index, CompoundTag data) {
+            ComboBox shape = combo(triggerShapeNames(), data.contains("shape") ? data.getString("shape") : "box");
+            ComboBox shapeDirection = combo(doorDirectionNames(), data.contains("shapeDirection") ? data.getString("shapeDirection") : "north");
+            TextField thickness = field(Integer.toString(data.contains("shapeThickness") ? data.getInt("shapeThickness") : 1), "1");
+            ToggleButton mirror = new ToggleButton("Mirror L shape").silentChecked(data.getBoolean("shapeMirror"));
+            row("Shape", shape);
+            row("Shape Direction", shapeDirection);
+            row("Shape Thickness", thickness);
+            inspector.addChild(mirror);
+            inspector.addChild(label("Shape Points mode: right click cells to toggle; shift+right click clears points."));
+            shape.onSelectionChanged(event -> {
+                String selected = comboSelectedItem(shape, event).trim().toLowerCase(Locale.ROOT);
+                updateTriggerData(index, dataTag -> {
+                    if (selected.equals("box")) {
+                        dataTag.remove("shape");
+                        dataTag.remove("shapePoints");
+                    } else {
+                        dataTag.putString("shape", selected);
+                        if (!selected.equals("points")) {
+                            dataTag.remove("shapePoints");
+                        }
+                        if (!dataTag.contains("shapeDirection") || dataTag.getString("shapeDirection").isBlank()) {
+                            dataTag.putString("shapeDirection", "north");
+                        }
+                    }
+                });
+                syncEditorStateAndSave();
+            });
+            shapeDirection.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("shapeDirection", comboSelectedItem(shapeDirection, event))); syncEditorStateAndSave(); });
+            bind(thickness, value -> updateTriggerData(index, dataTag -> dataTag.putInt("shapeThickness", Math.max(1, Math.min(16, parseInt(value, 1))))));
+            mirror.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("shapeMirror", event.newValue())); syncEditorStateAndSave(); });
         }
 
         private void row(String name, Widget field) {
@@ -679,6 +723,9 @@ public final class StationZoneEditorClient {
                 if (!data.contains("ignoreChancePlace")) {
                     data.putBoolean("ignoreChancePlace", false);
                 }
+                if (!data.contains("objectRotation")) {
+                    data.putBoolean("objectRotation", true);
+                }
                 if (!data.contains("randomRotation")) {
                     data.putBoolean("randomRotation", true);
                 }
@@ -728,10 +775,10 @@ public final class StationZoneEditorClient {
             Direction draftDirection = autoDirectionFromRootFace(draftMin, draftMax);
             int draftWidth = connectionWidth(draftMin, draftMax, draftDirection);
             int draftHeight = connectionHeight(draftMin, draftMax, draftDirection);
-            createConnectionFromDraft("connection_" + connectors.size(), draftDirection.getSerializedName(), "corridor", "corridor,dock", 0, draftWidth, draftHeight, draftWidth + "x" + draftHeight);
+            createConnectionFromDraft("connection_" + connectors.size(), draftDirection.getSerializedName(), "corridor", "corridor,dock", 0, draftWidth, draftHeight, draftWidth + "x" + draftHeight, false);
         }
 
-        private void createConnectionFromDraft(String name, String direction, String tags, String accepts, int priority, int width, int height, String acceptedSizes) {
+        private void createConnectionFromDraft(String name, String direction, String tags, String accepts, int priority, int width, int height, String acceptedSizes, boolean requiresPassage) {
             if (!hasConnectionDraft()) {
                 status.text("No connection draft. Use Connection Manager mode first.");
                 return;
@@ -753,6 +800,7 @@ public final class StationZoneEditorClient {
             connector.putInt("width", Math.max(1, width));
             connector.putInt("height", Math.max(1, height));
             connector.putString("acceptedSizes", acceptedSizes == null || acceptedSizes.isBlank() ? "3x3" : acceptedSizes);
+            connector.putBoolean(StationConnector.KEY_REQUIRES_PASSAGE, requiresPassage);
             connectors.add(connector);
             tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors);
             clearConnectionDraftTags();
@@ -1191,6 +1239,10 @@ public final class StationZoneEditorClient {
 
         private String[] doorDirectionNames() {
             return new String[]{"north", "south", "east", "west"};
+        }
+
+        private String[] triggerShapeNames() {
+            return new String[]{"box", "points", "t", "l"};
         }
 
         private int parseIndex(String key) {

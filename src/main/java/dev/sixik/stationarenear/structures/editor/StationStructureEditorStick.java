@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.editor;
 
+import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
 import dev.sixik.stationarenear.structures.util.NbtPos;
@@ -224,13 +225,18 @@ public final class StationStructureEditorStick {
             CompoundTag connector = connectors.getCompound(i).copy();
             connector.putString("nodeType", StationEditorNodeType.CONNECTION.name());
             connector.putString("name", defaultString(connector.getString("name"), "connection_" + i));
-            BlockPos connectorMin = clampPos(posFrom(connector, "worldMin", posFrom(connector, "worldPosition", min)), min, max);
-            BlockPos connectorMax = clampPos(posFrom(connector, "worldMax", connectorMin), min, max);
+            BlockPos rawPosition = firstConnectorWorldPos(connector, min, null, "worldPosition", "position", "worldMin", "min", "worldMax", "max");
+            if (rawPosition == null) {
+                continue;
+            }
+
+            BlockPos connectorMin = clampPos(firstConnectorWorldPos(connector, min, rawPosition, "worldMin", "min"), min, max);
+            BlockPos connectorMax = clampPos(firstConnectorWorldPos(connector, min, connectorMin, "worldMax", "max"), min, max);
             BlockPos normalizedMin = new BlockPos(Math.min(connectorMin.getX(), connectorMax.getX()), Math.min(connectorMin.getY(), connectorMax.getY()), Math.min(connectorMin.getZ(), connectorMax.getZ()));
             BlockPos normalizedMax = new BlockPos(Math.max(connectorMin.getX(), connectorMax.getX()), Math.max(connectorMin.getY(), connectorMax.getY()), Math.max(connectorMin.getZ(), connectorMax.getZ()));
             connector.put("worldMin", NbtPos.save(normalizedMin));
             connector.put("worldMax", NbtPos.save(normalizedMax));
-            connector.put("worldPosition", NbtPos.save(clampPos(posFrom(connector, "worldPosition", normalizedMin), normalizedMin, normalizedMax)));
+            connector.put("worldPosition", NbtPos.save(clampPos(firstConnectorWorldPos(connector, min, normalizedMin, "worldPosition", "position"), normalizedMin, normalizedMax)));
             Direction direction = Direction.byName(connector.getString("direction"));
             connector.putString("direction", (direction == null ? Direction.NORTH : direction).getSerializedName());
             connector.putString("tags", defaultString(connector.getString("tags"), "corridor"));
@@ -238,6 +244,7 @@ public final class StationStructureEditorStick {
             connector.putInt("width", Math.max(1, connector.contains("width") ? connector.getInt("width") : 3));
             connector.putInt("height", Math.max(1, connector.contains("height") ? connector.getInt("height") : 3));
             connector.putString("acceptedSizes", defaultString(connector.getString("acceptedSizes"), "3x3"));
+            connector.putBoolean(StationConnector.KEY_REQUIRES_PASSAGE, StationConnector.loadRequiresPassage(connector));
             normalizedConnectors.add(connector);
         }
         tag.put(StationStructureToolItem.KEY_CONNECTORS, normalizedConnectors);
@@ -262,6 +269,7 @@ public final class StationStructureEditorStick {
             if (!trigger.contains("data")) {
                 trigger.put("data", new CompoundTag());
             }
+            normalizeShapePoints(trigger.getCompound("data"), normalizedMin, normalizedMax);
             normalizedTriggers.add(trigger);
         }
         tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, normalizedTriggers);
@@ -294,6 +302,41 @@ public final class StationStructureEditorStick {
         return Math.max(1, (max.getY() - min.getY() + 16) / 16);
     }
 
+    private static void normalizeShapePoints(CompoundTag data, BlockPos worldMin, BlockPos worldMax) {
+        if (!data.contains("shapePoints", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag source = data.getList("shapePoints", Tag.TAG_COMPOUND);
+        ListTag normalized = new ListTag();
+        for (int i = 0; i < source.size(); i++) {
+            CompoundTag point = source.getCompound(i);
+            if (!hasPoint(point)) {
+                continue;
+            }
+            BlockPos offset = NbtPos.load(point);
+            BlockPos worldPos = worldMin.offset(offset.getX(), offset.getY(), offset.getZ());
+            if (worldPos.getX() < worldMin.getX() || worldPos.getX() > worldMax.getX()
+                    || worldPos.getY() < worldMin.getY() || worldPos.getY() > worldMax.getY()
+                    || worldPos.getZ() < worldMin.getZ() || worldPos.getZ() > worldMax.getZ()) {
+                continue;
+            }
+            normalized.add(NbtPos.save(offset));
+        }
+        if (normalized.isEmpty()) {
+            data.remove("shapePoints");
+            if ("points".equalsIgnoreCase(data.getString("shape"))) {
+                data.remove("shape");
+            }
+        } else {
+            data.putString("shape", "points");
+            data.put("shapePoints", normalized);
+        }
+    }
+
+    private static boolean hasPoint(CompoundTag tag) {
+        return tag.contains("x", Tag.TAG_INT) && tag.contains("y", Tag.TAG_INT) && tag.contains("z", Tag.TAG_INT);
+    }
+
     private static StationEditorNodeType parseNodeType(String value, StationEditorNodeType fallback) {
         try {
             return StationEditorNodeType.valueOf(value);
@@ -312,6 +355,30 @@ public final class StationStructureEditorStick {
 
     private static BlockPos posFrom(CompoundTag tag, String key, BlockPos fallback) {
         return tag.contains(key) ? NbtPos.load(tag.getCompound(key)) : fallback;
+    }
+
+    private static BlockPos firstConnectorWorldPos(CompoundTag tag, BlockPos structureMin, BlockPos fallback, String... keyPairs) {
+        for (int i = 0; i + 1 < keyPairs.length; i += 2) {
+            String worldKey = keyPairs[i];
+            if (hasPos(tag, worldKey)) {
+                return NbtPos.load(tag.getCompound(worldKey));
+            }
+        }
+        for (int i = 0; i + 1 < keyPairs.length; i += 2) {
+            String localKey = keyPairs[i + 1];
+            if (hasPos(tag, localKey)) {
+                BlockPos local = NbtPos.load(tag.getCompound(localKey));
+                return structureMin.offset(local.getX(), local.getY(), local.getZ());
+            }
+        }
+        return fallback;
+    }
+
+    private static boolean hasPos(CompoundTag tag, String key) {
+        return tag.contains(key, Tag.TAG_COMPOUND)
+                && tag.getCompound(key).contains("x", Tag.TAG_INT)
+                && tag.getCompound(key).contains("y", Tag.TAG_INT)
+                && tag.getCompound(key).contains("z", Tag.TAG_INT);
     }
 
     private static BlockPos clampPos(BlockPos pos, BlockPos min, BlockPos max) {

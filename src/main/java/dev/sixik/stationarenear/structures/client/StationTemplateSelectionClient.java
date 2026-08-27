@@ -33,7 +33,7 @@ public final class StationTemplateSelectionClient {
         Widget root = new TemplateMenuRoot(entries).root();
         try {
             // Ебаные маппинги. Я их рот шатал.
-            Object screen = Class.forName("dev.sixik.unigui.backend.minecraft.MinecraftWidgetScreen")
+            Object screen = Class.forName("dev.sixik.unigui.backend.minecraft_impl.MinecraftWidgetScreen")
                     .getConstructor(Component.class, Widget.class)
                     .newInstance(Component.literal("Station Templates"), root);
             minecraft.setScreen((Screen) screen);

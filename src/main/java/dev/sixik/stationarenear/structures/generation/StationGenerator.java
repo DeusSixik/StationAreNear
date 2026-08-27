@@ -1353,7 +1353,7 @@ public class StationGenerator {
 
         List<PlacedTriggerZone> triggerZones = new ObjectArrayList<>();
         for (StationTriggerZone triggerZone : definition.triggerZones()) {
-            triggerZones.add(StationPlacementUtil.transformTrigger(triggerZone, origin, rotation, danger));
+            triggerZones.add(StationPlacementUtil.transformTrigger(triggerZone, origin, rotation, danger, definition.selectionMin(), definition.selectionMax()));
         }
 
         return new PlacedStationPiece(

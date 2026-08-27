@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.ship.registry;
 import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.block.ShipTelevisionBlock;
+import dev.sixik.stationarenear.ship.block.StationPressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.block.entity.PressureTightDoorBlockEntity;
 import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity;
 import net.minecraft.world.item.BlockItem;
@@ -38,6 +39,20 @@ public final class ShipBlocks {
             () -> new BlockItem(PRESSURE_TIGHT_DOOR.get(), new Item.Properties())
     );
 
+    public static final RegistryObject<StationPressureTightDoorBlock> STATION_PRESSURE_TIGHT_DOOR = BLOCKS.register(
+            "station_pressure_tight_door",
+            () -> new StationPressureTightDoorBlock(BlockBehaviour.Properties.of()
+                    .strength(4.0F, 12.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion()
+                    .requiresCorrectToolForDrops())
+    );
+
+    public static final RegistryObject<Item> STATION_PRESSURE_TIGHT_DOOR_ITEM = ITEMS.register(
+            "station_pressure_tight_door",
+            () -> new BlockItem(STATION_PRESSURE_TIGHT_DOOR.get(), new Item.Properties())
+    );
+
     public static final RegistryObject<ShipTelevisionBlock> SHIP_TELEVISION = BLOCKS.register(
             "ship_television",
             () -> new ShipTelevisionBlock(BlockBehaviour.Properties.of()
@@ -54,7 +69,11 @@ public final class ShipBlocks {
 
     public static final RegistryObject<BlockEntityType<PressureTightDoorBlockEntity>> PRESSURE_TIGHT_DOOR_ENTITY = BLOCK_ENTITIES.register(
             "pressure_tight_door",
-            () -> BlockEntityType.Builder.of(PressureTightDoorBlockEntity::new, PRESSURE_TIGHT_DOOR.get()).build(null)
+            () -> BlockEntityType.Builder.of(
+                    PressureTightDoorBlockEntity::new,
+                    PRESSURE_TIGHT_DOOR.get(),
+                    STATION_PRESSURE_TIGHT_DOOR.get()
+            ).build(null)
     );
 
     public static final RegistryObject<BlockEntityType<ShipTelevisionBlockEntity>> SHIP_TELEVISION_ENTITY = BLOCK_ENTITIES.register(
@@ -75,6 +94,7 @@ public final class ShipBlocks {
     private static void addCreativeTabItems(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(PRESSURE_TIGHT_DOOR_ITEM.get());
+            event.accept(STATION_PRESSURE_TIGHT_DOOR_ITEM.get());
             event.accept(SHIP_TELEVISION_ITEM.get());
         }
     }

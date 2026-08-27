@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
-    "stationarenear:pressure_tight_door"
+    "stationarenear:pressure_tight_door",
+    "stationarenear:station_pressure_tight_door"
   ]
 }

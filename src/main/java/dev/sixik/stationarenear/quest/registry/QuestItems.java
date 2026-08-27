@@ -29,7 +29,7 @@ public final class QuestItems {
 
     public static final RegistryObject<Item> ENGINEERING_GEAR = ITEMS.register(
             "engineering_gear",
-            () -> new Item(new Item.Properties())
+            () -> new Item(new Item.Properties().durability(3))
     );
 
     public static final RegistryObject<Item> MOP = ITEMS.register(

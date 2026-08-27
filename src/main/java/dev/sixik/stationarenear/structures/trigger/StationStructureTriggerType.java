@@ -5,6 +5,7 @@ import java.util.Locale;
 public enum StationStructureTriggerType {
     MOB_SPAWN,
     OBJECT_PLACER,
+    DOOR_TRIGGER,
     QUEST,
     OTHER;
 
@@ -13,6 +14,7 @@ public enum StationStructureTriggerType {
         return switch (normalized) {
             case "mob_spawn", "danger_mob_spawn" -> MOB_SPAWN;
             case "object_placer", "loot", "object_place", "object_pool" -> OBJECT_PLACER;
+            case "door_trigger", "door_spawner", "door", "pressure_door", "pressure_tight_door" -> DOOR_TRIGGER;
             case "quest", "quest_trigger", "trigger_quest" -> QUEST;
             default -> OTHER;
         };

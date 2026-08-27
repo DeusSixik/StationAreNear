@@ -334,8 +334,12 @@ public class StationStructureToolItem extends Item {
             return triggerTag.getString("type");
         }
         if (triggerTag.contains("nodeType")) {
+            String nodeType = triggerTag.getString("nodeType");
+            if ("DOOR_SPAWNER".equalsIgnoreCase(nodeType) || "DOOR_TRIGGER".equalsIgnoreCase(nodeType)) {
+                return "door_trigger";
+            }
             try {
-                return StationEditorNodeType.valueOf(triggerTag.getString("nodeType")).name().toLowerCase(java.util.Locale.ROOT);
+                return StationEditorNodeType.valueOf(nodeType).name().toLowerCase(java.util.Locale.ROOT);
             } catch (IllegalArgumentException ignored) {
                 return "trigger";
             }

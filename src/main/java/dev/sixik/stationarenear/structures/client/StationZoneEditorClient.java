@@ -499,7 +499,7 @@ public final class StationZoneEditorClient {
             }
             CompoundTag trigger = triggers.getCompound(index);
             inspector.addChild(label("Trigger zone is rendered inside Root and cannot leave Root bounds."));
-            ComboBox nodeType = combo(Arrays.stream(StationEditorNodeType.values()).filter(type -> type != StationEditorNodeType.STRUCTURE && type != StationEditorNodeType.CONNECTION).map(Enum::name).toArray(String[]::new), trigger.getString("nodeType"));
+            ComboBox nodeType = combo(Arrays.stream(StationEditorNodeType.values()).filter(type -> type != StationEditorNodeType.STRUCTURE && type != StationEditorNodeType.CONNECTION).map(Enum::name).toArray(String[]::new), parseEditorNodeType(trigger.getString("nodeType")).name());
             TextField id = field(trigger.getString("id"), "trigger_id");
             TextField min = field(localPosText(NbtPos.load(trigger.getCompound("worldMin"))), "local x y z");
             TextField max = field(localPosText(NbtPos.load(trigger.getCompound("worldMax"))), "local x y z");
@@ -557,6 +557,29 @@ public final class StationZoneEditorClient {
                 bind(mob, value -> updateTriggerData(index, dataTag -> dataTag.putString("mob", value)));
                 bind(count, value -> updateTriggerData(index, dataTag -> dataTag.putInt("count", Math.max(0, parseInt(value, 0)))));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
+            } else if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
+                inspector.addChild(label("DoorTrigger: places a 3x3 pressure-tight station door. Master block = zone center at MinY."));
+                ToggleButton place = new ToggleButton("Place door").silentChecked(!data.contains("place") || data.getBoolean("place"));
+                ComboBox direction = combo(doorDirectionNames(), data.contains("direction") ? data.getString("direction") : "north");
+                TextField chance = field(Integer.toString(data.contains("chance") ? data.getInt("chance") : 80), "0-100");
+                TextField openChance = field(Integer.toString(data.contains("openChance") ? data.getInt("openChance") : 15), "0-100");
+                TextField brokenChance = field(data.contains("brokenChance") && data.getInt("brokenChance") != 25 ? Integer.toString(data.getInt("brokenChance")) : "", "auto by danger");
+                row("Direction", direction);
+                row("Spawn Chance", chance);
+                row("Open Chance", openChance);
+                row("Broken Override", brokenChance);
+                inspector.addChild(place);
+                direction.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("direction", comboSelectedItem(direction, event))); syncEditorStateAndSave(); });
+                bind(chance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("chance", Math.max(0, Math.min(100, parseInt(value, 80))))));
+                bind(openChance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("openChance", Math.max(0, Math.min(100, parseInt(value, 15))))));
+                bind(brokenChance, value -> updateTriggerData(index, dataTag -> {
+                    if (value.isBlank()) {
+                        dataTag.remove("brokenChance");
+                    } else {
+                        dataTag.putInt("brokenChance", Math.max(0, Math.min(100, parseInt(value, 25))));
+                    }
+                }));
+                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 inspector.addChild(label("QuestTrigger: event-only marker, no default placement logic."));
                 TextField questId = field(data.getString("questId"), "quest/task id");
@@ -594,6 +617,9 @@ public final class StationZoneEditorClient {
         }
 
         private StationEditorNodeType parseEditorNodeType(String value) {
+            if ("DOOR_SPAWNER".equalsIgnoreCase(value) || "door_spawner".equalsIgnoreCase(value)) {
+                return StationEditorNodeType.DOOR_TRIGGER;
+            }
             try {
                 return StationEditorNodeType.valueOf(value);
             } catch (IllegalArgumentException exception) {
@@ -605,6 +631,7 @@ public final class StationZoneEditorClient {
             return switch (nodeType) {
                 case OBJECT_PLACER, LOOT -> "object_placer";
                 case MOB_SPAWN -> "mob_spawn";
+                case DOOR_TRIGGER -> "door_trigger";
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
                 default -> nodeType.name().toLowerCase(Locale.ROOT);
             };
@@ -639,6 +666,19 @@ public final class StationZoneEditorClient {
                 }
                 if (!data.contains("count")) {
                     data.putInt("count", 0);
+                }
+            } else if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
+                if (!data.contains("place")) {
+                    data.putBoolean("place", true);
+                }
+                if (!data.contains("chance")) {
+                    data.putInt("chance", 80);
+                }
+                if (!data.contains("openChance")) {
+                    data.putInt("openChance", 15);
+                }
+                if (!data.contains("direction") || data.getString("direction").isBlank()) {
+                    data.putString("direction", "north");
                 }
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 if (!data.contains("questId")) {
@@ -709,9 +749,16 @@ public final class StationZoneEditorClient {
             trigger.putString("type", type == null || type.isBlank() ? defaultTriggerType(nodeType) : type);
             BlockPos draftA = clamp(NbtPos.load(tag.getCompound(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_1)));
             BlockPos draftB = clamp(NbtPos.load(tag.getCompound(StationStructureEditorStick.KEY_TRIGGER_DRAFT_POS_2)));
-            trigger.put("worldMin", NbtPos.save(new BlockPos(Math.min(draftA.getX(), draftB.getX()), Math.min(draftA.getY(), draftB.getY()), Math.min(draftA.getZ(), draftB.getZ()))));
-            trigger.put("worldMax", NbtPos.save(new BlockPos(Math.max(draftA.getX(), draftB.getX()), Math.max(draftA.getY(), draftB.getY()), Math.max(draftA.getZ(), draftB.getZ()))));
-            trigger.put("data", defaultTriggerData(nodeType));
+            BlockPos triggerMin = new BlockPos(Math.min(draftA.getX(), draftB.getX()), Math.min(draftA.getY(), draftB.getY()), Math.min(draftA.getZ(), draftB.getZ()));
+            BlockPos triggerMax = new BlockPos(Math.max(draftA.getX(), draftB.getX()), Math.max(draftA.getY(), draftB.getY()), Math.max(draftA.getZ(), draftB.getZ()));
+            trigger.put("worldMin", NbtPos.save(triggerMin));
+            trigger.put("worldMax", NbtPos.save(triggerMax));
+            CompoundTag data = defaultTriggerData(nodeType);
+            if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
+                Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
+                data.putString("direction", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());
+            }
+            trigger.put("data", data);
             triggers.add(trigger);
             tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggers);
             clearDraftTags();
@@ -1108,6 +1155,10 @@ public final class StationZoneEditorClient {
 
         private String[] directionNames() {
             return new String[]{"north", "south", "east", "west", "up", "down"};
+        }
+
+        private String[] doorDirectionNames() {
+            return new String[]{"north", "south", "east", "west"};
         }
 
         private int parseIndex(String key) {

@@ -6,6 +6,7 @@ public enum StationEditorNodeType {
     TRIGGER,
     TRIGGER_QUEST,
     QUEST_TRIGGER,
+    DOOR_TRIGGER,
     OBJECT_PLACER,
     LOOT,
     MOB_SPAWN

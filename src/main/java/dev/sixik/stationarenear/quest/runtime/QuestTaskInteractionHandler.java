@@ -7,7 +7,7 @@ import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.quest.registry.QuestTags;
 import dev.sixik.stationarenear.quest.registry.StationQuests;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
-import dev.sixik.stationarenear.ship.registry.ShipBlocks;
+import dev.sixik.stationarenear.ship.event.PressureTightDoorRepairedEvent;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationInstance;
@@ -92,11 +92,6 @@ public final class QuestTaskInteractionHandler {
                 increment(level, stationId, StationQuests.BUILD_SHEATHING, zone.min());
             }
         }
-        if (stack.is(QuestItems.CUTTERS.get()) && QuestApi.isActive(level, stationId, StationQuests.REPAIR_DOORS)) {
-            if (zoneMatches(level, stationId, StationQuests.REPAIR_DOORS, zone)) {
-                increment(level, stationId, StationQuests.REPAIR_DOORS, zone.min());
-            }
-        }
     }
 
     private static boolean zoneMatches(ServerLevel level, UUID stationId, String questId, PlacedTriggerZone zone) {
@@ -128,27 +123,9 @@ public final class QuestTaskInteractionHandler {
     }
 
     @SubscribeEvent
-    public static void onRightClickBlock(net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) {
-            return;
-        }
-        ItemStack stack = event.getItemStack();
-        if (!stack.is(QuestItems.CUTTERS.get())) {
-            return;
-        }
-        BlockPos pos = event.getPos();
-        BlockState state = level.getBlockState(pos);
-        if (!state.is(QuestTags.REPAIRABLE_PRESSURE_DOORS) && !state.is(ShipBlocks.PRESSURE_TIGHT_DOOR.get())) {
-            return;
-        }
-        Optional<StationInstance> station = stationAt(level, pos);
-        if (station.isEmpty()) {
-            return;
-        }
-        if (increment(level, station.get().id(), StationQuests.REPAIR_DOORS, pos)) {
-            event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
-            event.setCanceled(true);
-        }
+    public static void onPressureDoorRepaired(PressureTightDoorRepairedEvent event) {
+        stationPieceAt(event.getLevel(), event.getMasterPos())
+                .ifPresent(context -> incrementRepairDoor(event.getLevel(), context, event.getMasterPos()));
     }
 
     private static boolean increment(ServerLevel level, UUID stationId, String questId, BlockPos pos) {
@@ -194,11 +171,49 @@ public final class QuestTaskInteractionHandler {
         return true;
     }
 
+    private static boolean incrementRepairDoor(ServerLevel level, StationPieceContext context, BlockPos pos) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.REPAIR_DOORS));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!triggerZoneMatches(context.piece(), objective.get(), pos)) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.REPAIR_DOORS, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.REPAIR_DOORS, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_DOORS);
+        }
+        return true;
+    }
+
     private static boolean cleanupPieceMatches(PlacedStationPiece piece, QuestObjectiveState objective) {
         if (objective.targetTriggerId().isBlank()) {
             return true;
         }
         return piece.triggerZones().stream().anyMatch(zone -> objective.targetTriggerId().equals(zone.id()));
+    }
+
+    private static boolean triggerZoneMatches(PlacedStationPiece piece, QuestObjectiveState objective, BlockPos pos) {
+        if (objective.targetTriggerId().isBlank()) {
+            return true;
+        }
+        return piece.triggerZones().stream()
+                .filter(zone -> objective.targetTriggerId().equals(zone.id()))
+                .anyMatch(zone -> contains(zone, pos));
+    }
+
+    private static boolean contains(PlacedTriggerZone zone, BlockPos pos) {
+        return pos.getX() >= zone.min().getX() && pos.getX() <= zone.max().getX()
+                && pos.getY() >= zone.min().getY() && pos.getY() <= zone.max().getY()
+                && pos.getZ() >= zone.min().getZ() && pos.getZ() <= zone.max().getZ();
     }
 
     private static boolean alreadyDone(QuestObjectiveState objective, BlockPos pos) {

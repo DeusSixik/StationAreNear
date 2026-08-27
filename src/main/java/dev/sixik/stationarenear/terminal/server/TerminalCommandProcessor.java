@@ -14,6 +14,7 @@ import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.Tele
 import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.TelevisionContentMode;
 import dev.sixik.stationarenear.ship.runtime.ShipDoorController;
 import dev.sixik.stationarenear.ship.runtime.ShipTelevisionManager;
+import dev.sixik.stationarenear.structures.runtime.StationDoorController;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.terminal.data.ShipTerminalSnapshot;
 import dev.sixik.stationarenear.terminal.data.TerminalCommandCatalog;
@@ -149,14 +150,35 @@ public final class TerminalCommandProcessor {
     }
 
     private static void appendDoorCommand(ServerLevel level, BlockPos terminalPos, String argument, List<TerminalHistoryLine> output) {
-        String action = argument.isBlank() ? "status" : argument.split("\\s+")[0].toLowerCase(Locale.ROOT);
+        String[] parts = argument.isBlank() ? new String[0] : argument.split("\\s+", 2);
+        String action = parts.length == 0 ? "status" : parts[0].toLowerCase(Locale.ROOT);
+        String doorId = parts.length > 1 ? parts[1].trim() : "";
+        if (!doorId.isBlank()) {
+            StationDoorController.StationDoorResult result;
+            switch (action) {
+                case "open" -> result = StationDoorController.setOpen(level, terminalPos, doorId, true);
+                case "close", "seal" -> result = StationDoorController.setOpen(level, terminalPos, doorId, false);
+                case "status" -> result = StationDoorController.status(level, terminalPos, doorId);
+                default -> {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Usage: door open [id] | door close [id] | door status [id]"));
+                    return;
+                }
+            }
+
+            TerminalHistoryKind kind = result.success()
+                    ? result.open() ? TerminalHistoryKind.WARNING : result.changed() ? TerminalHistoryKind.INFO : TerminalHistoryKind.OUTPUT
+                    : TerminalHistoryKind.ERROR;
+            output.add(new TerminalHistoryLine(kind, result.message()));
+            return;
+        }
+
         ShipDoorController.DoorControlResult result;
         switch (action) {
             case "open" -> result = ShipDoorController.setOpen(level, terminalPos, true);
             case "close", "seal" -> result = ShipDoorController.setOpen(level, terminalPos, false);
             case "status" -> result = ShipDoorController.status(level, terminalPos);
             default -> {
-                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Usage: door open | door close | door status"));
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Usage: door open [id] | door close [id] | door status [id]"));
                 return;
             }
         }

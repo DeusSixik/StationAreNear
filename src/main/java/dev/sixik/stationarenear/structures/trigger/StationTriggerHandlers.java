@@ -1,6 +1,8 @@
 package dev.sixik.stationarenear.structures.trigger;
 
 import dev.sixik.stationarenear.mob.registry.StationMobEntities;
+import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
+import dev.sixik.stationarenear.ship.registry.ShipBlocks;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
@@ -9,6 +11,7 @@ import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -29,6 +32,7 @@ import net.minecraftforge.eventbus.api.EventPriority;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -65,12 +69,66 @@ public final class StationTriggerHandlers {
         switch (event.getTriggerType()) {
             case OBJECT_PLACER -> placeObject(event);
             case MOB_SPAWN -> placeMobs(event);
+            case DOOR_TRIGGER -> placeDoor(event);
             case QUEST -> {
                 // Quest triggers intentionally only publish StationStructureSpawnTriggerEvent for quest code.
             }
             default -> {
             }
         }
+    }
+
+    private static void placeDoor(StationStructureSpawnTriggerEvent event) {
+        CompoundTag data = event.getZone().data();
+        if (data.contains("place") && !data.getBoolean("place")) {
+            return;
+        }
+
+        RandomSource random = event.getLevel().getRandom();
+        int chance = data.contains("chance") ? data.getInt("chance") : 80;
+        if (random.nextInt(100) >= Mth.clamp(chance, 0, 100)) {
+            return;
+        }
+
+        Direction facing = doorFacing(data, event.getStation().stationDirection());
+        boolean broken = data.contains("broken") ? data.getBoolean("broken") : random.nextInt(100) < doorBrokenChance(data, event.getStation().danger());
+        boolean open = !broken && random.nextInt(100) < Mth.clamp(data.contains("openChance") ? data.getInt("openChance") : 15, 0, 100);
+        BlockPos masterPos = doorMasterPos(event.getZone());
+        String doorId = doorId(event.getStation().seed(), masterPos);
+
+        event.getLevel().setBlock(masterPos, ShipBlocks.STATION_PRESSURE_TIGHT_DOOR.get().defaultBlockState(), 3);
+        if (!PressureTightDoorBlock.placeDoor(event.getLevel(), masterPos, facing, broken, open, doorId)) {
+            event.getLevel().removeBlock(masterPos, false);
+        }
+    }
+
+    private static int doorBrokenChance(CompoundTag data, float stationDanger) {
+        if (data.contains("brokenChance") && data.getInt("brokenChance") != 25) {
+            return Mth.clamp(data.getInt("brokenChance"), 0, 100);
+        }
+        return Mth.clamp(Math.round(5.0F + Mth.clamp(stationDanger, 0.0F, 1.0F) * 45.0F), 0, 100);
+    }
+
+    private static Direction doorFacing(CompoundTag data, Direction fallback) {
+        String direction = data.getString("direction");
+        Direction parsed = Direction.byName(direction.toLowerCase(Locale.ROOT));
+        if (parsed != null && parsed.getAxis().isHorizontal()) {
+            return parsed;
+        }
+        return fallback.getAxis().isHorizontal() ? fallback : Direction.NORTH;
+    }
+
+    private static BlockPos doorMasterPos(PlacedTriggerZone zone) {
+        int x = Math.floorDiv(zone.min().getX() + zone.max().getX(), 2);
+        int y = zone.min().getY();
+        int z = Math.floorDiv(zone.min().getZ() + zone.max().getZ(), 2);
+        return new BlockPos(x, y, z);
+    }
+
+    private static String doorId(long stationSeed, BlockPos pos) {
+        long value = stationSeed ^ net.minecraft.util.Mth.getSeed(pos) ^ 0xD00A51DL;
+        String code = dev.sixik.stationarenear.navigation.StationCodeGenerator.code(value).substring(3);
+        return "DR-" + code;
     }
 
     private static void placeObject(StationStructureSpawnTriggerEvent event) {

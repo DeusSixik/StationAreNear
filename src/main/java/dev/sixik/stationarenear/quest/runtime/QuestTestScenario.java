@@ -14,6 +14,8 @@ import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.data.QuestTask;
 import dev.sixik.stationarenear.quest.registry.StationQuests;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
+import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
+import dev.sixik.stationarenear.ship.registry.ShipBlocks;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationInstance;
@@ -134,14 +136,21 @@ public final class QuestTestScenario {
             return false;
         }
 
+        List<PlacedTriggerZone> doorTriggers = station.pieces().stream()
+                .flatMap(piece -> piece.triggerZones().stream())
+                .filter(QuestTestScenario::isDoorTrigger)
+                .sorted(Comparator.comparing(PlacedTriggerZone::id))
+                .toList();
+
+        DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
         QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
-        movePendingQuestToStation(level, station, questTriggers, spawnPlan);
+        movePendingQuestToStation(level, station, questTriggers, spawnPlan, doorPlan);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers, spawnPlan);
+        Map<String, String> targets = triggerTargets(questTriggers, spawnPlan, doorPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
@@ -149,6 +158,9 @@ public final class QuestTestScenario {
                 spawnPlan.targetCount(),
                 objective.text()
         )));
+        if (!doorPlan.placed()) {
+            moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> moved.put(objective.complete(null)));
+        }
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
         if (!code.isBlank()) {
             moved.displayStationCode(code);
@@ -225,17 +237,21 @@ public final class QuestTestScenario {
 
     private static List<QuestTask> pendingTasks() {
         return List.of(
-                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED)
+                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED),
+                QuestApi.quest(StationQuests.PLACE_ITEM, 1),
+                QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1),
+                QuestApi.quest(StationQuests.BUILD_SHEATHING, 1),
+                QuestApi.quest(StationQuests.REPAIR_DOORS, 1)
         );
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
         targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
         targets.put(StationQuests.PLACE_ITEM, triggerId(questTriggers, 1));
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
         targets.put(StationQuests.BUILD_SHEATHING, triggerId(questTriggers, 3));
-        targets.put(StationQuests.REPAIR_DOORS, triggerId(questTriggers, 4));
+        targets.put(StationQuests.REPAIR_DOORS, doorPlan.targetTriggerId());
         return targets;
     }
 
@@ -245,12 +261,16 @@ public final class QuestTestScenario {
         texts.put(StationQuests.PLACE_ITEM, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0442\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u0432 \u0437\u043e\u043d\u0435", "Install the test item in the marked zone."));
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
         texts.put(StationQuests.BUILD_SHEATHING, new QuestLocalization("\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0432 \u0437\u043e\u043d\u0435", "Build station sheathing in the marked zone."));
-        texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u043a\u0443\u0441\u0430\u0447\u043a\u0430\u043c\u0438", "Repair the pressure door with cutters."));
+        texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
         return texts;
     }
 
     private static String triggerId(List<PlacedTriggerZone> questTriggers, int index) {
         return questTriggers.get(Math.min(index, questTriggers.size() - 1)).id();
+    }
+
+    private static boolean isDoorTrigger(PlacedTriggerZone zone) {
+        return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.DOOR_TRIGGER;
     }
 
     private static boolean isQuestRoom(PlacedStationPiece piece) {
@@ -315,6 +335,88 @@ public final class QuestTestScenario {
 
     private static int center(int min, int max) {
         return Math.floorDiv(min + max, 2);
+    }
+
+    private static DoorSpawnPlan spawnBrokenRepairDoor(ServerLevel level, StationInstance station, List<PlacedTriggerZone> doorTriggers) {
+        List<PlacedTriggerZone> zones = preferredDoorZones(doorTriggers, station.seed());
+        for (PlacedTriggerZone zone : zones) {
+            BlockPos masterPos = new BlockPos(
+                    center(zone.min().getX(), zone.max().getX()),
+                    zone.min().getY(),
+                    center(zone.min().getZ(), zone.max().getZ())
+            );
+            if (breakExistingDoor(level, masterPos)) {
+                return new DoorSpawnPlan(true, zone.id());
+            }
+
+            for (net.minecraft.core.Direction direction : doorDirections(doorDirection(zone, station.stationDirection()))) {
+                if (!canPlaceDoor(level, masterPos, direction)) {
+                    continue;
+                }
+                level.setBlock(masterPos, ShipBlocks.STATION_PRESSURE_TIGHT_DOOR.get().defaultBlockState(), 3);
+                if (PressureTightDoorBlock.placeDoor(level, masterPos, direction, true, false, doorId(station.seed(), masterPos))) {
+                    return new DoorSpawnPlan(true, zone.id());
+                }
+                level.removeBlock(masterPos, false);
+            }
+        }
+        return new DoorSpawnPlan(false, "");
+    }
+
+    private static boolean breakExistingDoor(ServerLevel level, BlockPos masterPos) {
+        BlockState state = level.getBlockState(masterPos);
+        if (!(state.getBlock() instanceof PressureTightDoorBlock)) {
+            return false;
+        }
+        return PressureTightDoorBlock.setBroken(level, masterPos, true);
+    }
+
+    private static net.minecraft.core.Direction doorDirection(PlacedTriggerZone zone, net.minecraft.core.Direction fallback) {
+        net.minecraft.core.Direction direction = net.minecraft.core.Direction.byName(zone.data().getString("direction"));
+        if (direction != null && direction.getAxis().isHorizontal()) {
+            return direction;
+        }
+        return fallback != null && fallback.getAxis().isHorizontal() ? fallback : net.minecraft.core.Direction.NORTH;
+    }
+
+    private static String doorId(long stationSeed, BlockPos pos) {
+        long value = stationSeed ^ Mth.getSeed(pos) ^ 0xD00A51DL;
+        String code = StationCodeGenerator.code(value).substring(3);
+        return "DR-" + code;
+    }
+
+    private static List<PlacedTriggerZone> preferredDoorZones(List<PlacedTriggerZone> questTriggers, long seed) {
+        List<PlacedTriggerZone> zones = new ArrayList<>(questTriggers);
+        if (zones.size() > 4) {
+            PlacedTriggerZone preferred = zones.remove(4);
+            Collections.shuffle(zones, new java.util.Random(seed ^ 0xD00F5EEDL));
+            zones.add(0, preferred);
+        } else {
+            Collections.shuffle(zones, new java.util.Random(seed ^ 0xD00F5EEDL));
+        }
+        return zones;
+    }
+
+    private static List<net.minecraft.core.Direction> doorDirections(net.minecraft.core.Direction preferred) {
+        List<net.minecraft.core.Direction> directions = new ArrayList<>();
+        if (preferred != null && preferred.getAxis().isHorizontal()) {
+            directions.add(preferred);
+        }
+        for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+            if (!directions.contains(direction)) {
+                directions.add(direction);
+            }
+        }
+        return directions;
+    }
+
+    private static boolean canPlaceDoor(ServerLevel level, BlockPos masterPos, net.minecraft.core.Direction facing) {
+        for (BlockPos partPos : PressureTightDoorBlock.partPositions(masterPos, facing)) {
+            if (!level.getBlockState(partPos).isAir()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int spawnPseudoTrash(ServerLevel level, PlacedTriggerZone zone, int count, int variantOffset) {
@@ -398,5 +500,8 @@ public final class QuestTestScenario {
     }
 
     private record QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId) {
+    }
+
+    private record DoorSpawnPlan(boolean placed, String targetTriggerId) {
     }
 }

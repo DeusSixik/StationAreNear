@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.structures.generation;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
+import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -83,8 +84,13 @@ public final class StationPlacementUtil {
     }
 
     static PlacedTriggerZone transformTrigger(StationTriggerZone triggerZone, BlockPos origin, Rotation rotation, float danger) {
+        return transformTrigger(triggerZone, origin, rotation, danger, null, null);
+    }
+
+    static PlacedTriggerZone transformTrigger(StationTriggerZone triggerZone, BlockPos origin, Rotation rotation, float danger, BlockPos selectionMin, BlockPos selectionMax) {
         BoundingBox bounds = transformBox(origin, triggerZone.min(), triggerZone.max(), rotation);
         CompoundTag data = triggerZone.data().copy();
+        rotateDoorDirection(triggerZone, data, rotation, selectionMin, selectionMax);
         data.putFloat("stationDanger", danger);
         return new PlacedTriggerZone(
                 triggerZone.id(),
@@ -93,6 +99,43 @@ public final class StationPlacementUtil {
                 new BlockPos(bounds.maxX(), bounds.maxY(), bounds.maxZ()),
                 data
         );
+    }
+
+    private static void rotateDoorDirection(StationTriggerZone triggerZone, CompoundTag data, Rotation rotation, BlockPos selectionMin, BlockPos selectionMax) {
+        if (StationStructureTriggerType.from(triggerZone.type()) != StationStructureTriggerType.DOOR_TRIGGER) {
+            return;
+        }
+
+        Direction direction = doorLocalDirection(triggerZone, data, selectionMin, selectionMax);
+        if (direction != null && direction.getAxis().isHorizontal()) {
+            data.putString("direction", rotation.rotate(direction).getSerializedName());
+        }
+    }
+
+    private static Direction doorLocalDirection(StationTriggerZone triggerZone, CompoundTag data, BlockPos selectionMin, BlockPos selectionMax) {
+        Direction configured = Direction.byName(data.getString("direction").toLowerCase(java.util.Locale.ROOT));
+        if (configured != null && configured.getAxis().isHorizontal()) {
+            return configured;
+        }
+        return inferHorizontalFaceDirection(triggerZone.min(), triggerZone.max(), selectionMin, selectionMax);
+    }
+
+    private static Direction inferHorizontalFaceDirection(BlockPos min, BlockPos max, BlockPos selectionMin, BlockPos selectionMax) {
+        if (selectionMin == null || selectionMax == null) {
+            return Direction.NORTH;
+        }
+
+        Direction bestDirection = Direction.NORTH;
+        int bestDistance = Integer.MAX_VALUE;
+        int west = Math.abs(min.getX() - selectionMin.getX());
+        if (west < bestDistance) { bestDistance = west; bestDirection = Direction.WEST; }
+        int east = Math.abs(selectionMax.getX() - max.getX());
+        if (east < bestDistance) { bestDistance = east; bestDirection = Direction.EAST; }
+        int north = Math.abs(min.getZ() - selectionMin.getZ());
+        if (north < bestDistance) { bestDistance = north; bestDirection = Direction.NORTH; }
+        int south = Math.abs(selectionMax.getZ() - max.getZ());
+        if (south < bestDistance) { bestDirection = Direction.SOUTH; }
+        return bestDirection;
     }
 
     public static BoundingBox transformBox(BlockPos origin, BlockPos min, BlockPos max, Rotation rotation) {

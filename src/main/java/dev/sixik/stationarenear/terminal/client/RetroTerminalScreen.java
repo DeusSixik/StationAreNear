@@ -478,7 +478,7 @@ public final class RetroTerminalScreen {
                     case "help" -> (console, call) -> appendHelp(console);
                     case "status" -> (console, call) -> appendStatus(console);
                     case "modules" -> (console, call) -> appendModules(console);
-                    case "door" -> (console, call) -> console.appendInfo("Submit /door open or /door close to control the pressure door.");
+                    case "door" -> (console, call) -> console.appendInfo("Submit /door open, /door close, or /door open <id> for station doors.");
                     case "tv" -> (console, call) -> console.appendInfo("Submit /tv text <message>, /tv ship_status, /tv ship_scan or /tv clear.");
                     case "tv_clear" -> (console, call) -> console.appendInfo("Submit /tv_clear to clear manual TV text.");
                     case "tv_pos" -> (console, call) -> console.appendInfo("Submit /tv_pos CENTER, /tv_pos TOP or /tv_pos DOWN to move manual TV text.");

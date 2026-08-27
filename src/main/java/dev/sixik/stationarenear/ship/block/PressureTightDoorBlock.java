@@ -1,12 +1,15 @@
 package dev.sixik.stationarenear.ship.block;
 
+import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.ship.block.entity.PressureTightDoorBlockEntity;
+import dev.sixik.stationarenear.ship.event.PressureTightDoorRepairedEvent;
 import dev.sixik.stationarenear.ship.runtime.ShipIntegrityScanner;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
@@ -33,6 +36,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraftforge.common.MinecraftForge;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
@@ -42,6 +46,7 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
 
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
     public static final BooleanProperty OPEN = BooleanProperty.create("open");
+    public static final BooleanProperty BROKEN = BooleanProperty.create("broken");
     public static final IntegerProperty PART_X = IntegerProperty.create("part_x", 0, 2);
     public static final IntegerProperty PART_Y = IntegerProperty.create("part_y", 0, 2);
 
@@ -55,6 +60,7 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         registerDefaultState(stateDefinition.any()
                 .setValue(FACING, Direction.NORTH)
                 .setValue(OPEN, false)
+                .setValue(BROKEN, false)
                 .setValue(PART_X, MASTER_PART_X)
                 .setValue(PART_Y, MASTER_PART_Y));
     }
@@ -70,6 +76,7 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         return defaultBlockState()
                 .setValue(FACING, facing)
                 .setValue(OPEN, false)
+                .setValue(BROKEN, false)
                 .setValue(PART_X, MASTER_PART_X)
                 .setValue(PART_Y, MASTER_PART_Y);
     }
@@ -95,7 +102,29 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (!level.isClientSide) {
-            player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close"), true);
+            BlockPos master = masterPos(pos, state);
+            BlockState masterState = level.getBlockState(master);
+            ItemStack heldItem = player.getItemInHand(hand);
+            if (isBroken(masterState) && heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+                repairDoor(level, master, masterState);
+                if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
+                    heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));
+                }
+                if (level instanceof ServerLevel serverLevel) {
+                    MinecraftForge.EVENT_BUS.post(new PressureTightDoorRepairedEvent(serverLevel, player, master));
+                }
+                player.displayClientMessage(Component.literal("Pressure door repaired."), true);
+                return InteractionResult.SUCCESS;
+            }
+
+            BlockEntity blockEntity = level.getBlockEntity(master);
+            if (blockEntity instanceof PressureTightDoorBlockEntity door && !door.doorId().isBlank()) {
+                String repairHint = isBroken(masterState) ? " | Repair: Engineering Gear" : "";
+                player.displayClientMessage(Component.literal("Door ID: " + door.doorId() + " | Use terminal: door open " + door.doorId() + repairHint), true);
+            } else {
+                String repairHint = isBroken(masterState) ? " Repair with Engineering Gear." : "";
+                player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close." + repairHint), true);
+            }
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
@@ -111,6 +140,10 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         return state.hasProperty(OPEN) && state.getValue(OPEN);
     }
 
+    public static boolean isBroken(BlockState state) {
+        return state.hasProperty(BROKEN) && state.getValue(BROKEN);
+    }
+
     public static boolean setOpen(Level level, BlockPos pos, boolean open) {
         BlockState state = level.getBlockState(pos);
         if (!(state.getBlock() instanceof PressureTightDoorBlock)) {
@@ -122,8 +155,63 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         if (!(masterState.getBlock() instanceof PressureTightDoorBlock)) {
             return false;
         }
+        if (open && isBroken(masterState)) {
+            return false;
+        }
 
         setDoorOpen(level, master, masterState, open);
+        return true;
+    }
+
+    public static boolean placeDoor(Level level, BlockPos masterPos, Direction facing, boolean broken, @Nullable String doorId) {
+        return placeDoor(level, masterPos, facing, broken, false, doorId);
+    }
+
+    public static boolean setBroken(Level level, BlockPos pos, boolean broken) {
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof PressureTightDoorBlock)) {
+            return false;
+        }
+
+        BlockPos master = masterPos(pos, state);
+        BlockState masterState = level.getBlockState(master);
+        if (!(masterState.getBlock() instanceof PressureTightDoorBlock)) {
+            return false;
+        }
+
+        setDoorBroken(level, master, masterState, broken);
+        return true;
+    }
+
+    public static boolean placeDoor(Level level, BlockPos masterPos, Direction facing, boolean broken, boolean open, @Nullable String doorId) {
+        BlockState state = level.getBlockState(masterPos);
+        if (!(state.getBlock() instanceof PressureTightDoorBlock doorBlock)) {
+            return false;
+        }
+        BlockState doorState = state
+                .setValue(FACING, facing)
+                .setValue(OPEN, !broken && open)
+                .setValue(BROKEN, broken)
+                .setValue(PART_X, MASTER_PART_X)
+                .setValue(PART_Y, MASTER_PART_Y);
+        if (!canPlaceDoor(level, masterPos, facing, null)) {
+            return false;
+        }
+        level.setBlock(masterPos, doorState, 3);
+        for (BlockPos partPos : partPositions(masterPos, facing)) {
+            if (partPos.equals(masterPos)) {
+                continue;
+            }
+            int partX = partX(masterPos, facing, partPos);
+            int partY = partPos.getY() - masterPos.getY();
+            level.setBlock(partPos, doorState.setValue(PART_X, partX).setValue(PART_Y, partY), 3);
+        }
+        BlockEntity blockEntity = level.getBlockEntity(masterPos);
+        if (blockEntity instanceof PressureTightDoorBlockEntity pressureDoor) {
+            pressureDoor.setDoorId(doorId);
+            pressureDoor.markAnimationDirty();
+        }
+        doorBlock.afterDoorPlaced(level, masterPos);
         return true;
     }
 
@@ -185,7 +273,7 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING, OPEN, PART_X, PART_Y);
+        builder.add(FACING, OPEN, BROKEN, PART_X, PART_Y);
     }
 
     private static void setDoorOpen(Level level, BlockPos masterPos, BlockState masterState, boolean open) {
@@ -204,17 +292,40 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         refreshShipIntegrity(level, masterPos);
     }
 
+    private static void repairDoor(Level level, BlockPos masterPos, BlockState masterState) {
+        setDoorBroken(level, masterPos, masterState, false);
+    }
+
+    private static void setDoorBroken(Level level, BlockPos masterPos, BlockState masterState, boolean broken) {
+        Direction facing = masterState.getValue(FACING);
+        for (BlockPos partPos : partPositions(masterPos, facing)) {
+            BlockState partState = level.getBlockState(partPos);
+            if (!partState.is(masterState.getBlock())) {
+                continue;
+            }
+            level.setBlock(partPos, partState.setValue(BROKEN, broken).setValue(OPEN, false), 3);
+        }
+        BlockEntity blockEntity = level.getBlockEntity(masterPos);
+        if (blockEntity instanceof PressureTightDoorBlockEntity door) {
+            door.markAnimationDirty();
+        }
+        refreshShipIntegrity(level, masterPos);
+    }
+
     private static boolean canPlaceDoor(LevelAccessor level, BlockPos masterPos, Direction facing, BlockPlaceContext context) {
         for (BlockPos partPos : partPositions(masterPos, facing)) {
             BlockState partState = level.getBlockState(partPos);
-            if (!partPos.equals(masterPos) && !partState.canBeReplaced(context)) {
+            if (!partPos.equals(masterPos) && context != null && !partState.canBeReplaced(context)) {
+                return false;
+            }
+            if (!partPos.equals(masterPos) && context == null && !partState.isAir()) {
                 return false;
             }
         }
         return true;
     }
 
-    private static Set<BlockPos> partPositions(BlockPos masterPos, Direction facing) {
+    public static Set<BlockPos> partPositions(BlockPos masterPos, Direction facing) {
         Set<BlockPos> positions = new HashSet<>(9);
         Direction side = facing.getClockWise();
         for (int sideOffset = -1; sideOffset <= 1; sideOffset++) {
@@ -246,6 +357,10 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
 
     private static boolean contains(Set<BlockPos> positions, BlockPos pos) {
         return positions.contains(pos);
+    }
+
+    protected void afterDoorPlaced(Level level, BlockPos masterPos) {
+        refreshShipIntegrity(level, masterPos);
     }
 
     private static void refreshShipIntegrity(Level level, BlockPos pos) {

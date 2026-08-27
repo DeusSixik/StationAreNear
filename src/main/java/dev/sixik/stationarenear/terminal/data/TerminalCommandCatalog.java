@@ -9,7 +9,7 @@ public final class TerminalCommandCatalog {
             new TerminalCommandDefinition("help", "available terminal commands"),
             new TerminalCommandDefinition("status", "ship HP, sealing and navigation speed"),
             new TerminalCommandDefinition("modules", "installed ship modules"),
-            new TerminalCommandDefinition("door", "door open|close pressure-tight door"),
+            new TerminalCommandDefinition("door", "door open|close [id] pressure-tight door"),
             new TerminalCommandDefinition("tv", "tv text|ship_status|ship_scan|clear television"),
             new TerminalCommandDefinition("tv_clear", "clear manual ship television text"),
             new TerminalCommandDefinition("tv_pos", "CENTER|TOP|DOWN television manual text position"),

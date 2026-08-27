@@ -1,9 +1,13 @@
 package dev.sixik.stationarenear.quest.block;
 
 import net.minecraft.core.BlockPos;
+import dev.sixik.stationarenear.quest.runtime.QuestFurniturePickupManager;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
@@ -22,12 +26,13 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
-public class FridgeBlock extends HorizontalDirectionalBlock {
+public class FridgeBlock extends HorizontalDirectionalBlock implements QuestPickupBlock {
 
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
     public static final EnumProperty<DoubleBlockHalf> HALF = BlockStateProperties.DOUBLE_BLOCK_HALF;
@@ -60,6 +65,30 @@ public class FridgeBlock extends HorizontalDirectionalBlock {
         super.setPlacedBy(level, pos, state, placer, stack);
         if (!level.isClientSide && state.getValue(HALF) == DoubleBlockHalf.LOWER) {
             level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
+        }
+    }
+
+    @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        if (!level.isClientSide && player instanceof ServerPlayer serverPlayer) {
+            QuestFurniturePickupManager.hold(serverPlayer, pos);
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    @Override
+    public BlockPos pickupMasterPos(BlockPos pos, BlockState state) {
+        return state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos;
+    }
+
+    @Override
+    public void pickupRemove(Level level, BlockPos masterPos, BlockState masterState) {
+        BlockState upperState = level.getBlockState(masterPos.above());
+        if (upperState.is(this)) {
+            level.setBlock(masterPos.above(), Blocks.AIR.defaultBlockState(), 35);
+        }
+        if (level.getBlockState(masterPos).is(this)) {
+            level.setBlock(masterPos, Blocks.AIR.defaultBlockState(), 35);
         }
     }
 

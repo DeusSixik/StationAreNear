@@ -1,0 +1,49 @@
+package dev.sixik.stationarenear.quest.network;
+
+import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.quest.network.packet.QuestFurniturePickupHoldPacket;
+import dev.sixik.stationarenear.quest.network.packet.QuestFurniturePickupProgressPacket;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.simple.SimpleChannel;
+
+public final class QuestNetwork {
+
+    private static final String PROTOCOL_VERSION = "1";
+    private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
+            .named(new ResourceLocation(StationAreNear.MODID, "quest"))
+            .networkProtocolVersion(() -> PROTOCOL_VERSION)
+            .clientAcceptedVersions(PROTOCOL_VERSION::equals)
+            .serverAcceptedVersions(PROTOCOL_VERSION::equals)
+            .simpleChannel();
+
+    private static int nextPacketId;
+
+    private QuestNetwork() {
+    }
+
+    public static void register() {
+        CHANNEL.messageBuilder(QuestFurniturePickupHoldPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(QuestFurniturePickupHoldPacket::encode)
+                .decoder(QuestFurniturePickupHoldPacket::decode)
+                .consumerMainThread(QuestFurniturePickupHoldPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(QuestFurniturePickupProgressPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(QuestFurniturePickupProgressPacket::encode)
+                .decoder(QuestFurniturePickupProgressPacket::decode)
+                .consumerMainThread(QuestFurniturePickupProgressPacket::handle)
+                .add();
+    }
+
+    public static void sendFurniturePickupHold(BlockPos pos, boolean holding) {
+        CHANNEL.sendToServer(new QuestFurniturePickupHoldPacket(pos, holding));
+    }
+
+    public static void syncFurniturePickupProgress(ServerPlayer player, float progress, boolean visible) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new QuestFurniturePickupProgressPacket(progress, visible));
+    }
+}

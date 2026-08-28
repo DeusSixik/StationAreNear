@@ -23,6 +23,8 @@ import dev.sixik.stationarenear.terminal.map.data.StationMapSnapshot;
 import dev.sixik.stationarenear.terminal.map.model.StationMapData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -39,6 +41,7 @@ public final class StationMapSnapshotFactory {
     private static final int FLOOR_HEIGHT = 16;
     private static final int PLAYER_SHIP_MAP_HALF_SIZE = 2;
     private static final ResourceLocation PLAYER_SHIP_MAP_ID = ResourceLocation.tryParse(StationAreNear.MODID + ":player_ship");
+    private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
 
     private StationMapSnapshotFactory() {
     }
@@ -266,8 +269,20 @@ public final class StationMapSnapshotFactory {
                 .map(state -> {
                     Set<String> triggers = new HashSet<>();
                     for (QuestObjectiveState objective : state.objectives()) {
-                        if (!objective.completed() && !objective.targetTriggerId().isBlank()) {
+                        if (objective.completed()) {
+                            continue;
+                        }
+                        if (!objective.targetTriggerId().isBlank()) {
                             triggers.add(objective.targetTriggerId());
+                        }
+                        if (objective.progress().contains(KEY_TARGET_TRIGGER_IDS, Tag.TAG_LIST)) {
+                            ListTag targetTriggerIds = objective.progress().getList(KEY_TARGET_TRIGGER_IDS, Tag.TAG_STRING);
+                            for (int i = 0; i < targetTriggerIds.size(); i++) {
+                                String targetTriggerId = targetTriggerIds.getString(i);
+                                if (!targetTriggerId.isBlank()) {
+                                    triggers.add(targetTriggerId);
+                                }
+                            }
                         }
                     }
                     return triggers;

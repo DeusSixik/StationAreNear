@@ -25,6 +25,8 @@ import dev.sixik.stationarenear.structures.trigger.StationTriggerHandlers;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -58,7 +60,9 @@ public final class QuestTestScenario {
     private static final int TEST_TRASH_EXTRA = 3;
     private static final String TEST_FRIDGE_TAG = "socket";
     private static final String TEST_SINK_TAG = "pipes";
+    private static final String TEST_TRASH_ZONE_TAG = "trash";
     private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
+    private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
 
     private QuestTestScenario() {
     }
@@ -150,13 +154,19 @@ public final class QuestTestScenario {
                 .filter(QuestTestScenario::isDoorTrigger)
                 .sorted(Comparator.comparing(PlacedTriggerZone::id))
                 .toList();
+        List<QuestObjectZoneTarget> objectZoneTriggers = station.pieces().stream()
+                .flatMap(piece -> piece.triggerZones().stream()
+                        .filter(QuestTestScenario::isQuestObjectZoneTrigger)
+                        .map(zone -> new QuestObjectZoneTarget(piece, zone)))
+                .sorted(Comparator.comparing((QuestObjectZoneTarget target) -> target.zone().id()))
+                .toList();
 
         PlaceTargetPlan fridgePlan = selectPlaceTarget(placeTriggers, station.seed(), TEST_FRIDGE_TAG);
         PlaceTargetPlan microwavePlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()));
         PlaceTargetPlan sinkPlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG);
         DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
         EnergyPanelPlan energyPanelPlan = spawnRepairEnergyPanel(level, station);
-        QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
+        QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, objectZoneTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
         movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
         return true;
     }
@@ -167,10 +177,14 @@ public final class QuestTestScenario {
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
-        moved.objective(StationQuests.CLEAR_TRASH).ifPresent(objective -> moved.put(objective.withDisplay(
-                spawnPlan.targetCount(),
-                objective.text()
-        )));
+        moved.objective(StationQuests.CLEAR_TRASH).ifPresent(objective -> {
+            CompoundTag progress = objective.progress();
+            putTargetTriggerIds(progress, spawnPlan.targetTriggerIds());
+            moved.put(objective.withDisplay(
+                    spawnPlan.targetCount(),
+                    objective.text()
+            ).withProgress(progress));
+        });
         if (!fridgePlan.present()) {
             moved.objective(StationQuests.PLACE_FRIDGE).ifPresent(objective -> moved.put(objective.complete(null)));
         }
@@ -302,6 +316,11 @@ public final class QuestTestScenario {
         return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE;
     }
 
+    private static boolean isQuestObjectZoneTrigger(PlacedTriggerZone zone) {
+        return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.OBJECT_ZONE_PLACER
+                && StationTriggerHandlers.isObjectZoneQuestOnly(zone);
+    }
+
     private static PlaceTargetPlan selectPlaceTarget(List<PlacedTriggerZone> placeTriggers, long seed, String requiredTag) {
         return selectPlaceTarget(placeTriggers, seed, requiredTag, Set.of());
     }
@@ -349,6 +368,51 @@ public final class QuestTestScenario {
         return QUEST_ROOM.equals(piece.definitionId()) || QUEST_ROOM.equals(piece.template());
     }
 
+    private static QuestSpawnPlan spawnPseudoTrash(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, List<QuestObjectZoneTarget> objectZoneTargets, int requiredCount, int extraCount) {
+        List<QuestObjectZoneTarget> trashZoneTargets = objectZoneTargets.stream()
+                .filter(target -> isTrashObjectZoneTarget(target.zone()))
+                .toList();
+        if (!trashZoneTargets.isEmpty()) {
+            QuestSpawnPlan plan = spawnObjectZoneTrash(level, station, trashZoneTargets, requiredCount, extraCount);
+            if (plan.requiredPlaced() > 0 || questTriggers.isEmpty() || requiredCount <= questElementSpawnSkip(station, StationQuests.CLEAR_TRASH)) {
+                return plan;
+            }
+        }
+        return spawnPseudoTrash(level, station, questTriggers, requiredCount, extraCount);
+    }
+
+    private static QuestSpawnPlan spawnObjectZoneTrash(ServerLevel level, StationInstance station, List<QuestObjectZoneTarget> objectZoneTargets, int requiredCount, int extraCount) {
+        int skip = questElementSpawnSkip(station, StationQuests.CLEAR_TRASH);
+        int requiredToSpawn = Math.max(0, requiredCount - skip);
+        int totalToSpawn = requiredToSpawn + Math.max(0, extraCount);
+        List<QuestObjectZoneTarget> clusterZones = clusteredObjectZoneTargets(objectZoneTargets, station.seed());
+        if (totalToSpawn <= 0) {
+            List<String> targets = clusterZones.isEmpty() ? List.of() : List.of(clusterZones.get(0).zone().id());
+            return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, skip)), 0, primaryTarget(targets), targets);
+        }
+
+        int requiredPlaced = 0;
+        int totalPlaced = 0;
+        List<String> targetTriggerIds = new ArrayList<>();
+
+        for (int i = 0; i < clusterZones.size() && totalPlaced < totalToSpawn; i++) {
+            QuestObjectZoneTarget target = clusterZones.get(i);
+            int remaining = totalToSpawn - totalPlaced;
+            int zonesRemaining = clusterZones.size() - i;
+            int countForZone = Math.max(1, (remaining + zonesRemaining - 1) / zonesRemaining);
+            int placed = StationTriggerHandlers.placeObjectZoneForQuest(level, station, target.piece(), target.zone(), countForZone);
+            if (placed <= 0) {
+                continue;
+            }
+            targetTriggerIds.add(target.zone().id());
+            int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
+            requiredPlaced += requiredPart;
+            totalPlaced += placed;
+        }
+
+        return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, primaryTarget(targetTriggerIds), targetTriggerIds);
+    }
+
     private static QuestSpawnPlan spawnPseudoTrash(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, int requiredCount, int extraCount) {
         int skip = questElementSpawnSkip(station, StationQuests.CLEAR_TRASH);
         int requiredToSpawn = Math.max(0, requiredCount - skip);
@@ -360,7 +424,7 @@ public final class QuestTestScenario {
         List<PlacedTriggerZone> clusterZones = clusteredQuestZones(questTriggers, station.seed());
         int requiredPlaced = 0;
         int totalPlaced = 0;
-        String targetTriggerId = "";
+        List<String> targetTriggerIds = new ArrayList<>();
 
         for (PlacedTriggerZone zone : clusterZones) {
             if (totalPlaced >= totalToSpawn) {
@@ -370,18 +434,43 @@ public final class QuestTestScenario {
             if (placed <= 0) {
                 continue;
             }
-            if (targetTriggerId.isBlank()) {
-                targetTriggerId = zone.id();
-            }
+            targetTriggerIds.add(zone.id());
             int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
             requiredPlaced += requiredPart;
             totalPlaced += placed;
         }
 
-        if (targetTriggerId.isBlank()) {
-            targetTriggerId = triggerId(questTriggers, 0);
+        if (targetTriggerIds.isEmpty()) {
+            targetTriggerIds.add(triggerId(questTriggers, 0));
         }
-        return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, targetTriggerId);
+        return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, primaryTarget(targetTriggerIds), targetTriggerIds);
+    }
+
+    private static boolean isTrashObjectZoneTarget(PlacedTriggerZone zone) {
+        return hasTriggerTag(zone, TEST_TRASH_ZONE_TAG)
+                || hasTriggerTag(zone, "clear_trash")
+                || hasTriggerTag(zone, StationQuests.CLEAR_TRASH);
+    }
+
+    private static String primaryTarget(List<String> targetTriggerIds) {
+        return targetTriggerIds == null || targetTriggerIds.isEmpty() ? "" : targetTriggerIds.get(0);
+    }
+
+    private static void putTargetTriggerIds(CompoundTag progress, List<String> targetTriggerIds) {
+        progress.remove(KEY_TARGET_TRIGGER_IDS);
+        if (targetTriggerIds == null || targetTriggerIds.isEmpty()) {
+            return;
+        }
+        ListTag list = new ListTag();
+        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(targetTriggerIds);
+        for (String targetTriggerId : unique) {
+            if (targetTriggerId != null && !targetTriggerId.isBlank()) {
+                list.add(StringTag.valueOf(targetTriggerId));
+            }
+        }
+        if (!list.isEmpty()) {
+            progress.put(KEY_TARGET_TRIGGER_IDS, list);
+        }
     }
 
     private static List<PlacedTriggerZone> clusteredQuestZones(List<PlacedTriggerZone> questTriggers, long seed) {
@@ -395,6 +484,20 @@ public final class QuestTestScenario {
         shuffled.sort(Comparator
                 .comparingInt((PlacedTriggerZone zone) -> zoneDistance(anchor, zone))
                 .thenComparing(PlacedTriggerZone::id));
+        return shuffled;
+    }
+
+    private static List<QuestObjectZoneTarget> clusteredObjectZoneTargets(List<QuestObjectZoneTarget> objectZoneTargets, long seed) {
+        List<QuestObjectZoneTarget> shuffled = new ArrayList<>(objectZoneTargets);
+        Collections.shuffle(shuffled, new java.util.Random(seed ^ 0x0B1EC75A11L));
+        if (shuffled.size() <= 1) {
+            return shuffled;
+        }
+
+        QuestObjectZoneTarget anchor = shuffled.get(0);
+        shuffled.sort(Comparator
+                .comparingInt((QuestObjectZoneTarget target) -> zoneDistance(anchor.zone(), target.zone()))
+                .thenComparing(target -> target.zone().id()));
         return shuffled;
     }
 
@@ -580,7 +683,18 @@ public final class QuestTestScenario {
         return Optional.ofNullable(best);
     }
 
-    private record QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId) {
+    private record QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId, List<String> targetTriggerIds) {
+
+        private QuestSpawnPlan(int requestedRequired, int targetCount, int requiredPlaced, String targetTriggerId) {
+            this(requestedRequired, targetCount, requiredPlaced, targetTriggerId, targetTriggerId == null || targetTriggerId.isBlank() ? List.of() : List.of(targetTriggerId));
+        }
+
+        private QuestSpawnPlan {
+            targetTriggerIds = targetTriggerIds == null ? List.of() : List.copyOf(targetTriggerIds);
+        }
+    }
+
+    private record QuestObjectZoneTarget(PlacedStationPiece piece, PlacedTriggerZone zone) {
     }
 
     private record PlaceTargetPlan(boolean present, String targetTriggerId) {

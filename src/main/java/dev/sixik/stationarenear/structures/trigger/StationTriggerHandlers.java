@@ -7,6 +7,7 @@ import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.registry.ShipBlocks;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
+import dev.sixik.stationarenear.structures.data.StationInstance;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
@@ -20,6 +21,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
@@ -77,6 +79,7 @@ public final class StationTriggerHandlers {
         }
         switch (event.getTriggerType()) {
             case OBJECT_PLACER -> placeObject(event);
+            case OBJECT_ZONE_PLACER -> placeObjectZone(event, false, -1);
             case MOB_SPAWN -> placeMobs(event);
             case DOOR_TRIGGER -> placeDoor(event);
             case QUEST_PLACE -> placeEnergyPanel(event);
@@ -87,6 +90,19 @@ public final class StationTriggerHandlers {
             }
         }
     }
+
+    public static int placeObjectZoneForQuest(ServerLevel level, StationInstance station, PlacedStationPiece piece, PlacedTriggerZone zone, int count) {
+        if (count <= 0 || StationStructureTriggerType.from(zone.type()) != StationStructureTriggerType.OBJECT_ZONE_PLACER) {
+            return 0;
+        }
+        StationStructureSpawnTriggerEvent event = new StationStructureSpawnTriggerEvent(level, station, piece, zone, StationStructureTriggerType.OBJECT_ZONE_PLACER);
+        return placeObjectZone(event, true, count);
+    }
+
+    public static boolean isObjectZoneQuestOnly(PlacedTriggerZone zone) {
+        return isObjectZoneQuestOnly(zone.data());
+    }
+
 
     private static void placeEnergyPanel(StationStructureSpawnTriggerEvent event) {
         if (!isEnergySwitchTrigger(event.getZone())) {
@@ -272,6 +288,56 @@ public final class StationTriggerHandlers {
         placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
     }
 
+    private static int placeObjectZone(StationStructureSpawnTriggerEvent event, boolean questInvocation, int forcedCount) {
+        CompoundTag data = event.getZone().data();
+        if (data.contains("place") && !data.getBoolean("place")) {
+            return 0;
+        }
+        if (!questInvocation && isObjectZoneQuestOnly(data)) {
+            return 0;
+        }
+
+        RandomSource random = event.getLevel().getRandom();
+        if (!questInvocation) {
+            int chance = Mth.clamp((data.contains("placeChance") ? data.getInt("placeChance") : data.contains("chance") ? data.getInt("chance") : 100) + event.getAdditionalPlaceObjectChance(), 0, 100);
+            boolean ignoreChance = data.getBoolean("ignoreChancePlace");
+            if (!ignoreChance && random.nextInt(100) >= chance) {
+                return 0;
+            }
+        }
+
+        StationStructureLibraryData library = StationStructureLibraryData.get(event.getLevel());
+        List<StationPieceDefinition> candidates = objectZoneCandidates(library, data, data.getFloat("stationDanger"));
+        if (candidates.isEmpty()) {
+            return 0;
+        }
+
+        int targetCount;
+        if (forcedCount >= 0) {
+            targetCount = Mth.clamp(forcedCount, 0, 256);
+        } else {
+            int minCount = Mth.clamp(readObjectZoneCount(data, "minCount", "min", 1), 0, 256);
+            int maxFallback = data.contains("count") ? data.getInt("count") : Math.max(minCount, 8);
+            int maxCount = Mth.clamp(readObjectZoneCount(data, "maxCount", "max", maxFallback), minCount, 256);
+            targetCount = maxCount == minCount ? minCount : Mth.nextInt(random, minCount, maxCount);
+        }
+
+        int placed = 0;
+        int attempts = Math.max(32, targetCount * 32);
+        while (placed < targetCount && attempts-- > 0) {
+            Optional<ObjectPlacement> placement = selectObjectZonePlacement(event, candidates, random);
+            if (placement.isEmpty()) {
+                continue;
+            }
+            StructurePlaceSettings settings = new StructurePlaceSettings()
+                    .setRotation(placement.get().rotation())
+                    .addProcessor(BlockIgnoreProcessor.AIR);
+            placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
+            placed++;
+        }
+        return placed;
+    }
+
     private static void placeMobs(StationStructureSpawnTriggerEvent event) {
         CompoundTag data = event.getZone().data();
         if (data.contains("place") && !data.getBoolean("place")) {
@@ -307,6 +373,22 @@ public final class StationTriggerHandlers {
                     BlockPos adjustedOrigin = adjustSurfaceObjectOrigin(event, template.get(), origin.get());
                     return Optional.of(new ObjectPlacement(template.get(), adjustedOrigin, rotation));
                 }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<ObjectPlacement> selectObjectZonePlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random) {
+        StationPieceDefinition definition = selectWeighted(candidates, random);
+        Optional<StructureTemplate> template = event.getLevel().getStructureManager().get(definition.template());
+        if (template.isEmpty()) {
+            return Optional.empty();
+        }
+
+        for (Rotation rotation : objectRotations(event.getZone().data(), template.get(), random)) {
+            Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random);
+            if (origin.isPresent() && canPlaceObjectZoneAt(event, template.get(), origin.get(), rotation)) {
+                return Optional.of(new ObjectPlacement(template.get(), origin.get(), rotation));
             }
         }
         return Optional.empty();
@@ -463,6 +545,56 @@ public final class StationTriggerHandlers {
         return withoutConnectors.isEmpty() ? all : withoutConnectors;
     }
 
+    private static List<StationPieceDefinition> objectZoneCandidates(StationStructureLibraryData library, CompoundTag data, float danger) {
+        Set<ResourceLocation> seen = new LinkedHashSet<>();
+        List<StationPieceDefinition> candidates = new ObjectArrayList<>();
+        for (ResourceLocation poolId : objectPoolIds(data)) {
+            Optional<StationPoolDefinition> pool = library.pool(poolId);
+            if (pool.isEmpty()) {
+                continue;
+            }
+            for (StationPieceDefinition definition : objectCandidates(library, pool.get(), danger)) {
+                if (seen.add(definition.id())) {
+                    candidates.add(definition);
+                }
+            }
+        }
+        return candidates;
+    }
+
+    private static List<ResourceLocation> objectPoolIds(CompoundTag data) {
+        Set<ResourceLocation> poolIds = new LinkedHashSet<>();
+        if (data.contains("pools", Tag.TAG_LIST)) {
+            ListTag pools = data.getList("pools", Tag.TAG_STRING);
+            for (int i = 0; i < pools.size(); i++) {
+                addObjectPoolId(poolIds, pools.getString(i));
+            }
+        } else {
+            addObjectPoolIds(poolIds, data.getString("pools"));
+        }
+        addObjectPoolIds(poolIds, data.getString("pool"));
+        if (poolIds.isEmpty()) {
+            poolIds.add(StationStructureIds.pool("objects/default"));
+        }
+        return List.copyOf(poolIds);
+    }
+
+    private static void addObjectPoolIds(Set<ResourceLocation> poolIds, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        for (String part : value.split("[,;]")) {
+            addObjectPoolId(poolIds, part);
+        }
+    }
+
+    private static void addObjectPoolId(Set<ResourceLocation> poolIds, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        poolIds.add(StationStructureIds.pool(value.trim()));
+    }
+
     private static StationPieceDefinition selectWeighted(List<StationPieceDefinition> definitions, RandomSource random) {
         int totalWeight = 0;
         for (StationPieceDefinition definition : definitions) {
@@ -514,6 +646,49 @@ public final class StationTriggerHandlers {
             }
         }
         return Optional.ofNullable(selected);
+    }
+
+    private static boolean isObjectZoneQuestOnly(CompoundTag data) {
+        return data.getBoolean("onlyQuests") || data.getBoolean("onlyQuest") || data.getBoolean("questOnly");
+    }
+
+    private static int readObjectZoneCount(CompoundTag data, String primaryKey, String fallbackKey, int fallback) {
+        if (data.contains(primaryKey)) {
+            return data.getInt(primaryKey);
+        }
+        if (data.contains(fallbackKey)) {
+            return data.getInt(fallbackKey);
+        }
+        return fallback;
+    }
+
+    private static boolean canPlaceObjectZoneAt(StationStructureSpawnTriggerEvent event, StructureTemplate template, BlockPos origin, Rotation rotation) {
+        return hasFloorBelowBottomCenter(event, template, origin, rotation) && isObjectZoneBoundsClear(event, template, origin, rotation);
+    }
+
+    private static boolean hasFloorBelowBottomCenter(StationStructureSpawnTriggerEvent event, StructureTemplate template, BlockPos origin, Rotation rotation) {
+        BoundingBox bounds = StationPlacementUtil.transformBounds(origin, template.getSize(), rotation);
+        BlockPos floorPos = new BlockPos(
+                Math.floorDiv(bounds.minX() + bounds.maxX(), 2),
+                bounds.minY() - 1,
+                Math.floorDiv(bounds.minZ() + bounds.maxZ(), 2)
+        );
+        return !event.getLevel().getBlockState(floorPos).isAir();
+    }
+
+    private static boolean isObjectZoneBoundsClear(StationStructureSpawnTriggerEvent event, StructureTemplate template, BlockPos origin, Rotation rotation) {
+        BoundingBox bounds = StationPlacementUtil.transformBounds(origin, template.getSize(), rotation);
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    if (!event.getLevel().getBlockState(cursor.set(x, y, z)).isAir()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     private record ObjectPlacement(StructureTemplate template, BlockPos origin, Rotation rotation) {

@@ -21,6 +21,7 @@ import dev.sixik.stationarenear.structures.trigger.StationTriggerZoneShape;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -31,12 +32,15 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class QuestTaskInteractionHandler {
 
     private static final String KEY_DONE_POSITIONS = "donePositions";
+    private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
 
     private QuestTaskInteractionHandler() {
     }
@@ -104,8 +108,9 @@ public final class QuestTaskInteractionHandler {
                 .flatMap(state -> state.objective(questId))
                 .filter(objective -> !objective.completed())
                 .map(objective -> {
-                    if (!objective.targetTriggerId().isBlank()) {
-                        return objective.targetTriggerId().equals(zone.id());
+                    Set<String> targetTriggerIds = targetTriggerIds(objective);
+                    if (!targetTriggerIds.isEmpty()) {
+                        return targetTriggerIds.contains(zone.id());
                     }
                     return !zone.data().contains("quest", Tag.TAG_STRING) || questId.equals(zone.data().getString("quest"));
                 })
@@ -166,9 +171,10 @@ public final class QuestTaskInteractionHandler {
     }
 
     private static boolean placeTargetMatches(PlacedStationPiece piece, QuestObjectiveState objective, BlockPos pos, BlockState placedState) {
+        Set<String> targetTriggerIds = targetTriggerIds(objective);
         return piece.triggerZones().stream()
                 .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE)
-                .filter(zone -> objective.targetTriggerId().isBlank() || objective.targetTriggerId().equals(zone.id()))
+                .filter(zone -> targetTriggerIds.isEmpty() || targetTriggerIds.contains(zone.id()))
                 .anyMatch(zone -> placeZoneContains(zone, pos) && placedBlockMatches(objective, zone, placedState));
     }
 
@@ -337,18 +343,20 @@ public final class QuestTaskInteractionHandler {
     }
 
     private static boolean cleanupPieceMatches(PlacedStationPiece piece, QuestObjectiveState objective) {
-        if (objective.targetTriggerId().isBlank()) {
+        Set<String> targetTriggerIds = targetTriggerIds(objective);
+        if (targetTriggerIds.isEmpty()) {
             return true;
         }
-        return piece.triggerZones().stream().anyMatch(zone -> objective.targetTriggerId().equals(zone.id()));
+        return piece.triggerZones().stream().anyMatch(zone -> targetTriggerIds.contains(zone.id()));
     }
 
     private static boolean triggerZoneMatches(PlacedStationPiece piece, QuestObjectiveState objective, BlockPos pos) {
-        if (objective.targetTriggerId().isBlank()) {
+        Set<String> targetTriggerIds = targetTriggerIds(objective);
+        if (targetTriggerIds.isEmpty()) {
             return true;
         }
         return piece.triggerZones().stream()
-                .filter(zone -> objective.targetTriggerId().equals(zone.id()))
+                .filter(zone -> targetTriggerIds.contains(zone.id()))
                 .anyMatch(zone -> contains(zone, pos));
     }
 
@@ -356,6 +364,23 @@ public final class QuestTaskInteractionHandler {
         return pos.getX() >= zone.min().getX() && pos.getX() <= zone.max().getX()
                 && pos.getY() >= zone.min().getY() && pos.getY() <= zone.max().getY()
                 && pos.getZ() >= zone.min().getZ() && pos.getZ() <= zone.max().getZ();
+    }
+
+    private static Set<String> targetTriggerIds(QuestObjectiveState objective) {
+        Set<String> targetTriggerIds = new HashSet<>();
+        if (!objective.targetTriggerId().isBlank()) {
+            targetTriggerIds.add(objective.targetTriggerId());
+        }
+        if (objective.progress().contains(KEY_TARGET_TRIGGER_IDS, Tag.TAG_LIST)) {
+            ListTag list = objective.progress().getList(KEY_TARGET_TRIGGER_IDS, Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                String targetTriggerId = list.getString(i);
+                if (!targetTriggerId.isBlank()) {
+                    targetTriggerIds.add(targetTriggerId);
+                }
+            }
+        }
+        return targetTriggerIds;
     }
 
     private static boolean alreadyDone(QuestObjectiveState objective, BlockPos pos) {

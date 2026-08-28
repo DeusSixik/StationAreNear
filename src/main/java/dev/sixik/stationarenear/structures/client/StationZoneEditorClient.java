@@ -580,6 +580,45 @@ public final class StationZoneEditorClient {
                 randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
                 useObjectDirection.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("useObjectDirection", event.newValue())); syncEditorStateAndSave(); });
                 objectDirection.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("objectDirection", comboSelectedItem(objectDirection, event))); syncEditorStateAndSave(); });
+            } else if (nodeType == StationEditorNodeType.OBJECT_ZONE_PLACER) {
+                inspector.addChild(label("ObjectZonePlacer: runs after ObjectPlacer and fills valid floor cells from object pools."));
+                ToggleButton place = new ToggleButton("Place zone objects").silentChecked(!data.contains("place") || data.getBoolean("place"));
+                ToggleButton ignoreChance = new ToggleButton("IgnoreChancePlace").silentChecked(data.getBoolean("ignoreChancePlace"));
+                ToggleButton onlyQuests = new ToggleButton("Only Quests").silentChecked(data.getBoolean("onlyQuests") || data.getBoolean("onlyQuest") || data.getBoolean("questOnly"));
+                ToggleButton objectRotation = new ToggleButton("OBJECT_ROTATION fit zone").silentChecked(!data.contains("objectRotation") || data.getBoolean("objectRotation"));
+                ToggleButton randomRotation = new ToggleButton("Random rotation").silentChecked(!data.contains("randomRotation") || data.getBoolean("randomRotation"));
+                ComboBox pool = combo(poolItems(data.getString("pool")), data.getString("pool"));
+                TextField pools = field(data.getString("pools"), "extra pools: a,b,c");
+                TextField chance = field(Integer.toString(data.contains("placeChance") ? data.getInt("placeChance") : 100), "0-100");
+                TextField minCount = field(Integer.toString(data.contains("minCount") ? data.getInt("minCount") : 3), "0-256");
+                TextField maxCount = field(Integer.toString(data.contains("maxCount") ? data.getInt("maxCount") : 8), "0-256");
+                row("Primary Pool", pool);
+                row("Extra Pools", pools);
+                row("Place Chance", chance);
+                row("Min Count", minCount);
+                row("Max Count", maxCount);
+                addShapeControls(index, data);
+                inspector.addChild(place);
+                inspector.addChild(ignoreChance);
+                inspector.addChild(onlyQuests);
+                inspector.addChild(objectRotation);
+                inspector.addChild(randomRotation);
+                pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorStateAndSave(); });
+                bind(pools, value -> updateTriggerData(index, dataTag -> {
+                    if (value.isBlank()) {
+                        dataTag.remove("pools");
+                    } else {
+                        dataTag.putString("pools", value.trim());
+                    }
+                }));
+                bind(chance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("placeChance", Math.max(0, Math.min(100, parseInt(value, 100))))));
+                bind(minCount, value -> updateTriggerData(index, dataTag -> dataTag.putInt("minCount", Math.max(0, Math.min(256, parseInt(value, 3))))));
+                bind(maxCount, value -> updateTriggerData(index, dataTag -> dataTag.putInt("maxCount", Math.max(0, Math.min(256, parseInt(value, 8))))));
+                place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
+                ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorStateAndSave(); });
+                onlyQuests.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("onlyQuests", event.newValue())); syncEditorStateAndSave(); });
+                objectRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("objectRotation", event.newValue())); syncEditorStateAndSave(); });
+                randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 inspector.addChild(label("MobSpawn: default is danger-scaled zombies/skeletons; quest code may override event."));
                 ToggleButton place = new ToggleButton("Place mobs").silentChecked(!data.contains("place") || data.getBoolean("place"));
@@ -712,6 +751,9 @@ public final class StationZoneEditorClient {
             if ("DOOR_SPAWNER".equalsIgnoreCase(value) || "door_spawner".equalsIgnoreCase(value)) {
                 return StationEditorNodeType.DOOR_TRIGGER;
             }
+            if ("object_zone_placer".equalsIgnoreCase(value) || "zone_object_placer".equalsIgnoreCase(value)) {
+                return StationEditorNodeType.OBJECT_ZONE_PLACER;
+            }
             try {
                 return StationEditorNodeType.valueOf(value);
             } catch (IllegalArgumentException exception) {
@@ -722,6 +764,7 @@ public final class StationZoneEditorClient {
         private String defaultTriggerType(StationEditorNodeType nodeType) {
             return switch (nodeType) {
                 case OBJECT_PLACER, LOOT -> "object_placer";
+                case OBJECT_ZONE_PLACER -> "object_zone_placer";
                 case MOB_SPAWN -> "mob_spawn";
                 case DOOR_TRIGGER -> "door_trigger";
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
@@ -761,6 +804,34 @@ public final class StationZoneEditorClient {
                 }
                 if (!data.contains("objectDirection") || data.getString("objectDirection").isBlank()) {
                     data.putString("objectDirection", "north");
+                }
+            } else if (nodeType == StationEditorNodeType.OBJECT_ZONE_PLACER) {
+                if (!data.contains("pool") || data.getString("pool").isBlank()) {
+                    data.putString("pool", "stationarenear:objects/default");
+                }
+                if (!data.contains("placeChance")) {
+                    data.putInt("placeChance", 100);
+                }
+                if (!data.contains("minCount")) {
+                    data.putInt("minCount", 3);
+                }
+                if (!data.contains("maxCount")) {
+                    data.putInt("maxCount", 8);
+                }
+                if (!data.contains("place")) {
+                    data.putBoolean("place", true);
+                }
+                if (!data.contains("ignoreChancePlace")) {
+                    data.putBoolean("ignoreChancePlace", false);
+                }
+                if (!data.contains("onlyQuests")) {
+                    data.putBoolean("onlyQuests", false);
+                }
+                if (!data.contains("objectRotation")) {
+                    data.putBoolean("objectRotation", true);
+                }
+                if (!data.contains("randomRotation")) {
+                    data.putBoolean("randomRotation", true);
                 }
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 if (!data.contains("place")) {

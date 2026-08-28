@@ -136,6 +136,7 @@ public class StationGenerator {
 
     private void postStructureSpawnTriggers(ServerLevel level, StationInstance station) {
         List<SpawnTriggerContext> objectPlacers = new ArrayList<>();
+        List<SpawnTriggerContext> objectZonePlacers = new ArrayList<>();
         for (PlacedStationPiece piece : station.pieces()) {
             for (PlacedTriggerZone zone : piece.triggerZones()) {
                 StationStructureTriggerType triggerType = StationStructureTriggerType.from(zone.type());
@@ -145,12 +146,21 @@ public class StationGenerator {
                 SpawnTriggerContext trigger = new SpawnTriggerContext(piece, zone, triggerType);
                 if (triggerType == StationStructureTriggerType.OBJECT_PLACER) {
                     objectPlacers.add(trigger);
+                } else if (triggerType == StationStructureTriggerType.OBJECT_ZONE_PLACER) {
+                    objectZonePlacers.add(trigger);
                 } else {
                     postStructureSpawnTrigger(level, station, trigger);
                 }
             }
         }
         postObjectPlacerTriggers(level, station, objectPlacers);
+        postObjectZonePlacerTriggers(level, station, objectZonePlacers);
+    }
+
+    private void postObjectZonePlacerTriggers(ServerLevel level, StationInstance station, List<SpawnTriggerContext> objectZonePlacers) {
+        for (SpawnTriggerContext trigger : objectZonePlacers) {
+            postStructureSpawnTrigger(level, station, trigger);
+        }
     }
 
     private void postObjectPlacerTriggers(ServerLevel level, StationInstance station, List<SpawnTriggerContext> objectPlacers) {

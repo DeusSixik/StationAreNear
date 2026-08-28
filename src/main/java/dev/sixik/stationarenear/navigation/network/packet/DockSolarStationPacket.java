@@ -7,6 +7,7 @@ import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
+import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.generation.StationGenerator;
@@ -92,7 +93,10 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         float missionDanger = packet.quest() ? 0.55F : 0.35F;
 
         int maxRooms = Math.max(MIN_ROOMS, SolarNavigationConfig.DUNGEON_PREVIEW_MAX_ROOMS.get() + 8);
-        StationGenerationSettings generationSettings = new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed);
+        StationGenerationSettings fallbackSettings = new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed);
+        StationGenerationSettings generationSettings = StationStructureConfigManager.random(level.getRandom())
+                .map(config -> config.createSettings(level.getRandom(), generationSeed))
+                .orElse(fallbackSettings);
         if (packet.quest()) {
             generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings, QuestTestScenario.pendingQuestElementSpawnSkips(level));
         }

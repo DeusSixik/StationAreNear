@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.item;
 
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
@@ -163,8 +164,10 @@ public class StationStructureToolItem extends Item {
 
         StructureTemplate template = level.getStructureManager().getOrCreate(templateId);
         template.fillFromWorld(level, min, size, true, Blocks.STRUCTURE_VOID);
-        if (!level.getStructureManager().save(templateId)) {
-            player.displayClientMessage(Component.literal("Failed to save station structure template " + templateId), false);
+        try {
+            StationStructureFileStorage.saveTemplate(level, templateId, template);
+        } catch (java.io.IOException exception) {
+            player.displayClientMessage(Component.literal("Failed to save station structure template " + templateId + " into config folder"), false);
             return false;
         }
 
@@ -192,7 +195,14 @@ public class StationStructureToolItem extends Item {
                 0.0F,
                 1.0F
         );
-        library.upsertPiece(definition, tag.getBoolean(KEY_START_PIECE));
+        boolean startPiece = tag.getBoolean(KEY_START_PIECE);
+        try {
+            StationStructureFileStorage.saveDefinition(definition, startPiece);
+        } catch (java.io.IOException exception) {
+            player.displayClientMessage(Component.literal("Failed to save station structure metadata " + templateId + " into config folder"), false);
+            return false;
+        }
+        library.upsertPiece(definition, startPiece);
         library.upsertTemplateSelection(templateId, new BoundingBox(min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ()));
         dev.sixik.stationarenear.structures.network.StationStructureNetwork.syncTemplateSelections(level);
         player.displayClientMessage(Component.literal("Saved station piece " + templateId + " into pool " + poolId), false);
@@ -228,6 +238,7 @@ public class StationStructureToolItem extends Item {
     private static boolean templateExists(ServerLevel level, StationStructureLibraryData library, ResourceLocation templateId) {
         return library.piece(templateId).isPresent()
                 || library.savedTemplateSelections().containsKey(templateId)
+                || StationStructureFileStorage.templateExists(templateId)
                 || level.getStructureManager().get(templateId).isPresent();
     }
 

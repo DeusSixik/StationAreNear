@@ -218,8 +218,20 @@ public final class StationZoneEditorClient {
                     select(node.value());
                 }
             });
+
+            ScrollView hierarchyScroll = new ScrollView(hierarchy)
+                    .scrollStep(28.0f)
+                    .scrollbarGap(2.0f);
+            hierarchyScroll.scrollbarTrackColor().set(0.0f, 0.0f, 0.0f, 0.36f);
+            hierarchyScroll.scrollbarThumbColor().set(0.45f, 0.84f, 1.0f, 0.82f);
+            hierarchyScroll.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO)
+                    .overflowX(Overflow.HIDDEN)
+                    .overflowY(Overflow.AUTO)
+                    .flexGrow(1.0f)
+                    .flexShrink(1.0f));
+
             pane.addChild(toolbar);
-            pane.addChild(hierarchy);
+            pane.addChild(hierarchyScroll);
             return pane;
         }
 
@@ -547,21 +559,27 @@ public final class StationZoneEditorClient {
                 ToggleButton ignoreChance = new ToggleButton("IgnoreChancePlace").silentChecked(data.getBoolean("ignoreChancePlace"));
                 ToggleButton objectRotation = new ToggleButton("OBJECT_ROTATION fit zone").silentChecked(!data.contains("objectRotation") || data.getBoolean("objectRotation"));
                 ToggleButton randomRotation = new ToggleButton("Random rotation").silentChecked(data.getBoolean("randomRotation"));
+                ToggleButton useObjectDirection = new ToggleButton("Use fixed object direction").silentChecked(!data.contains("useObjectDirection") || data.getBoolean("useObjectDirection"));
+                ComboBox objectDirection = combo(horizontalDirectionNames(), objectDirection(data));
                 ComboBox pool = combo(poolItems(data.getString("pool")), data.getString("pool"));
                 TextField chance = field(Integer.toString(data.contains("placeChance") ? data.getInt("placeChance") : 50), "0-100");
                 row("Object Pool", pool);
                 row("Place Chance", chance);
+                row("Object Direction", objectDirection);
                 addShapeControls(index, data);
                 inspector.addChild(place);
                 inspector.addChild(ignoreChance);
                 inspector.addChild(objectRotation);
                 inspector.addChild(randomRotation);
+                inspector.addChild(useObjectDirection);
                 pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorStateAndSave(); });
                 bind(chance, value -> updateTriggerData(index, dataTag -> dataTag.putInt("placeChance", Math.max(0, Math.min(100, parseInt(value, 50))))));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
                 ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorStateAndSave(); });
                 objectRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("objectRotation", event.newValue())); syncEditorStateAndSave(); });
                 randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
+                useObjectDirection.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("useObjectDirection", event.newValue())); syncEditorStateAndSave(); });
+                objectDirection.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("objectDirection", comboSelectedItem(objectDirection, event))); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 inspector.addChild(label("MobSpawn: default is danger-scaled zombies/skeletons; quest code may override event."));
                 ToggleButton place = new ToggleButton("Place mobs").silentChecked(!data.contains("place") || data.getBoolean("place"));
@@ -621,6 +639,15 @@ public final class StationZoneEditorClient {
                 bind(questId, value -> updateTriggerData(index, dataTag -> dataTag.putString("questId", value)));
                 bind(place, value -> updateTriggerData(index, dataTag -> dataTag.putString("place", value)));
             }
+        }
+
+        private String objectDirection(CompoundTag data) {
+            Direction direction = Direction.byName(data.getString("objectDirection").toLowerCase(Locale.ROOT));
+            return direction != null && direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName();
+        }
+
+        private String[] horizontalDirectionNames() {
+            return new String[]{"north", "east", "south", "west"};
         }
 
         private void addShapeControls(int index, CompoundTag data) {
@@ -728,6 +755,12 @@ public final class StationZoneEditorClient {
                 }
                 if (!data.contains("randomRotation")) {
                     data.putBoolean("randomRotation", true);
+                }
+                if (!data.contains("useObjectDirection")) {
+                    data.putBoolean("useObjectDirection", true);
+                }
+                if (!data.contains("objectDirection") || data.getString("objectDirection").isBlank()) {
+                    data.putString("objectDirection", "north");
                 }
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
                 if (!data.contains("place")) {
@@ -837,6 +870,10 @@ public final class StationZoneEditorClient {
             if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
                 Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
                 data.putString("direction", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());
+            }
+            if (nodeType == StationEditorNodeType.OBJECT_PLACER || nodeType == StationEditorNodeType.LOOT) {
+                Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
+                data.putString("objectDirection", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());
             }
             trigger.put("data", data);
             triggers.add(trigger);

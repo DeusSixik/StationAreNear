@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "stationarenear:block/oxygen_panel"
+    },
+    "facing=east": {
+      "model": "stationarenear:block/oxygen_panel",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "stationarenear:block/oxygen_panel",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "stationarenear:block/oxygen_panel",
+      "y": 270
+    }
+  }
+}

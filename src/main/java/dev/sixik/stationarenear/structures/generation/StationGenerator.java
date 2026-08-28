@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.generation;
 
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.*;
 import dev.sixik.stationarenear.structures.trigger.StationStructureSpawnTriggerEvent;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
@@ -47,6 +48,18 @@ public class StationGenerator {
     private static final int SIDE_PASSAGE_MIN_PIECE_LIMIT = 48;
     private static final int SIDE_PASSAGE_MAX_PIECE_LIMIT = 256;
     private static final int EXTERIOR_CLEARANCE_BLOCKS = 10;
+    private static final int CANDIDATE_SCORE_WINDOW = 260;
+    private static final int CANDIDATE_SCORE_WEIGHT_CAP = 96;
+    private static final int FLOOR_TRANSITION_NEEDED_SCORE_BONUS = 9_000;
+    private static final int FLOOR_TRANSITION_SCORE_BONUS = 140;
+    private static final Set<String> FLOOR_TRANSITION_TAGS = Set.of(
+            "stair",
+            "stairs",
+            "staircase",
+            "ladder",
+            "floor_link",
+            "vertical_link"
+    );
 
     public StationGenerationResult generateDockedStation(
             ServerLevel level,
@@ -54,6 +67,7 @@ public class StationGenerator {
             Direction stationDirection,
             StationGenerationSettings settings
     ) {
+        StationStructureFileStorage.loadExternalStructures(level);
         if (stationDirection.getAxis().isVertical()) {
             return StationGenerationResult.failure("Station direction must be horizontal");
         }
@@ -345,8 +359,13 @@ public class StationGenerator {
         if (pieces.size() >= targetPieces) {
             score += 5_000;
         }
+        boolean hasFloorTransitionPiece = false;
         for (PlacedStationPiece piece : pieces) {
             score += Math.min(80, Math.max(0, boundary.progress(piece.bounds())));
+            hasFloorTransitionPiece |= piece.bounds().maxY() - piece.bounds().minY() + 1 > FLOOR_HEIGHT_BLOCKS;
+        }
+        if (hasFloorTransitionPiece) {
+            score += 30_000;
         }
         return score;
     }
@@ -478,6 +497,7 @@ public class StationGenerator {
         List<StationPieceDefinition> candidates = candidateRoomDefinitions(library, pool, settings, danger);
         List<StationPieceDefinition> capCandidates = singleConnectorDefinitions(candidates, maxFloors);
         shuffleWeighted(candidates, random);
+        boolean needsFloorTransitionPiece = maxFloors > 1 && !hasFloorTransitionPiece(library, pieces);
 
         List<BoundingBox> currentCollisionBounds = collisionBounds(occupied, reservedClearances);
         List<PlacementCandidate> validPlacements = new ObjectArrayList<>();
@@ -543,6 +563,7 @@ public class StationGenerator {
                     int score = scorePiece(piece, definition, boundary, random, usableConnectors, usageCount, openConnector.direction())
                             + connectorDirectionScore(openConnector, boundary.direction())
                             + secondaryConnections * SECONDARY_CONNECTION_SCORE_BONUS
+                            + floorTransitionScore(definition, needsFloorTransitionPiece)
                             + requiredPieceScore(requiredRemaining)
                             + requiredGroupClusterScore(library, settings, pieceUsage, tagUsage, pieces, openConnector, definition, piece)
                             + exteriorSideScore(definition, piece, rotation, occupied);
@@ -590,7 +611,7 @@ public class StationGenerator {
     }
 
     private boolean isUsableConnector(StationConnector connector, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
-        if (!isRoomLinkConnector(connector) || (!allowVerticalConnections && connector.direction().getAxis().isVertical())) {
+        if (!isRoomLinkConnector(connector, allowVerticalConnections)) {
             return false;
         }
         return boundary.allowsConnector(connector) && !connectorTargetIntersectsOccupied(connector, occupied);
@@ -695,7 +716,7 @@ public class StationGenerator {
     }
 
     private boolean allowVerticalConnections(int maxFloors) {
-        return false;
+        return maxFloors > 1;
     }
 
     private boolean pieceAllowedForFloors(StationPieceDefinition definition, int maxFloors) {
@@ -713,7 +734,12 @@ public class StationGenerator {
     }
 
     private boolean isRoomLinkConnector(StationConnector connector) {
-        return connector.direction().getAxis().isHorizontal();
+        return isRoomLinkConnector(connector, true);
+    }
+
+    private boolean isRoomLinkConnector(StationConnector connector, boolean allowVerticalConnections) {
+        return connector.direction().getAxis().isHorizontal()
+                || (allowVerticalConnections && connector.direction().getAxis().isVertical());
     }
 
     private boolean hasRequiredPassageConnector(List<StationConnector> connectors) {
@@ -1484,6 +1510,38 @@ public class StationGenerator {
                 + random.nextInt(45);
     }
 
+    private int floorTransitionScore(StationPieceDefinition definition, boolean needed) {
+        if (!isFloorTransitionPiece(definition)) {
+            return 0;
+        }
+        return needed ? FLOOR_TRANSITION_NEEDED_SCORE_BONUS : FLOOR_TRANSITION_SCORE_BONUS;
+    }
+
+    private boolean hasFloorTransitionPiece(StationStructureLibraryData library, List<PlacedStationPiece> pieces) {
+        for (PlacedStationPiece piece : pieces) {
+            if (piece.bounds().maxY() - piece.bounds().minY() + 1 > FLOOR_HEIGHT_BLOCKS) {
+                return true;
+            }
+            Optional<StationPieceDefinition> definition = library.piece(piece.definitionId());
+            if (definition.isPresent() && isFloorTransitionPiece(definition.get())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isFloorTransitionPiece(StationPieceDefinition definition) {
+        if (definition.floorSpan() > 1) {
+            return true;
+        }
+        for (String tag : definition.tags()) {
+            if (FLOOR_TRANSITION_TAGS.contains(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private int turnPotentialScore(List<StationConnector> connectors, Direction sourceDirection, Direction stationDirection) {
         int score = 0;
         for (StationConnector connector : connectors) {
@@ -1515,20 +1573,30 @@ public class StationGenerator {
             return null;
         }
         candidates.sort((left, right) -> Integer.compare(right.score(), left.score()));
-        int topLimit = Math.min(6, candidates.size());
-        int minScore = candidates.get(topLimit - 1).score();
+        int bestScore = candidates.get(0).score();
+        int candidateLimit = 0;
+        while (candidateLimit < candidates.size()
+                && candidates.get(candidateLimit).score() >= bestScore - CANDIDATE_SCORE_WINDOW) {
+            candidateLimit++;
+        }
+
+        int minScore = candidates.get(candidateLimit - 1).score();
         int totalWeight = 0;
-        for (int i = 0; i < topLimit; i++) {
-            totalWeight += Math.max(1, candidates.get(i).score() - minScore + 1);
+        for (int i = 0; i < candidateLimit; i++) {
+            totalWeight += candidateSelectionWeight(candidates.get(i).score(), minScore);
         }
         int roll = random.nextInt(Math.max(1, totalWeight));
-        for (int i = 0; i < topLimit; i++) {
-            roll -= Math.max(1, candidates.get(i).score() - minScore + 1);
+        for (int i = 0; i < candidateLimit; i++) {
+            roll -= candidateSelectionWeight(candidates.get(i).score(), minScore);
             if (roll < 0) {
                 return candidates.get(i);
             }
         }
         return candidates.get(0);
+    }
+
+    private int candidateSelectionWeight(int score, int minScore) {
+        return Math.max(1, Math.min(CANDIDATE_SCORE_WEIGHT_CAP, score - minScore + 1));
     }
 
     private void incrementPieceUsage(Object2IntMap<ResourceLocation> pieceUsage, PlacedStationPiece piece) {

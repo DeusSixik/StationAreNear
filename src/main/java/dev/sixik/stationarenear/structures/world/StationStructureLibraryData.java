@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.structures.world;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.data.TemplateSelectionEntry;
@@ -27,7 +28,9 @@ public class StationStructureLibraryData extends SavedData {
     private final Map<ResourceLocation, BoundingBox> savedTemplateSelections = new Object2ObjectLinkedOpenHashMap<>();
 
     public static StationStructureLibraryData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(StationStructureLibraryData::load, StationStructureLibraryData::new, DATA_NAME);
+        StationStructureLibraryData data = level.getDataStorage().computeIfAbsent(StationStructureLibraryData::load, StationStructureLibraryData::new, DATA_NAME);
+        StationStructureFileStorage.loadExternalDefinitions(data);
+        return data;
     }
 
     public Optional<StationPieceDefinition> piece(ResourceLocation id) {
@@ -82,13 +85,20 @@ public class StationStructureLibraryData extends SavedData {
     }
 
     public void upsertPiece(StationPieceDefinition definition, boolean startPiece) {
+        loadExternalPiece(definition, startPiece);
+        setDirty();
+    }
+
+    public void loadExternalPiece(StationPieceDefinition definition, boolean startPiece) {
         pieces.put(definition.id(), definition);
+        for (Map.Entry<ResourceLocation, StationPoolDefinition> entry : new ObjectArrayList<>(pools.entrySet())) {
+            pools.put(entry.getKey(), entry.getValue().withoutPiece(definition.id()));
+        }
         StationPoolDefinition pool = pools.getOrDefault(
                 definition.pool(),
                 new StationPoolDefinition(definition.pool(), ObjectLists.emptyList(), ObjectLists.emptyList(), 4, 10)
         );
         pools.put(definition.pool(), pool.withPiece(definition.id(), startPiece));
-        setDirty();
     }
 
     public void upsertPool(StationPoolDefinition pool) {

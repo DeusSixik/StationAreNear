@@ -18,6 +18,7 @@ public final class StationEditorModeOverlay {
     private static final int SELECTED_BORDER = 0xFF69D7FF;
     private static final int MUTED_ICON = 0xFF7A8799;
     private static final int ZONE_ICON = 0xFF78D6FF;
+    private static final int STRUCTURE_EDIT_ICON = 0xFFFFB35C;
     private static final int TRIGGER_ICON = 0xFFFFC857;
     private static final int EDIT_ICON = 0xFFFF7A7A;
     private static final int SHAPE_ICON = 0xFFFF8FD8;
@@ -92,6 +93,7 @@ public final class StationEditorModeOverlay {
         int muted = applyAlpha(MUTED_ICON, alpha);
         switch (mode) {
             case ZONE_SELECTION -> renderZoneIcon(graphics, centerX, centerY, applyAlpha(ZONE_ICON, alpha), muted);
+            case EDIT_STRUCTURE -> renderStructureEditIcon(graphics, centerX, centerY, applyAlpha(STRUCTURE_EDIT_ICON, alpha), muted);
             case TRIGGER_MANAGER_CREATE -> renderTriggerCreateIcon(graphics, centerX, centerY, applyAlpha(TRIGGER_ICON, alpha), muted);
             case TRIGGER_MANAGER_EDIT -> renderTriggerEditIcon(graphics, centerX, centerY, applyAlpha(EDIT_ICON, alpha), muted);
             case TRIGGER_SHAPE_POINTS -> renderTriggerShapeIcon(graphics, centerX, centerY, applyAlpha(SHAPE_ICON, alpha), muted);
@@ -114,6 +116,15 @@ public final class StationEditorModeOverlay {
         fill(graphics, right - 8, bottom - 3, right, bottom, color);
         fill(graphics, right - 3, bottom - 8, right, bottom, color);
         fill(graphics, centerX - 2, centerY - 2, centerX + 2, centerY + 2, muted);
+    }
+
+    private static void renderStructureEditIcon(GuiGraphics graphics, int centerX, int centerY, int color, int muted) {
+        outline(graphics, centerX - 12, centerY - 9, 18, 14, muted);
+        fill(graphics, centerX - 9, centerY - 6, centerX + 3, centerY + 2, color);
+        fill(graphics, centerX + 5, centerY - 11, centerX + 9, centerY - 7, color);
+        fill(graphics, centerX + 2, centerY - 7, centerX + 6, centerY - 3, color);
+        fill(graphics, centerX - 1, centerY - 3, centerX + 3, centerY + 1, color);
+        fill(graphics, centerX - 4, centerY + 7, centerX + 10, centerY + 10, muted);
     }
 
     private static void renderTriggerCreateIcon(GuiGraphics graphics, int centerX, int centerY, int color, int muted) {
@@ -161,6 +172,7 @@ public final class StationEditorModeOverlay {
     private static String russianTitle(StationEditorWandMode mode) {
         return switch (mode) {
             case ZONE_SELECTION -> "\u0412\u044b\u0431\u043e\u0440 \u0437\u043e\u043d\u044b \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u044b";
+            case EDIT_STRUCTURE -> "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0443";
             case TRIGGER_MANAGER_CREATE -> "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
             case TRIGGER_MANAGER_EDIT -> "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
             case TRIGGER_SHAPE_POINTS -> "\u0424\u043e\u0440\u043c\u0430 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u0430";

@@ -1,10 +1,13 @@
 package dev.sixik.stationarenear.quest.registry;
 
 import dev.sixik.stationarenear.StationAreNear;
+import dev.sixik.stationarenear.quest.block.ConsoleNoAngleBlock;
 import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.block.FridgeBlock;
 import dev.sixik.stationarenear.quest.block.KitchenSinkBlock;
 import dev.sixik.stationarenear.quest.block.MicrowaveBlock;
+import dev.sixik.stationarenear.quest.block.WallMountedPanelBlock;
+import dev.sixik.stationarenear.quest.block.WorkbenchBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -71,6 +74,59 @@ public final class QuestBlocks {
     public static final RegistryObject<Item> ENERGY_PANEL_ITEM = ITEMS.register(
             "energy_panel",
             () -> new BlockItem(ENERGY_PANEL.get(), new Item.Properties())
+    );
+
+    public static final RegistryObject<WallMountedPanelBlock> OXYGEN_PANEL = BLOCKS.register(
+            "oxygen_panel",
+            () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
+                    .strength(1.6F, 6.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion(), 4.0D)
+    );
+
+    public static final RegistryObject<Item> OXYGEN_PANEL_ITEM = ITEMS.register(
+            "oxygen_panel",
+            () -> new BlockItem(OXYGEN_PANEL.get(), new Item.Properties())
+    );
+
+    public static final RegistryObject<WallMountedPanelBlock> GRAVITATION_PANEL = BLOCKS.register(
+            "gravitation_panel",
+            () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
+                    .strength(1.6F, 6.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion(), 6.0D)
+    );
+
+    public static final RegistryObject<Item> GRAVITATION_PANEL_ITEM = ITEMS.register(
+            "gravitation_panel",
+            () -> new BlockItem(GRAVITATION_PANEL.get(), new Item.Properties())
+    );
+
+    public static final RegistryObject<ConsoleNoAngleBlock> CONSOLE_NO_ANGLE = BLOCKS.register(
+            "console_no_angle",
+            () -> new ConsoleNoAngleBlock(BlockBehaviour.Properties.of()
+                    .strength(2.5F, 8.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion()
+                    .requiresCorrectToolForDrops())
+    );
+
+    public static final RegistryObject<Item> CONSOLE_NO_ANGLE_ITEM = ITEMS.register(
+            "console_no_angle",
+            () -> new BlockItem(CONSOLE_NO_ANGLE.get(), new Item.Properties())
+    );
+
+    public static final RegistryObject<WorkbenchBlock> WORKBENCH = BLOCKS.register(
+            "workbench",
+            () -> new WorkbenchBlock(BlockBehaviour.Properties.of()
+                    .strength(2.5F, 8.0F)
+                    .sound(SoundType.WOOD)
+                    .noOcclusion())
+    );
+
+    public static final RegistryObject<Item> WORKBENCH_ITEM = ITEMS.register(
+            "workbench",
+            () -> new BlockItem(WORKBENCH.get(), new Item.Properties())
     );
 
     private QuestBlocks() {

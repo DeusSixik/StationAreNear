@@ -8,6 +8,9 @@ import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import dev.sixik.stationarenear.structures.config.StationStructureConfig;
+import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
@@ -148,7 +151,40 @@ public final class StationStructureCommands {
                                         .executes(context -> clearGenerated(
                                                 context.getSource(),
                                                 StringArgumentType.getString(context, "station")
-                                        ))))));
+                                        ))))
+                        .then(configurationCommand())));
+    }
+
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> configurationCommand() {
+        return Commands.literal("config")
+                .then(Commands.literal("paths")
+                        .executes(context -> showStructureConfigPaths(context.getSource())))
+                .then(Commands.literal("reload")
+                        .executes(context -> reloadStructureConfigs(context.getSource())))
+                .then(Commands.literal("list")
+                        .executes(context -> listStructureConfigs(context.getSource())))
+                .then(Commands.literal("load_structures")
+                        .executes(context -> loadExternalStructures(context.getSource())))
+                .then(Commands.literal("generate")
+                        .then(Commands.argument("config", StringArgumentType.word())
+                                .suggests(StationStructureCommands::suggestStructureConfigs)
+                                .executes(context -> generateConfig(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "config")
+                                ))))
+                .then(Commands.literal("generate_at")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .then(Commands.argument("direction", StringArgumentType.word())
+                                        .suggests(StationStructureCommands::suggestDirections)
+                                        .then(Commands.argument("config", StringArgumentType.word())
+                                                .suggests(StationStructureCommands::suggestStructureConfigs)
+                                                .executes(context -> generateAtConfig(
+                                                        context.getSource(),
+                                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                                        StringArgumentType.getString(context, "direction"),
+                                                        StringArgumentType.getString(context, "config")
+                                                ))))));
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> generateAtCommand() {
@@ -240,6 +276,16 @@ public final class StationStructureCommands {
                                         .suggests(StationStructureCommands::suggestPools)
                                         .then(Commands.argument("max_floors", IntegerArgumentType.integer(1))
                                                 .then(maxRoomsArgument)))));
+    }
+
+
+    private static CompletableFuture<Suggestions> suggestStructureConfigs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        List<String> suggestions = new ArrayList<>();
+        for (StationStructureConfig config : StationStructureConfigManager.configurations()) {
+            suggestions.add(config.id().toString());
+            suggestions.add(config.id().getPath());
+        }
+        return SharedSuggestionProvider.suggest(suggestions, builder);
     }
 
     private static CompletableFuture<Suggestions> suggestDirections(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
@@ -386,6 +432,93 @@ public final class StationStructureCommands {
         stack.getOrCreateTag().putInt(StationStructureToolItem.KEY_WEIGHT, value);
         source.sendSuccess(() -> Component.literal("Station piece weight: " + value), false);
         return 1;
+    }
+
+
+    private static int showStructureConfigPaths(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.literal("Structure Configuration: " + StationStructureFileStorage.structureConfigurationsDirectory()), false);
+        source.sendSuccess(() -> Component.literal("Structures: " + StationStructureFileStorage.structuresDirectory()), false);
+        return 1;
+    }
+
+    private static int reloadStructureConfigs(CommandSourceStack source) {
+        int configs = StationStructureConfigManager.reload();
+        int structures = StationStructureFileStorage.loadExternalStructures(source.getLevel());
+        source.sendSuccess(() -> Component.literal("Reloaded structure configs=" + configs + " external_structures=" + structures), false);
+        return configs;
+    }
+
+    private static int loadExternalStructures(CommandSourceStack source) {
+        int structures = StationStructureFileStorage.loadExternalStructures(source.getLevel());
+        source.sendSuccess(() -> Component.literal("Loaded external station structures: " + structures), false);
+        return structures;
+    }
+
+    private static int listStructureConfigs(CommandSourceStack source) {
+        if (StationStructureConfigManager.configurations().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No structure generation configs loaded. Use /stationarenear structures config reload"), false);
+            return 0;
+        }
+        for (StationStructureConfig config : StationStructureConfigManager.configurations()) {
+            source.sendSuccess(() -> Component.literal(
+                    config.id() + " pool=" + config.pool()
+                            + " floors=" + config.maxFloors()
+                            + " rooms=" + config.minRooms() + "-" + config.maxRooms()
+                            + " danger=" + config.minDanger() + "-" + config.maxDanger()
+                            + " required=" + config.requiredRoomsTotal()
+            ), false);
+        }
+        return StationStructureConfigManager.configurations().size();
+    }
+
+    private static int generateConfig(CommandSourceStack source, String configText) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        BlockPos doorCenter = player.blockPosition();
+        Direction stationDirection = player.getDirection();
+        Optional<StationStructureConfig> config = StationStructureConfigManager.get(configText);
+        if (config.isEmpty()) {
+            source.sendFailure(Component.literal("Structure config not found: " + configText));
+            return 0;
+        }
+
+        StationGenerationSettings settings = config.get().createSettings(source.getLevel().getRandom(), source.getLevel().getRandom().nextLong());
+        StationGenerationResult result = new StationGenerator().generateDockedStation(source.getLevel(), doorCenter, stationDirection, settings);
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Generated station from config " + config.get().id() + " danger=" + settings.missionDanger()), false);
+        return result.station().map(station -> station.pieces().size()).orElse(1);
+    }
+
+    private static int generateAtConfig(CommandSourceStack source, BlockPos doorCenter, String directionName, String configText) {
+        Direction stationDirection = Direction.byName(directionName);
+        if (stationDirection == null || stationDirection.getAxis().isVertical()) {
+            source.sendFailure(Component.literal("Direction must be one of: north, south, east, west"));
+            return 0;
+        }
+        Optional<StationStructureConfig> config = StationStructureConfigManager.get(configText);
+        if (config.isEmpty()) {
+            source.sendFailure(Component.literal("Structure config not found: " + configText));
+            return 0;
+        }
+
+        StationGenerationSettings settings = config.get().createSettings(source.getLevel().getRandom(), source.getLevel().getRandom().nextLong());
+        StationGenerationResult result = new StationGenerator().generateDockedStation(source.getLevel(), doorCenter, stationDirection, settings);
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        result.station().ifPresent(station -> source.sendSuccess(() -> Component.literal(
+                "Generated station " + station.id() + " config=" + config.get().id()
+                        + " pool=" + station.pool()
+                        + " danger=" + settings.missionDanger()
+                        + " pieces=" + station.pieces().size()
+                        + " bounds=" + formatBounds(aggregateBounds(station))
+        ), false));
+        return result.station().map(station -> station.pieces().size()).orElse(1);
     }
 
     private static int generate(CommandSourceStack source, ResourceLocation pool, float danger, int pieces, RequiredPieceSpec requiredPieces) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

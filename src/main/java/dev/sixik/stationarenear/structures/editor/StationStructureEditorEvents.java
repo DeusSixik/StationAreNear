@@ -105,6 +105,7 @@ public final class StationStructureEditorEvents {
     private static void handleModeClick(ServerPlayer player, ItemStack stack, BlockPos clickedPos, boolean shiftDown) {
         switch (StationStructureEditorStick.mode(stack)) {
             case ZONE_SELECTION -> handleZoneSelection(player, stack, clickedPos, shiftDown);
+            case EDIT_STRUCTURE -> handleEditStructure(player, stack, clickedPos);
             case TRIGGER_MANAGER_CREATE -> handleTriggerCreate(player, stack, clickedPos, shiftDown);
             case TRIGGER_MANAGER_EDIT -> handleTriggerEdit(player, stack, clickedPos);
             case TRIGGER_SHAPE_POINTS -> handleTriggerShapePoints(player, stack, clickedPos, shiftDown);
@@ -122,6 +123,21 @@ public final class StationStructureEditorEvents {
         StationStructureEditorStick.setPosition(stack, key, clickedPos);
         player.displayClientMessage(Component.literal("Structure " + (shiftDown ? "POS_2" : "POS_1") + ": " + clickedPos.toShortString()), true);
         syncClientPreview(stack);
+    }
+
+    private static void handleEditStructure(ServerPlayer player, ItemStack stack, BlockPos clickedPos) {
+        StationStructureLibraryData library = StationStructureLibraryData.get(player.serverLevel());
+        Optional<CopySource> sourceOptional = findCopySource(player, library, clickedPos);
+        if (sourceOptional.isEmpty()) {
+            player.displayClientMessage(Component.literal("No saved/generated structure piece at clicked block."), true);
+            return;
+        }
+
+        CopySource source = sourceOptional.get();
+        loadSourceIntoEditor(stack, source, source.selectionBounds(), true);
+        syncClientPreview(stack);
+        StationStructureNetwork.sendOpenEditor(player, OpenStationZoneEditorPacket.fromStack(stack));
+        player.displayClientMessage(Component.literal("Editing structure " + source.definition().id() + " at " + clickedPos.toShortString()), true);
     }
 
     private static void handleTriggerCreate(ServerPlayer player, ItemStack stack, BlockPos clickedPos, boolean shiftDown) {
@@ -247,6 +263,24 @@ public final class StationStructureEditorEvents {
         }
 
         StationPieceDefinition definition = source.definition();
+        loadSourceIntoEditor(stack, source, targetBounds, !hadTargetSelection);
+        syncClientPreview(stack);
+
+        String sizeWarning = sameSize(source.selectionBounds(), targetBounds) ? "" : " Size differs; copied zones were clamped.";
+        player.displayClientMessage(Component.literal("Copied structure metadata from " + definition.id() + ": "
+                + definition.connectors().size() + " connections, " + definition.triggerZones().size() + " triggers." + sizeWarning), true);
+    }
+
+    private static void loadSourceIntoEditor(ItemStack stack, CopySource source, BoundingBox targetBounds, boolean updateTemplate) {
+        CompoundTag tag = stack.getOrCreateTag();
+        StationPieceDefinition definition = source.definition();
+        BlockPos targetMin = minPos(targetBounds);
+        BlockPos targetMax = maxPos(targetBounds);
+        tag.put(StationStructureToolItem.KEY_POS_1, NbtPos.save(targetMin));
+        tag.put(StationStructureToolItem.KEY_POS_2, NbtPos.save(targetMax));
+        if (updateTemplate) {
+            tag.putString(StationStructureToolItem.KEY_TEMPLATE, definition.template().toString());
+        }
         tag.putString(StationStructureToolItem.KEY_POOL, definition.pool().toString());
         tag.putString(StationStructureToolItem.KEY_TEMPLATE_TAGS, String.join(",", definition.tags()));
         tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, source.startPiece());
@@ -261,11 +295,6 @@ public final class StationStructureEditorEvents {
         tag.remove(StationStructureEditorStick.KEY_CONNECTION_DRAFT_POS_2);
         tag.putString(StationStructureEditorStick.KEY_SELECTED_NODE, "root");
         StationStructureEditorStick.normalize(tag);
-        syncClientPreview(stack);
-
-        String sizeWarning = sameSize(source.selectionBounds(), targetBounds) ? "" : " Size differs; copied zones were clamped.";
-        player.displayClientMessage(Component.literal("Copied structure metadata from " + definition.id() + ": "
-                + definition.connectors().size() + " connections, " + definition.triggerZones().size() + " triggers." + sizeWarning), true);
     }
 
     private static Optional<CopySource> findCopySource(ServerPlayer player, StationStructureLibraryData library, BlockPos clickedPos) {

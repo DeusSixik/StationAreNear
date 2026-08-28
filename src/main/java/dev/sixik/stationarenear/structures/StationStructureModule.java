@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.structures;
 
 import dev.sixik.stationarenear.structures.command.StationStructureCommands;
+import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorEvents;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
@@ -16,6 +17,7 @@ public final class StationStructureModule {
     }
 
     public static void register(IEventBus modEventBus) {
+        StationStructureConfigManager.init();
         StationStructureNetwork.register();
         StationStructureItems.register(modEventBus);
         StationStructureCommands.register();

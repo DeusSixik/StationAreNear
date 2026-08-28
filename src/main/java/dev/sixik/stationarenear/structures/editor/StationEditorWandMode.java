@@ -2,6 +2,7 @@ package dev.sixik.stationarenear.structures.editor;
 
 public enum StationEditorWandMode {
     ZONE_SELECTION("Zone Selection"),
+    EDIT_STRUCTURE("Edit Structure"),
     TRIGGER_MANAGER_CREATE("Trigger Manager Create"),
     TRIGGER_MANAGER_EDIT("Trigger Manager Edit"),
     TRIGGER_SHAPE_POINTS("Trigger Shape Points"),

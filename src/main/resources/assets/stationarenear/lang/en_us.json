@@ -27,5 +27,13 @@
   "block.stationarenear.microwave": "Microwave",
   "item.stationarenear.microwave": "Microwave",
   "block.stationarenear.energy_panel": "Energy Panel",
-  "item.stationarenear.energy_panel": "Energy Panel"
+  "item.stationarenear.energy_panel": "Energy Panel",
+  "block.stationarenear.oxygen_panel": "Oxygen System Panel",
+  "item.stationarenear.oxygen_panel": "Oxygen System Panel",
+  "block.stationarenear.gravitation_panel": "Gravity Module Panel",
+  "item.stationarenear.gravitation_panel": "Gravity Module Panel",
+  "block.stationarenear.console_no_angle": "No-Angle Console",
+  "item.stationarenear.console_no_angle": "No-Angle Console",
+  "block.stationarenear.workbench": "Workbench",
+  "item.stationarenear.workbench": "Workbench"
 }

@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.world;
 
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
@@ -122,7 +123,7 @@ public final class StationTemplateSelectionManager {
         ResourceLocation templateId = StationStructureIds.template(templateIdText);
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
         boolean removedLibrary = library.removeTemplate(templateId);
-        boolean removedFile = deleteGeneratedTemplateFile(level, templateId);
+        boolean removedFile = StationStructureFileStorage.deleteTemplate(templateId) || deleteGeneratedTemplateFile(level, templateId);
         level.getStructureManager().remove(templateId);
         StationStructureNetwork.syncTemplateSelections(level);
         StationStructureNetwork.openTemplateMenu(player);
@@ -212,6 +213,7 @@ public final class StationTemplateSelectionManager {
             rotateShapePoints(triggerZone, origin, data, triggerBounds, rotation);
             rotateDataDirection(data, "direction", rotation);
             rotateDataDirection(data, "shapeDirection", rotation);
+            rotateDataDirection(data, "objectDirection", rotation);
             triggerTag.put("data", data);
             list.add(triggerTag);
         }

@@ -21,6 +21,8 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+
+import java.util.Locale;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
@@ -134,11 +136,72 @@ public final class StationStructureWorldRenderer {
             AABB triggerBox = boxFromInclusive(min, max).inflate(0.01D);
             renderBox(poseStack, buffers, triggerBox, color.red(), color.green(), color.blue(), 0.18F, 1.0F, selected);
             renderShapePoints(poseStack, buffers, trigger, min, max, color, selected);
+            renderTriggerDirection(poseStack, buffers, trigger, min, max, triggerBox, selected);
             renderBoxText(poseStack, camera, minecraft.font, buffers, triggerBox, trigger.getString("nodeType") + ": " + trigger.getString("id"), color.textColor());
         }
 
         buffers.endBatch();
         poseStack.popPose();
+    }
+
+    private static void renderTriggerDirection(PoseStack poseStack, MultiBufferSource buffers, CompoundTag trigger, BlockPos min, BlockPos max, AABB box, boolean selected) {
+        CompoundTag data = trigger.getCompound("data");
+        Direction direction = triggerDirection(trigger, data);
+        if (direction == null) {
+            return;
+        }
+
+        boolean emphasized = selected || data.getBoolean("useObjectDirection");
+        if (isSingleBlock(min, max)) {
+            renderSingleBlockDirectionArrow(poseStack, buffers, box, direction, emphasized);
+            return;
+        }
+
+        String nodeType = trigger.getString("nodeType");
+        if ("OBJECT_PLACER".equals(nodeType) || "LOOT".equals(nodeType)) {
+            renderDirectionArrow(poseStack, buffers, box, direction, emphasized);
+        }
+    }
+
+    private static Direction triggerDirection(CompoundTag trigger, CompoundTag data) {
+        String nodeType = trigger.getString("nodeType");
+        String key = "OBJECT_PLACER".equals(nodeType) || "LOOT".equals(nodeType) ? "objectDirection" : "direction";
+        Direction direction = Direction.byName(data.getString(key).toLowerCase(Locale.ROOT));
+        if (direction == null && !"direction".equals(key)) {
+            direction = Direction.byName(data.getString("direction").toLowerCase(Locale.ROOT));
+        }
+        return direction != null && direction.getAxis().isHorizontal() ? direction : null;
+    }
+
+    private static boolean isSingleBlock(BlockPos min, BlockPos max) {
+        return min.equals(max);
+    }
+
+    private static void renderSingleBlockDirectionArrow(PoseStack poseStack, MultiBufferSource buffers, AABB box, Direction direction, boolean selected) {
+        double centerX = (box.minX + box.maxX) * 0.5D;
+        double centerY = box.maxY + 0.12D;
+        double centerZ = (box.minZ + box.maxZ) * 0.5D;
+        double dirX = direction.getStepX();
+        double dirZ = direction.getStepZ();
+        double startX = centerX - dirX * 0.38D;
+        double startZ = centerZ - dirZ * 0.38D;
+        double endX = centerX + dirX * 0.95D;
+        double endZ = centerZ + dirZ * 0.95D;
+        double baseX = endX - dirX * 0.32D;
+        double baseZ = endZ - dirZ * 0.32D;
+        float red = selected ? 1.0F : 0.30F;
+        float green = selected ? 0.95F : 0.90F;
+        float blue = selected ? 0.20F : 1.0F;
+        VertexConsumer lineConsumer = buffers.getBuffer(RenderType.lines());
+        renderLine(poseStack, lineConsumer, startX, centerY, startZ, endX, centerY, endZ, red, green, blue, 1.0F);
+        double fin = 0.26D;
+        if (dirX != 0.0D) {
+            renderLine(poseStack, lineConsumer, endX, centerY, endZ, baseX, centerY, baseZ + fin, red, green, blue, 1.0F);
+            renderLine(poseStack, lineConsumer, endX, centerY, endZ, baseX, centerY, baseZ - fin, red, green, blue, 1.0F);
+        } else {
+            renderLine(poseStack, lineConsumer, endX, centerY, endZ, baseX + fin, centerY, baseZ, red, green, blue, 1.0F);
+            renderLine(poseStack, lineConsumer, endX, centerY, endZ, baseX - fin, centerY, baseZ, red, green, blue, 1.0F);
+        }
     }
 
     private static void renderShapePoints(PoseStack poseStack, MultiBufferSource.BufferSource buffers, CompoundTag trigger, BlockPos min, BlockPos max, TriggerRenderColor color, boolean selected) {

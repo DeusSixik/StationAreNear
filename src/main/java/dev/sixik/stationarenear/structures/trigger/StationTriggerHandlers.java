@@ -17,6 +17,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -299,17 +301,22 @@ public final class StationTriggerHandlers {
                 continue;
             }
 
-            for (Rotation rotation : objectRotations(event.getZone().data(), random)) {
+            for (Rotation rotation : objectRotations(event.getZone().data(), template.get(), random)) {
                 Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random);
                 if (origin.isPresent()) {
-                    return Optional.of(new ObjectPlacement(template.get(), origin.get(), rotation));
+                    BlockPos adjustedOrigin = adjustSurfaceObjectOrigin(event, template.get(), origin.get());
+                    return Optional.of(new ObjectPlacement(template.get(), adjustedOrigin, rotation));
                 }
             }
         }
         return Optional.empty();
     }
 
-    private static List<Rotation> objectRotations(CompoundTag data, RandomSource random) {
+    private static List<Rotation> objectRotations(CompoundTag data, StructureTemplate template, RandomSource random) {
+        if (useObjectDirection(data)) {
+            return List.of(rotationBetween(objectBaseDirection(data, template), objectDirection(data)));
+        }
+
         boolean randomRotation = data.getBoolean("randomRotation");
         if (!objectRotationEnabled(data)) {
             return List.of(randomRotation ? randomHorizontalRotation(random) : Rotation.NONE);
@@ -322,6 +329,108 @@ public final class StationTriggerHandlers {
             }
         }
         return rotations;
+    }
+
+    private static boolean useObjectDirection(CompoundTag data) {
+        if (data.contains("useObjectDirection")) {
+            return data.getBoolean("useObjectDirection");
+        }
+        if (data.contains("USE_OBJECT_DIRECTION")) {
+            return data.getBoolean("USE_OBJECT_DIRECTION");
+        }
+        return data.contains("objectDirection") || data.contains("OBJECT_DIRECTION");
+    }
+
+    private static Direction objectDirection(CompoundTag data) {
+        Direction direction = Direction.byName(data.getString("objectDirection").toLowerCase(Locale.ROOT));
+        if (direction == null) {
+            direction = Direction.byName(data.getString("OBJECT_DIRECTION").toLowerCase(Locale.ROOT));
+        }
+        return direction != null && direction.getAxis().isHorizontal() ? direction : Direction.NORTH;
+    }
+
+    private static Direction objectBaseDirection(CompoundTag data, StructureTemplate template) {
+        Direction direction = objectTemplateDirection(data, template);
+        return direction != null ? direction : Direction.NORTH;
+    }
+
+    private static Direction objectTemplateDirection(CompoundTag data, StructureTemplate template) {
+        Direction configured = Direction.byName(data.getString("objectBaseDirection").toLowerCase(Locale.ROOT));
+        if (configured != null && configured.getAxis().isHorizontal()) {
+            return configured;
+        }
+
+        CompoundTag savedTemplate = template.save(new CompoundTag());
+        ListTag palette = savedTemplate.contains("palette", Tag.TAG_LIST)
+                ? savedTemplate.getList("palette", Tag.TAG_COMPOUND)
+                : firstPalette(savedTemplate);
+        return inferTemplateFacing(palette);
+    }
+
+    private static ListTag firstPalette(CompoundTag savedTemplate) {
+        ListTag palettes = savedTemplate.getList("palettes", Tag.TAG_LIST);
+        if (palettes.isEmpty()) {
+            return new ListTag();
+        }
+        return palettes.getList(0);
+    }
+
+    private static Direction inferTemplateFacing(ListTag palette) {
+        for (int i = 0; i < palette.size(); i++) {
+            CompoundTag state = palette.getCompound(i);
+            if (!state.contains("Properties", Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            CompoundTag properties = state.getCompound("Properties");
+            Direction direction = propertyDirection(properties, "facing");
+            if (direction == null) {
+                direction = propertyDirection(properties, "horizontal_facing");
+            }
+            if (direction != null) {
+                return direction;
+            }
+        }
+        return null;
+    }
+
+    private static Direction propertyDirection(CompoundTag properties, String key) {
+        if (!properties.contains(key, Tag.TAG_STRING)) {
+            return null;
+        }
+        Direction direction = Direction.byName(properties.getString(key).toLowerCase(Locale.ROOT));
+        return direction != null && direction.getAxis().isHorizontal() ? direction : null;
+    }
+
+    private static Rotation rotationBetween(Direction from, Direction to) {
+        Direction current = from;
+        for (Rotation rotation : List.of(Rotation.NONE, Rotation.CLOCKWISE_90, Rotation.CLOCKWISE_180, Rotation.COUNTERCLOCKWISE_90)) {
+            if (rotation.rotate(current) == to) {
+                return rotation;
+            }
+        }
+        return Rotation.NONE;
+    }
+
+    private static BlockPos adjustSurfaceObjectOrigin(StationStructureSpawnTriggerEvent event, StructureTemplate template, BlockPos origin) {
+        CompoundTag data = event.getZone().data();
+        if (!useObjectDirection(data) || !isSingleBlockTemplate(template) || objectTemplateDirection(data, template) == null) {
+            return origin;
+        }
+        if (event.getLevel().getBlockState(origin).isAir()) {
+            return origin;
+        }
+
+        Direction direction = objectDirection(data);
+        BlockPos surfacePos = origin.relative(direction);
+        if (event.getLevel().getBlockState(surfacePos).isAir()) {
+            return surfacePos;
+        }
+        return origin;
+    }
+
+    private static boolean isSingleBlockTemplate(StructureTemplate template) {
+        Vec3i size = template.getSize();
+        return size.getX() == 1 && size.getY() == 1 && size.getZ() == 1;
     }
 
     private static boolean objectRotationEnabled(CompoundTag data) {
@@ -383,10 +492,11 @@ public final class StationTriggerHandlers {
             return Optional.empty();
         }
 
+        int targetY = zone.min().getY();
         if (!StationTriggerZoneShape.hasShape(zone.data())) {
             BlockPos targetMin = new BlockPos(
                     zone.min().getX() + Mth.nextInt(random, 0, availableX),
-                    zone.min().getY() + Mth.nextInt(random, 0, availableY),
+                    targetY,
                     zone.min().getZ() + Mth.nextInt(random, 0, availableZ)
             );
             return Optional.of(targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ()));
@@ -395,13 +505,11 @@ public final class StationTriggerHandlers {
         BlockPos selected = null;
         int matches = 0;
         for (int x = 0; x <= availableX; x++) {
-            for (int y = 0; y <= availableY; y++) {
-                for (int z = 0; z <= availableZ; z++) {
-                    BlockPos targetMin = new BlockPos(zone.min().getX() + x, zone.min().getY() + y, zone.min().getZ() + z);
-                    BlockPos targetMax = targetMin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
-                    if (StationTriggerZoneShape.containsBox(zone.data(), zone.min(), zone.max(), targetMin, targetMax) && random.nextInt(++matches) == 0) {
-                        selected = targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
-                    }
+            for (int z = 0; z <= availableZ; z++) {
+                BlockPos targetMin = new BlockPos(zone.min().getX() + x, targetY, zone.min().getZ() + z);
+                BlockPos targetMax = targetMin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
+                if (StationTriggerZoneShape.containsBox(zone.data(), zone.min(), zone.max(), targetMin, targetMax) && random.nextInt(++matches) == 0) {
+                    selected = targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
                 }
             }
         }

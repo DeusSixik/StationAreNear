@@ -132,6 +132,7 @@ public final class StationPlacementUtil {
             data.putString("direction", rotation.rotate(direction).getSerializedName());
         }
         rotateHorizontalDirection(data, "shapeDirection", rotation);
+        rotateHorizontalDirection(data, "objectDirection", rotation);
     }
 
     private static Direction configuredHorizontalDirection(CompoundTag data) {

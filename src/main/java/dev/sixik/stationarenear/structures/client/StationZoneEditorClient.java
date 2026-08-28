@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.structures.network.packet.OpenStationZoneEditorP
 import dev.sixik.stationarenear.structures.network.packet.SaveStationZoneEditorPacket;
 import dev.sixik.stationarenear.structures.network.packet.TemplateSelectionActionPacket;
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.unigui.api.layout.Alignment;
 import dev.sixik.unigui.api.layout.LayoutConstraints;
 import dev.sixik.unigui.api.layout.Overflow;
@@ -466,7 +467,7 @@ public final class StationZoneEditorClient {
             TextField min = field(localPosText(NbtPos.load(connector.getCompound("worldMin"))), "local x y z");
             TextField max = field(localPosText(NbtPos.load(connector.getCompound("worldMax"))), "local x y z");
             ComboBox direction = combo(directionNames(), connector.getString("direction"));
-            TextField tags = field(connector.getString("tags"), "corridor,dock");
+            TextField tags = field(connector.getString(TagsConstants.Keys.TAGS), "corridor,dock");
             TextField accepts = field(connector.getString("accepts"), "corridor,dock");
             TextField priority = field(Integer.toString(connector.getInt("priority")), "0");
             TextField width = field(Integer.toString(connector.getInt("width")), "3");
@@ -502,7 +503,7 @@ public final class StationZoneEditorClient {
             bind(min, value -> updateConnector(index, connectorTag -> connectorTag.put("worldMin", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(connectorTag.getCompound("worldMin")))))))));
             bind(max, value -> updateConnector(index, connectorTag -> connectorTag.put("worldMax", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(connectorTag.getCompound("worldMax")))))))));
             direction.onSelectionChanged(event -> { updateConnector(index, connectorTag -> connectorTag.putString("direction", comboSelectedItem(direction, event))); syncEditorStateAndSave(); });
-            bind(tags, value -> updateConnector(index, connectorTag -> connectorTag.putString("tags", value)));
+            bind(tags, value -> updateConnector(index, connectorTag -> connectorTag.putString(TagsConstants.Keys.TAGS, value)));
             bind(accepts, value -> updateConnector(index, connectorTag -> connectorTag.putString("accepts", value)));
             bind(priority, value -> updateConnector(index, connectorTag -> connectorTag.putInt("priority", parseInt(value, 0))));
             bind(width, value -> updateConnector(index, connectorTag -> connectorTag.putInt("width", Math.max(1, parseInt(value, 3)))));
@@ -522,7 +523,7 @@ public final class StationZoneEditorClient {
             inspector.addChild(label("Trigger zone is rendered inside Root and cannot leave Root bounds."));
             ComboBox nodeType = combo(Arrays.stream(StationEditorNodeType.values()).filter(type -> type != StationEditorNodeType.STRUCTURE && type != StationEditorNodeType.CONNECTION).map(Enum::name).toArray(String[]::new), parseEditorNodeType(trigger.getString("nodeType")).name());
             TextField id = field(trigger.getString("id"), "trigger_id");
-            TextField tags = field(triggerData.getString("tags"), "install,reactor");
+            TextField tags = field(triggerData.getString(TagsConstants.Keys.TAGS), "install,reactor");
             TextField min = field(localPosText(NbtPos.load(trigger.getCompound("worldMin"))), "local x y z");
             TextField max = field(localPosText(NbtPos.load(trigger.getCompound("worldMax"))), "local x y z");
             row("Node type", nodeType);
@@ -545,7 +546,7 @@ public final class StationZoneEditorClient {
             inspector.addChild(delete);
             nodeType.onSelectionChanged(event -> { String selected = comboSelectedItem(nodeType, event); StationEditorNodeType selectedType = StationEditorNodeType.valueOf(selected); updateTrigger(index, triggerTag -> { triggerTag.putString("nodeType", selected); triggerTag.putString("type", defaultTriggerType(selectedType)); CompoundTag data = triggerTag.getCompound("data").copy(); mergeDefaultTriggerData(data, selectedType); triggerTag.put("data", data); }); rebuildHierarchy(); syncEditorStateAndSave(); select("trigger:" + index); });
             bind(id, value -> updateTrigger(index, triggerTag -> triggerTag.putString("id", value)));
-            bind(tags, value -> updateTriggerData(index, dataTag -> dataTag.putString("tags", value)));
+            bind(tags, value -> updateTriggerData(index, dataTag -> dataTag.putString(TagsConstants.Keys.TAGS, value)));
             bind(min, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMin", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMin")))))))));
             bind(max, value -> updateTrigger(index, triggerTag -> triggerTag.put("worldMax", NbtPos.save(worldFromLocal(parsePos(value, toLocal(NbtPos.load(triggerTag.getCompound("worldMax")))))))));
         }
@@ -584,7 +585,7 @@ public final class StationZoneEditorClient {
                 inspector.addChild(label("ObjectZonePlacer: runs after ObjectPlacer and fills valid floor cells from object pools."));
                 ToggleButton place = new ToggleButton("Place zone objects").silentChecked(!data.contains("place") || data.getBoolean("place"));
                 ToggleButton ignoreChance = new ToggleButton("IgnoreChancePlace").silentChecked(data.getBoolean("ignoreChancePlace"));
-                ToggleButton onlyQuests = new ToggleButton("Only Quests").silentChecked(data.getBoolean("onlyQuests") || data.getBoolean("onlyQuest") || data.getBoolean("questOnly"));
+                ToggleButton onlyQuests = new ToggleButton("Only Quests").silentChecked(data.getBoolean(TagsConstants.Keys.ONLY_QUESTS) || data.getBoolean(TagsConstants.Keys.ONLY_QUEST) || data.getBoolean(TagsConstants.Keys.QUEST_ONLY));
                 ToggleButton objectRotation = new ToggleButton("OBJECT_ROTATION fit zone").silentChecked(!data.contains("objectRotation") || data.getBoolean("objectRotation"));
                 ToggleButton randomRotation = new ToggleButton("Random rotation").silentChecked(!data.contains("randomRotation") || data.getBoolean("randomRotation"));
                 ComboBox pool = combo(poolItems(data.getString("pool")), data.getString("pool"));
@@ -616,7 +617,7 @@ public final class StationZoneEditorClient {
                 bind(maxCount, value -> updateTriggerData(index, dataTag -> dataTag.putInt("maxCount", Math.max(0, Math.min(256, parseInt(value, 8))))));
                 place.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("place", event.newValue())); syncEditorStateAndSave(); });
                 ignoreChance.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("ignoreChancePlace", event.newValue())); syncEditorStateAndSave(); });
-                onlyQuests.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("onlyQuests", event.newValue())); syncEditorStateAndSave(); });
+                onlyQuests.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean(TagsConstants.Keys.ONLY_QUESTS, event.newValue())); syncEditorStateAndSave(); });
                 objectRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("objectRotation", event.newValue())); syncEditorStateAndSave(); });
                 randomRotation.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("randomRotation", event.newValue())); syncEditorStateAndSave(); });
             } else if (nodeType == StationEditorNodeType.MOB_SPAWN) {
@@ -751,7 +752,7 @@ public final class StationZoneEditorClient {
             if ("DOOR_SPAWNER".equalsIgnoreCase(value) || "door_spawner".equalsIgnoreCase(value)) {
                 return StationEditorNodeType.DOOR_TRIGGER;
             }
-            if ("object_zone_placer".equalsIgnoreCase(value) || "zone_object_placer".equalsIgnoreCase(value)) {
+            if (TagsConstants.Trigger.OBJECT_ZONE_PLACER.equalsIgnoreCase(value) || TagsConstants.Trigger.ZONE_OBJECT_PLACER.equalsIgnoreCase(value)) {
                 return StationEditorNodeType.OBJECT_ZONE_PLACER;
             }
             try {
@@ -764,9 +765,9 @@ public final class StationZoneEditorClient {
         private String defaultTriggerType(StationEditorNodeType nodeType) {
             return switch (nodeType) {
                 case OBJECT_PLACER, LOOT -> "object_placer";
-                case OBJECT_ZONE_PLACER -> "object_zone_placer";
-                case MOB_SPAWN -> "mob_spawn";
-                case DOOR_TRIGGER -> "door_trigger";
+                case OBJECT_ZONE_PLACER -> TagsConstants.Trigger.OBJECT_ZONE_PLACER;
+                case MOB_SPAWN -> TagsConstants.Trigger.MOB_SPAWN;
+                case DOOR_TRIGGER -> TagsConstants.Trigger.DOOR_TRIGGER;
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
                 case QUEST_PLACE -> "quest_place";
                 default -> nodeType.name().toLowerCase(Locale.ROOT);
@@ -824,8 +825,8 @@ public final class StationZoneEditorClient {
                 if (!data.contains("ignoreChancePlace")) {
                     data.putBoolean("ignoreChancePlace", false);
                 }
-                if (!data.contains("onlyQuests")) {
-                    data.putBoolean("onlyQuests", false);
+                if (!data.contains(TagsConstants.Keys.ONLY_QUESTS)) {
+                    data.putBoolean(TagsConstants.Keys.ONLY_QUESTS, false);
                 }
                 if (!data.contains("objectRotation")) {
                     data.putBoolean("objectRotation", true);
@@ -854,8 +855,8 @@ public final class StationZoneEditorClient {
                     data.putString("direction", "north");
                 }
             } else if (nodeType == StationEditorNodeType.QUEST_PLACE) {
-                if (!data.contains("tags") || data.getString("tags").isBlank()) {
-                    data.putString("tags", "default");
+                if (!data.contains(TagsConstants.Keys.TAGS) || data.getString(TagsConstants.Keys.TAGS).isBlank()) {
+                    data.putString(TagsConstants.Keys.TAGS, TagsConstants.Connection.DEFAULT);
                 }
                 if (!data.contains("radius")) {
                     data.putInt("radius", 1);
@@ -898,7 +899,7 @@ public final class StationZoneEditorClient {
             connector.put("worldPosition", NbtPos.save(connectionDraftCenter(draftMin, draftMax)));
             Direction resolvedDirection = Direction.byName(direction == null ? "" : direction);
             connector.putString("direction", (resolvedDirection == null ? autoDirectionFromRootFace(draftMin, draftMax) : resolvedDirection).getSerializedName());
-            connector.putString("tags", tags == null || tags.isBlank() ? "corridor" : tags);
+            connector.putString(TagsConstants.Keys.TAGS, tags == null || tags.isBlank() ? TagsConstants.Connection.CORRIDOR : tags);
             connector.putString("accepts", accepts == null || accepts.isBlank() ? "corridor,dock" : accepts);
             connector.putInt("priority", priority);
             connector.putInt("width", Math.max(1, width));
@@ -936,7 +937,7 @@ public final class StationZoneEditorClient {
             trigger.put("worldMax", NbtPos.save(triggerMax));
             CompoundTag data = defaultTriggerData(nodeType);
             if (tags != null && !tags.isBlank()) {
-                data.putString("tags", tags.trim());
+                data.putString(TagsConstants.Keys.TAGS, tags.trim());
             }
             if (nodeType == StationEditorNodeType.DOOR_TRIGGER) {
                 Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);

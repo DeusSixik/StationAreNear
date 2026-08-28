@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.structures.data;
 
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -47,7 +48,7 @@ public record StationPieceDefinition(
         tag.putString("id", id.toString());
         tag.putString("template", template.toString());
         tag.putString("pool", pool.toString());
-        tag.put("tags", saveTags(tags));
+        tag.put(TagsConstants.Keys.TAGS, saveTags(tags));
         tag.putInt("weight", weight);
         tag.put("selectionMin", NbtPos.save(selectionMin));
         tag.put("selectionMax", NbtPos.save(selectionMax));
@@ -93,7 +94,7 @@ public record StationPieceDefinition(
             triggerZones.add(StationTriggerZone.load((CompoundTag) triggerTag));
         }
 
-        Set<String> tags = tag.contains("tags", Tag.TAG_LIST) ? loadTags(tag.getList("tags", Tag.TAG_STRING)) : Set.of();
+        Set<String> tags = tag.contains(TagsConstants.Keys.TAGS, Tag.TAG_LIST) ? loadTags(tag.getList(TagsConstants.Keys.TAGS, Tag.TAG_STRING)) : Set.of();
         BlockPos selectionMin = tag.contains("selectionMin") ? NbtPos.load(tag.getCompound("selectionMin")) : BlockPos.ZERO;
         BlockPos selectionMax = tag.contains("selectionMax") ? NbtPos.load(tag.getCompound("selectionMax")) : BlockPos.ZERO;
         int detectedFloorSpan = Math.max(1, (selectionMax.getY() - selectionMin.getY() + 16) / 16);

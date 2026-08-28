@@ -1,6 +1,8 @@
 package dev.sixik.stationarenear.quest;
 
 import dev.sixik.stationarenear.quest.command.QuestCommands;
+import dev.sixik.stationarenear.quest.config.director.DirectorConfigManager;
+import dev.sixik.stationarenear.quest.director.DirectorStationSpawnHandler;
 import dev.sixik.stationarenear.quest.network.QuestNetwork;
 import dev.sixik.stationarenear.quest.runtime.QuestAnnouncementHandler;
 import dev.sixik.stationarenear.quest.runtime.QuestFurniturePickupManager;
@@ -24,6 +26,8 @@ public final class QuestModule {
         QuestItems.register(modEventBus);
         QuestNetwork.register();
         StationQuests.register();
+        DirectorConfigManager.init();
+        DirectorStationSpawnHandler.register();
         QuestCommands.register();
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> dev.sixik.stationarenear.quest.client.QuestClientEvents::register);
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerTick);

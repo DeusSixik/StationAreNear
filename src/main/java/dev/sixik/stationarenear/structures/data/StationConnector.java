@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.structures.data;
 
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -83,7 +84,7 @@ public record StationConnector(
         tag.putString("name", name);
         tag.put("position", NbtPos.save(position));
         tag.putString("direction", direction.getSerializedName());
-        tag.put("tags", saveStrings(tags));
+        tag.put(TagsConstants.Keys.TAGS, saveStrings(tags));
         tag.put("accepts", saveStrings(accepts));
         tag.putInt("priority", priority);
         tag.put("min", NbtPos.save(min));
@@ -111,7 +112,7 @@ public record StationConnector(
                 tag.getString("name"),
                 position,
                 direction,
-                loadStrings(tag.getList("tags", Tag.TAG_STRING)),
+                loadStrings(tag.getList(TagsConstants.Keys.TAGS, Tag.TAG_STRING)),
                 loadStrings(tag.getList("accepts", Tag.TAG_STRING)),
                 tag.getInt("priority"),
                 min,

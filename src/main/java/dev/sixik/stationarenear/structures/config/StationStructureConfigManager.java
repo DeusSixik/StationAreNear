@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 
@@ -89,7 +90,12 @@ public final class StationStructureConfigManager {
         if (configurations.isEmpty()) {
             return Optional.empty();
         }
-        List<StationStructureConfig> values = new ArrayList<>(configurations.values());
+        List<StationStructureConfig> values = configurations.values().stream()
+                .filter(config -> !config.questOnly())
+                .toList();
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
         return Optional.of(values.get(random.nextInt(values.size())));
     }
 
@@ -121,14 +127,15 @@ public final class StationStructureConfigManager {
             maxRooms = readInt(rooms, maxRooms, "max", "maxRooms");
         }
 
-        float minDanger = readFloat(object, 0.25F, "minDanger", "dangerMin");
-        float maxDanger = readFloat(object, 0.55F, "maxDanger", "dangerMax");
-        JsonObject danger = readObject(object, "danger", "dangerLevel", "dangerRange");
-        if (danger != null) {
-            minDanger = readFloat(danger, minDanger, "min", "minDanger");
-            maxDanger = readFloat(danger, maxDanger, "max", "maxDanger");
+        float minDangerMultiplier = readFloat(object, 1.0F, "minDangerMultiplier", "dangerMultiplierMin", "dangerMultiplyMin", "danger_multiply");
+        float maxDangerMultiplier = readFloat(object, minDangerMultiplier, "maxDangerMultiplier", "dangerMultiplierMax", "dangerMultiplyMax", "danger_multiply");
+        JsonObject dangerMultiply = readObject(object, "danger_multiply", "dangerMultiply", "danger_multiplier", "dangerMultiplier");
+        if (dangerMultiply != null) {
+            minDangerMultiplier = readFloat(dangerMultiply, minDangerMultiplier, "min", "minDangerMultiplier", "multiplierMin");
+            maxDangerMultiplier = readFloat(dangerMultiply, maxDangerMultiplier, "max", "maxDangerMultiplier", "multiplierMax");
         }
 
+        boolean questOnly = readBoolean(object, false, TagsConstants.Keys.QUEST_ONLY_SNAKE, TagsConstants.Keys.QUEST_ONLY);
         Map<ResourceLocation, Integer> requiredPieces = parseResourceCountMap(readObject(object, "requiredPieces", "requiredTemplates"));
         Map<String, Integer> requiredPieceTags = parseStringCountMap(readObject(object, "requiredPieceTags", "requiredTags"));
         mergeRequiredRooms(readObject(object, "requiredRooms", "mandatoryRooms"), requiredPieces, requiredPieceTags);
@@ -140,8 +147,9 @@ public final class StationStructureConfigManager {
                 maxFloors,
                 minRooms,
                 maxRooms,
-                minDanger,
-                maxDanger,
+                minDangerMultiplier,
+                maxDangerMultiplier,
+                questOnly,
                 requiredPieces,
                 requiredPieceTags,
                 questElementSpawnSkips
@@ -256,6 +264,16 @@ public final class StationStructureConfigManager {
         return fallback;
     }
 
+    private static boolean readBoolean(JsonObject object, boolean fallback, String... keys) {
+        for (String key : keys) {
+            JsonElement element = object.get(key);
+            if (element != null && element.isJsonPrimitive()) {
+                return element.getAsBoolean();
+            }
+        }
+        return fallback;
+    }
+
     private static String normalizeTag(String value) {
         return value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
     }
@@ -276,16 +294,17 @@ public final class StationStructureConfigManager {
         root.addProperty("id", StationStructureConfig.DEFAULT_ID.toString());
         root.addProperty("pool", "stationarenear:space_station");
         root.addProperty("maxFloors", 2);
+        root.addProperty(TagsConstants.Keys.QUEST_ONLY_SNAKE, false);
 
         JsonObject rooms = new JsonObject();
         rooms.addProperty("min", 10);
         rooms.addProperty("max", 18);
         root.add("rooms", rooms);
 
-        JsonObject danger = new JsonObject();
-        danger.addProperty("min", 0.25F);
-        danger.addProperty("max", 0.55F);
-        root.add("danger", danger);
+        JsonObject dangerMultiply = new JsonObject();
+        dangerMultiply.addProperty("min", 0.75F);
+        dangerMultiply.addProperty("max", 1.55F);
+        root.add("danger_multiply", dangerMultiply);
 
         JsonObject requiredRooms = new JsonObject();
         root.add("requiredRooms", requiredRooms);

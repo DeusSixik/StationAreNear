@@ -22,6 +22,9 @@ public final class QuestStationState {
     private long timerRemainingMillis = NO_TIMER;
     private boolean timerExpired;
     private String displayStationCode = "";
+    private String missionId = "";
+    private double moneyReward;
+    private CompoundTag directorPlan = new CompoundTag();
 
     public QuestStationState(UUID stationId) {
         this.stationId = stationId;
@@ -33,6 +36,30 @@ public final class QuestStationState {
 
     public Collection<QuestObjectiveState> objectives() {
         return objectives.values();
+    }
+
+    public String missionId() {
+        return missionId;
+    }
+
+    public void missionId(String missionId) {
+        this.missionId = missionId == null ? "" : missionId.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    public double moneyReward() {
+        return moneyReward;
+    }
+
+    public void moneyReward(double moneyReward) {
+        this.moneyReward = Double.isFinite(moneyReward) ? Math.max(0.0D, moneyReward) : 0.0D;
+    }
+
+    public CompoundTag directorPlan() {
+        return directorPlan.copy();
+    }
+
+    public void directorPlan(CompoundTag directorPlan) {
+        this.directorPlan = directorPlan == null ? new CompoundTag() : directorPlan.copy();
     }
 
     public String displayStationCode() {
@@ -137,6 +164,15 @@ public final class QuestStationState {
         if (!displayStationCode.isBlank()) {
             tag.putString("displayStationCode", displayStationCode);
         }
+        if (!missionId.isBlank()) {
+            tag.putString("missionId", missionId);
+        }
+        if (moneyReward > 0.0D) {
+            tag.putDouble("moneyReward", moneyReward);
+        }
+        if (!directorPlan.isEmpty()) {
+            tag.put("directorPlan", directorPlan.copy());
+        }
         ListTag objectiveTags = new ListTag();
         for (QuestObjectiveState objective : objectives.values()) {
             objectiveTags.add(objective.save());
@@ -156,6 +192,9 @@ public final class QuestStationState {
         copy.timerRemainingMillis = timerRemainingMillis;
         copy.timerExpired = timerExpired;
         copy.displayStationCode = displayStationCode;
+        copy.missionId = missionId;
+        copy.moneyReward = moneyReward;
+        copy.directorPlan = directorPlan.copy();
         Map<String, String> targets = targetTriggerIds == null ? Map.of() : new LinkedHashMap<>(targetTriggerIds);
         for (QuestObjectiveState objective : objectives.values()) {
             String target = targets.getOrDefault(objective.id(), objective.targetTriggerId());
@@ -167,6 +206,15 @@ public final class QuestStationState {
     public static QuestStationState load(CompoundTag tag) {
         QuestStationState state = new QuestStationState(tag.getUUID("stationId"));
         state.displayStationCode = tag.contains("displayStationCode") ? tag.getString("displayStationCode") : "";
+        state.missionId = tag.contains("missionId") ? tag.getString("missionId") : "";
+        if (tag.contains("moneyReward")) {
+            state.moneyReward(tag.getDouble("moneyReward"));
+        } else if (tag.contains("money_reward")) {
+            state.moneyReward(tag.getDouble("money_reward"));
+        }
+        if (tag.contains("directorPlan", Tag.TAG_COMPOUND)) {
+            state.directorPlan(tag.getCompound("directorPlan"));
+        }
         ListTag objectiveTags = tag.getList("objectives", Tag.TAG_COMPOUND);
         for (Tag objectiveTag : objectiveTags) {
             QuestObjectiveState objective = QuestObjectiveState.load((CompoundTag) objectiveTag);

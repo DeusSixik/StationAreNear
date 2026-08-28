@@ -21,6 +21,7 @@ import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -310,7 +311,7 @@ public final class ShipCommands {
                 connector.getString("name"),
                 Math.max(1, connector.contains("width") ? connector.getInt("width") : 1),
                 Math.max(1, connector.contains("height") ? connector.getInt("height") : 1),
-                connector.getString("tags"),
+                connector.getString(TagsConstants.Keys.TAGS),
                 connector.getString("accepts")
         );
         ShipDockingAnchorSavedData.get(level).upsert(anchor);

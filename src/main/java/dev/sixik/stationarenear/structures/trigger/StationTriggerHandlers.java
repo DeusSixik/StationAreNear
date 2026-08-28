@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.structures.trigger;
 
 import dev.sixik.stationarenear.mob.registry.StationMobEntities;
+import dev.sixik.stationarenear.quest.director.DirectorStationSpawnHandler;
 import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
@@ -12,6 +13,7 @@ import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
@@ -31,6 +33,7 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -46,7 +49,7 @@ import java.util.Set;
 
 public final class StationTriggerHandlers {
 
-    private static final String ENERGY_SWITCH_TAG = "electric_switch";
+    private static final String ENERGY_SWITCH_TAG = TagsConstants.Quest.ELECTRIC_SWITCH;
     private static final int ENERGY_PANEL_DEFAULT_CHANCE = 80;
 
     private StationTriggerHandlers() {
@@ -58,14 +61,14 @@ public final class StationTriggerHandlers {
     }
 
     private static void onStationTrigger(StationTriggerEvent event) {
-        if (!event.isFirstGlobalActivation()) {
+        if (!event.isFirstGlobalActivation() || DirectorStationSpawnHandler.hasDirectorPlan(event.getStation())) {
             return;
         }
-        if (!event.getZone().type().equals("mob_spawn") && !event.getZone().type().equals("danger_mob_spawn")) {
+        if (!event.getZone().type().equals(TagsConstants.Trigger.MOB_SPAWN) && !event.getZone().type().equals(TagsConstants.Trigger.DANGER_MOB_SPAWN)) {
             return;
         }
 
-        float danger = Mth.clamp(event.getZone().data().getFloat("stationDanger"), 0.0F, 1.0F);
+        float danger = Mth.clamp(event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER), 0.0F, 1.0F);
         int count = 1 + Mth.ceil(danger * 4.0F);
         RandomSource random = event.getLevel().getRandom();
         for (int i = 0; i < count; i++) {
@@ -79,7 +82,7 @@ public final class StationTriggerHandlers {
         }
         switch (event.getTriggerType()) {
             case OBJECT_PLACER -> placeObject(event);
-            case OBJECT_ZONE_PLACER -> placeObjectZone(event, false, -1);
+            case OBJECT_ZONE_PLACER -> placeObjectZone(event, event.isForcePlaceObjectZone(), event.getForcedObjectZoneCount());
             case MOB_SPAWN -> placeMobs(event);
             case DOOR_TRIGGER -> placeDoor(event);
             case QUEST_PLACE -> placeEnergyPanel(event);
@@ -101,6 +104,37 @@ public final class StationTriggerHandlers {
 
     public static boolean isObjectZoneQuestOnly(PlacedTriggerZone zone) {
         return isObjectZoneQuestOnly(zone.data());
+    }
+
+
+    public static int placeBlocksInObjectZoneForQuest(ServerLevel level, PlacedTriggerZone zone, List<BlockState> states, int count) {
+        if (count <= 0 || StationStructureTriggerType.from(zone.type()) != StationStructureTriggerType.OBJECT_ZONE_PLACER) {
+            return 0;
+        }
+        List<BlockState> validStates = states == null
+                ? List.of()
+                : states.stream().filter(state -> state != null && !state.isAir()).toList();
+        if (validStates.isEmpty()) {
+            return 0;
+        }
+
+        List<BlockPos> candidates = objectZoneBlockCandidates(level, zone);
+        if (candidates.isEmpty()) {
+            return 0;
+        }
+        java.util.Collections.shuffle(candidates, new java.util.Random(level.getRandom().nextLong() ^ zone.id().hashCode()));
+
+        RandomSource random = level.getRandom();
+        int placed = 0;
+        for (BlockPos pos : candidates) {
+            if (placed >= count) {
+                break;
+            }
+            BlockState state = validStates.get(random.nextInt(validStates.size()));
+            level.setBlock(pos, state, 3);
+            placed++;
+        }
+        return placed;
     }
 
 
@@ -171,7 +205,7 @@ public final class StationTriggerHandlers {
     }
 
     private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
-        String tags = zone.data().contains("tags") ? zone.data().getString("tags") : zone.data().getString("tag");
+        String tags = zone.data().contains(TagsConstants.Keys.TAGS) ? zone.data().getString(TagsConstants.Keys.TAGS) : zone.data().getString(TagsConstants.Keys.TAG);
         if (tags == null || tags.isBlank()) {
             return false;
         }
@@ -272,7 +306,7 @@ public final class StationTriggerHandlers {
             return;
         }
 
-        List<StationPieceDefinition> candidates = objectCandidates(library, poolOptional.get(), event.getZone().data().getFloat("stationDanger"));
+        List<StationPieceDefinition> candidates = objectCandidates(library, poolOptional.get(), event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER));
         if (candidates.isEmpty()) {
             return;
         }
@@ -307,7 +341,7 @@ public final class StationTriggerHandlers {
         }
 
         StationStructureLibraryData library = StationStructureLibraryData.get(event.getLevel());
-        List<StationPieceDefinition> candidates = objectZoneCandidates(library, data, data.getFloat("stationDanger"));
+        List<StationPieceDefinition> candidates = objectZoneCandidates(library, data, data.getFloat(TagsConstants.Keys.STATION_DANGER));
         if (candidates.isEmpty()) {
             return 0;
         }
@@ -344,7 +378,7 @@ public final class StationTriggerHandlers {
             return;
         }
 
-        float danger = Mth.clamp(data.getFloat("stationDanger"), 0.0F, 1.0F);
+        float danger = Mth.clamp(data.getFloat(TagsConstants.Keys.STATION_DANGER), 0.0F, 1.0F);
         int count = event.getForcedMobCount() >= 0
                 ? event.getForcedMobCount()
                 : Math.max(0, data.contains("count") ? data.getInt("count") : 1 + Mth.ceil(danger * 4.0F));
@@ -648,8 +682,31 @@ public final class StationTriggerHandlers {
         return Optional.ofNullable(selected);
     }
 
+
+    private static List<BlockPos> objectZoneBlockCandidates(ServerLevel level, PlacedTriggerZone zone) {
+        List<BlockPos> candidates = new ObjectArrayList<>();
+        int y = zone.min().getY();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int x = zone.min().getX(); x <= zone.max().getX(); x++) {
+            for (int z = zone.min().getZ(); z <= zone.max().getZ(); z++) {
+                BlockPos pos = cursor.set(x, y, z).immutable();
+                if (!StationTriggerZoneShape.contains(zone.data(), zone.min(), zone.max(), pos)) {
+                    continue;
+                }
+                if (!level.getBlockState(pos).isAir()) {
+                    continue;
+                }
+                if (level.getBlockState(pos.below()).isAir()) {
+                    continue;
+                }
+                candidates.add(pos);
+            }
+        }
+        return candidates;
+    }
+
     private static boolean isObjectZoneQuestOnly(CompoundTag data) {
-        return data.getBoolean("onlyQuests") || data.getBoolean("onlyQuest") || data.getBoolean("questOnly");
+        return data.getBoolean(TagsConstants.Keys.ONLY_QUESTS) || data.getBoolean(TagsConstants.Keys.ONLY_QUEST) || data.getBoolean(TagsConstants.Keys.QUEST_ONLY);
     }
 
     private static int readObjectZoneCount(CompoundTag data, String primaryKey, String fallbackKey, int fallback) {

@@ -85,7 +85,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         long generationSeed = packet.stationSeed() ^ level.getSeed() ^ Mth.getSeed(packet.terminalPos());
         StationGenerationSettings generationSettings = SolarNavigationStationGenerationConfig.create(level, packet.quest(), generationSeed);
         if (packet.quest()) {
-            generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings, QuestTestScenario.pendingQuestElementSpawnSkips(level));
+            generationSettings = QuestTestScenario.createGenerationSettings(level, generationSeed, generationSettings);
         }
 
         StationGenerationResult result = new StationGenerator().generateDockedStation(

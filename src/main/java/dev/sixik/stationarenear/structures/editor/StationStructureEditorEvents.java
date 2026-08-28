@@ -13,6 +13,7 @@ import dev.sixik.stationarenear.structures.network.packet.OpenStationZoneEditorP
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -353,7 +354,7 @@ public final class StationStructureEditorEvents {
             connectorTag.put("worldMax", NbtPos.save(max(worldMin, worldMax)));
             connectorTag.put("worldPosition", NbtPos.save(worldPosition));
             connectorTag.putString("direction", sourceWorldDirection.getSerializedName());
-            connectorTag.putString("tags", join(connector.tags()));
+            connectorTag.putString(TagsConstants.Keys.TAGS, join(connector.tags()));
             connectorTag.putString("accepts", join(connector.accepts()));
             connectorTag.putInt("priority", connector.priority());
             connectorTag.putInt("width", connector.width());

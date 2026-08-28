@@ -109,7 +109,7 @@ public class StationGenerator {
             placedPieces.add(piece);
         }
 
-        CompoundTag customData = new CompoundTag();
+        CompoundTag customData = settings.customData();
         if (!settings.questElementSpawnSkips().isEmpty()) {
             CompoundTag questSpawnSkips = new CompoundTag();
             for (Map.Entry<String, Integer> entry : settings.questElementSpawnSkips().entrySet()) {

@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.trigger;
 
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import java.util.Locale;
 
 public enum StationStructureTriggerType {
@@ -14,12 +15,12 @@ public enum StationStructureTriggerType {
     public static StationStructureTriggerType from(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "mob_spawn", "danger_mob_spawn" -> MOB_SPAWN;
-            case "object_placer", "loot", "object_place", "object_pool" -> OBJECT_PLACER;
-            case "object_zone_placer", "object_zone_place", "zone_object_placer", "floor_object_placer" -> OBJECT_ZONE_PLACER;
-            case "door_trigger", "door_spawner", "door", "pressure_door", "pressure_tight_door" -> DOOR_TRIGGER;
-            case "quest", "quest_trigger", "trigger_quest" -> QUEST;
-            case "quest_place", "place_quest", "quest_place_trigger", "place_trigger" -> QUEST_PLACE;
+            case TagsConstants.Trigger.MOB_SPAWN, TagsConstants.Trigger.DANGER_MOB_SPAWN -> MOB_SPAWN;
+            case TagsConstants.Trigger.OBJECT_PLACER, TagsConstants.Trigger.LOOT, TagsConstants.Trigger.OBJECT_PLACE, TagsConstants.Trigger.OBJECT_POOL -> OBJECT_PLACER;
+            case TagsConstants.Trigger.OBJECT_ZONE_PLACER, TagsConstants.Trigger.OBJECT_ZONE_PLACE, TagsConstants.Trigger.ZONE_OBJECT_PLACER, TagsConstants.Trigger.FLOOR_OBJECT_PLACER -> OBJECT_ZONE_PLACER;
+            case TagsConstants.Trigger.DOOR_TRIGGER, TagsConstants.Trigger.DOOR_SPAWNER, TagsConstants.Trigger.DOOR, TagsConstants.Trigger.PRESSURE_DOOR, TagsConstants.Trigger.PRESSURE_TIGHT_DOOR -> DOOR_TRIGGER;
+            case TagsConstants.Trigger.QUEST, TagsConstants.Trigger.QUEST_TRIGGER, TagsConstants.Trigger.TRIGGER_QUEST -> QUEST;
+            case TagsConstants.Trigger.QUEST_PLACE, TagsConstants.Trigger.PLACE_QUEST, TagsConstants.Trigger.QUEST_PLACE_TRIGGER, TagsConstants.Trigger.PLACE_TRIGGER -> QUEST_PLACE;
             default -> OTHER;
         };
     }

@@ -15,6 +15,7 @@ import dev.sixik.stationarenear.structures.network.packet.OpenStationZoneEditorP
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.core.BlockPos;
@@ -186,7 +187,7 @@ public final class StationTemplateSelectionManager {
             connectorTag.put("worldMax", NbtPos.save(new BlockPos(bounds.maxX(), bounds.maxY(), bounds.maxZ())));
             connectorTag.put("worldPosition", NbtPos.save(worldPosition));
             connectorTag.putString("direction", worldDirection.getSerializedName());
-            connectorTag.putString("tags", join(connector.tags()));
+            connectorTag.putString(TagsConstants.Keys.TAGS, join(connector.tags()));
             connectorTag.putString("accepts", join(connector.accepts()));
             connectorTag.putInt("priority", connector.priority());
             connectorTag.putInt("width", connector.width());

@@ -5,13 +5,16 @@ import dev.sixik.stationarenear.quest.data.QuestStationState;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public class QuestSavedData extends SavedData {
@@ -19,6 +22,8 @@ public class QuestSavedData extends SavedData {
     private static final String DATA_NAME = StationAreNear.MODID + "_quests";
 
     private final Map<UUID, QuestStationState> stations = new Object2ObjectLinkedOpenHashMap<>();
+    private final Set<String> completedQuestIds = new LinkedHashSet<>();
+    private int completedMissionCount;
     private UUID currentStationId;
 
     public static QuestSavedData get(ServerLevel level) {
@@ -70,6 +75,40 @@ public class QuestSavedData extends SavedData {
         return stations.values();
     }
 
+    public Set<String> completedQuestIds() {
+        return Set.copyOf(completedQuestIds);
+    }
+
+    public int completedMissionCount() {
+        return completedMissionCount;
+    }
+
+    public void incrementCompletedMissionCount() {
+        completedMissionCount++;
+        setDirty();
+    }
+
+    public boolean isQuestCompleted(String questId) {
+        return completedQuestIds.contains(normalizeQuestId(questId));
+    }
+
+    public boolean markQuestCompleted(String questId) {
+        String normalized = normalizeQuestId(questId);
+        if (normalized.isBlank() || !completedQuestIds.add(normalized)) {
+            return false;
+        }
+        setDirty();
+        return true;
+    }
+
+    public boolean clearCompletedQuest(String questId) {
+        boolean removed = completedQuestIds.remove(normalizeQuestId(questId));
+        if (removed) {
+            setDirty();
+        }
+        return removed;
+    }
+
     public boolean remove(UUID stationId) {
         boolean removed = stations.remove(stationId) != null;
         if (stationId.equals(currentStationId)) {
@@ -86,6 +125,12 @@ public class QuestSavedData extends SavedData {
         if (currentStationId != null) {
             tag.putUUID("currentStationId", currentStationId);
         }
+        tag.putInt("completedMissionCount", completedMissionCount);
+        ListTag completedQuestTags = new ListTag();
+        for (String questId : completedQuestIds) {
+            completedQuestTags.add(StringTag.valueOf(questId));
+        }
+        tag.put("completedQuestIds", completedQuestTags);
         ListTag stationTags = new ListTag();
         for (QuestStationState station : stations.values()) {
             stationTags.add(station.save());
@@ -94,10 +139,25 @@ public class QuestSavedData extends SavedData {
         return tag;
     }
 
+    private static String normalizeQuestId(String questId) {
+        String normalized = questId == null ? "" : questId.trim();
+        return normalized.isBlank() ? "" : normalized.toLowerCase(java.util.Locale.ROOT);
+    }
+
     private static QuestSavedData load(CompoundTag tag) {
         QuestSavedData data = new QuestSavedData();
         if (tag.hasUUID("currentStationId")) {
             data.currentStationId = tag.getUUID("currentStationId");
+        }
+        data.completedMissionCount = Math.max(0, tag.getInt("completedMissionCount"));
+        ListTag completedQuestTags = tag.getList("completedQuestIds", Tag.TAG_STRING);
+        for (Tag questTag : completedQuestTags) {
+            if (questTag instanceof StringTag stringTag) {
+                String questId = normalizeQuestId(stringTag.getAsString());
+                if (!questId.isBlank()) {
+                    data.completedQuestIds.add(questId);
+                }
+            }
         }
         ListTag stationTags = tag.getList("stations", Tag.TAG_COMPOUND);
         for (Tag stationTag : stationTags) {

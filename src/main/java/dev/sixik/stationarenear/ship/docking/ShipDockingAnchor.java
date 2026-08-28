@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.ship.docking;
 
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -36,7 +37,7 @@ public record ShipDockingAnchor(
         tag.putString("connectionName", connectionName);
         tag.putInt("width", width);
         tag.putInt("height", height);
-        tag.putString("tags", tags);
+        tag.putString(TagsConstants.Keys.TAGS, tags);
         tag.putString("accepts", accepts);
 
         CompoundTag bounds = new CompoundTag();
@@ -65,7 +66,7 @@ public record ShipDockingAnchor(
                 tag.getString("connectionName"),
                 tag.contains("width") ? tag.getInt("width") : 1,
                 tag.contains("height") ? tag.getInt("height") : 1,
-                tag.getString("tags"),
+                tag.getString(TagsConstants.Keys.TAGS),
                 tag.getString("accepts")
         );
     }

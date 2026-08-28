@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.structures.generation;
 
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -17,15 +18,31 @@ public record StationGenerationSettings(
         long seed,
         Map<ResourceLocation, Integer> requiredPieces,
         Map<String, Integer> requiredPieceTags,
-        Map<String, Integer> questElementSpawnSkips
+        Map<String, Integer> questElementSpawnSkips,
+        CompoundTag customData
 ) {
 
     public StationGenerationSettings(ResourceLocation pool, float missionDanger, boolean randomStation, int maxPieces, long seed) {
-        this(pool, missionDanger, randomStation, 1, 0, maxPieces, seed, Map.of(), Map.of(), Map.of());
+        this(pool, missionDanger, randomStation, 1, 0, maxPieces, seed, Map.of(), Map.of(), Map.of(), new CompoundTag());
     }
 
     public StationGenerationSettings(ResourceLocation pool, float missionDanger, boolean randomStation, int maxFloors, int minRooms, int maxRooms, long seed) {
-        this(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, Map.of(), Map.of(), Map.of());
+        this(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, Map.of(), Map.of(), Map.of(), new CompoundTag());
+    }
+
+    public StationGenerationSettings(
+            ResourceLocation pool,
+            float missionDanger,
+            boolean randomStation,
+            int maxFloors,
+            int minRooms,
+            int maxRooms,
+            long seed,
+            Map<ResourceLocation, Integer> requiredPieces,
+            Map<String, Integer> requiredPieceTags,
+            Map<String, Integer> questElementSpawnSkips
+    ) {
+        this(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, new CompoundTag());
     }
 
     public StationGenerationSettings {
@@ -39,22 +56,31 @@ public record StationGenerationSettings(
         requiredPieces = normalizeRequiredPieces(requiredPieces);
         requiredPieceTags = normalizeRequiredTags(requiredPieceTags);
         questElementSpawnSkips = normalizeQuestElementSpawnSkips(questElementSpawnSkips);
+        customData = customData == null ? new CompoundTag() : customData.copy();
+    }
+
+    public StationGenerationSettings withMissionDanger(float missionDanger) {
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
     }
 
     public StationGenerationSettings withRequiredPieces(Map<ResourceLocation, Integer> requiredPieces) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
     }
 
     public StationGenerationSettings withRequiredPieceTags(Map<String, Integer> requiredPieceTags) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
     }
 
     public StationGenerationSettings withRequiredPieces(Map<ResourceLocation, Integer> requiredPieces, Map<String, Integer> requiredPieceTags) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
     }
 
     public StationGenerationSettings withQuestElementSpawnSkips(Map<String, Integer> questElementSpawnSkips) {
-        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips);
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
+    }
+
+    public StationGenerationSettings withCustomData(CompoundTag customData) {
+        return new StationGenerationSettings(pool, missionDanger, randomStation, maxFloors, minRooms, maxRooms, seed, requiredPieces, requiredPieceTags, questElementSpawnSkips, customData);
     }
 
     public int requiredPieceCount(ResourceLocation pieceId) {
@@ -137,11 +163,6 @@ public record StationGenerationSettings(
     }
 
     public float rollDanger(RandomSource random) {
-        if (!randomStation) {
-            return missionDanger;
-        }
-
-        float spread = 0.25F;
-        return Mth.clamp(missionDanger + (random.nextFloat() * spread * 2.0F) - spread, 0.0F, 1.0F);
+        return missionDanger;
     }
 }

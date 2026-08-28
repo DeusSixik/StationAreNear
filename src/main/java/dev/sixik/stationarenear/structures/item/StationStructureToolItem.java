@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -300,7 +301,7 @@ public class StationStructureToolItem extends Item {
                     connectorTag.getString("name"),
                     localPosition,
                     direction,
-                    StationPlacementUtil.parseTags(connectorTag.getString("tags")),
+                    StationPlacementUtil.parseTags(connectorTag.getString(TagsConstants.Keys.TAGS)),
                     StationPlacementUtil.parseTags(connectorTag.getString("accepts")),
                     connectorTag.getInt("priority"),
                     normalizedLocalMin,
@@ -391,15 +392,15 @@ public class StationStructureToolItem extends Item {
         }
         if (triggerTag.contains("nodeType")) {
             String nodeType = triggerTag.getString("nodeType");
-            if ("DOOR_SPAWNER".equalsIgnoreCase(nodeType) || "DOOR_TRIGGER".equalsIgnoreCase(nodeType)) {
-                return "door_trigger";
+            if (TagsConstants.Trigger.DOOR_SPAWNER.equalsIgnoreCase(nodeType) || TagsConstants.Trigger.DOOR_TRIGGER.equalsIgnoreCase(nodeType)) {
+                return TagsConstants.Trigger.DOOR_TRIGGER;
             }
             try {
                 return StationEditorNodeType.valueOf(nodeType).name().toLowerCase(java.util.Locale.ROOT);
             } catch (IllegalArgumentException ignored) {
-                return "trigger";
+                return TagsConstants.Trigger.TRIGGER;
             }
         }
-        return "trigger";
+        return TagsConstants.Trigger.TRIGGER;
     }
 }

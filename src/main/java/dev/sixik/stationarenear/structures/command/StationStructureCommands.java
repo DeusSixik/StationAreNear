@@ -22,6 +22,7 @@ import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.Commands;
@@ -78,20 +79,20 @@ public final class StationStructureCommands {
                         .then(Commands.literal("connector")
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .then(Commands.argument("direction", StringArgumentType.word())
-                                                .then(Commands.argument("tags", StringArgumentType.word())
+                                                .then(Commands.argument(TagsConstants.Keys.TAGS, StringArgumentType.word())
                                                         .then(Commands.argument("accepts", StringArgumentType.word())
                                                                 .executes(context -> configureConnector(
                                                                         context.getSource(),
                                                                         StringArgumentType.getString(context, "name"),
                                                                         StringArgumentType.getString(context, "direction"),
-                                                                        StringArgumentType.getString(context, "tags"),
+                                                                        StringArgumentType.getString(context, TagsConstants.Keys.TAGS),
                                                                         StringArgumentType.getString(context, "accepts")
                                                                 )))))))
                         .then(Commands.literal("add_connector")
                                 .then(Commands.argument("name", StringArgumentType.word())
                                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("direction", StringArgumentType.word())
-                                                        .then(Commands.argument("tags", StringArgumentType.word())
+                                                        .then(Commands.argument(TagsConstants.Keys.TAGS, StringArgumentType.word())
                                                                 .then(Commands.argument("accepts", StringArgumentType.word())
                                                                         .then(Commands.argument("priority", IntegerArgumentType.integer())
                                                                                 .executes(context -> addConnector(
@@ -99,7 +100,7 @@ public final class StationStructureCommands {
                                                                                         StringArgumentType.getString(context, "name"),
                                                                                         BlockPosArgument.getLoadedBlockPos(context, "pos"),
                                                                                         StringArgumentType.getString(context, "direction"),
-                                                                                        StringArgumentType.getString(context, "tags"),
+                                                                                        StringArgumentType.getString(context, TagsConstants.Keys.TAGS),
                                                                                         StringArgumentType.getString(context, "accepts"),
                                                                                         IntegerArgumentType.getInteger(context, "priority")
                                                                                 )))))))))
@@ -133,14 +134,14 @@ public final class StationStructureCommands {
                                                                 RequiredPieceSpec.empty()
                                                         ))
                                                         .then(Commands.literal("required")
-                                                                .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                                                                .then(Commands.argument(TagsConstants.Keys.REQUIRED_PIECES, StringArgumentType.greedyString())
                                                                         .suggests(StationStructureCommands::suggestPieces)
                                                                         .executes(context -> generate(
                                                                                 context.getSource(),
                                                                                 ResourceLocationArgument.getId(context, "pool"),
                                                                                 FloatArgumentType.getFloat(context, "danger"),
                                                                                 IntegerArgumentType.getInteger(context, "pieces"),
-                                                                                parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                                                                parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                                                         ))))))))
                         .then(generateAtCommand())
                         .then(Commands.literal("list_generated")
@@ -201,7 +202,7 @@ public final class StationStructureCommands {
                         RequiredPieceSpec.empty()
                 ))
                 .then(Commands.literal("required")
-                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                        .then(Commands.argument(TagsConstants.Keys.REQUIRED_PIECES, StringArgumentType.greedyString())
                                 .suggests(StationStructureCommands::suggestPieces)
                                 .executes(context -> generateAt(
                                         context.getSource(),
@@ -212,7 +213,7 @@ public final class StationStructureCommands {
                                         IntegerArgumentType.getInteger(context, "max_rooms"),
                                         IntegerArgumentType.getInteger(context, "min_rooms"),
                                         FloatArgumentType.getFloat(context, "danger"),
-                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                 ))));
         var minRoomsArgument = Commands.argument("min_rooms", IntegerArgumentType.integer(1))
                 .executes(context -> generateAt(
@@ -227,7 +228,7 @@ public final class StationStructureCommands {
                         RequiredPieceSpec.empty()
                 ))
                 .then(Commands.literal("required")
-                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                        .then(Commands.argument(TagsConstants.Keys.REQUIRED_PIECES, StringArgumentType.greedyString())
                                 .suggests(StationStructureCommands::suggestPieces)
                                 .executes(context -> generateAt(
                                         context.getSource(),
@@ -238,7 +239,7 @@ public final class StationStructureCommands {
                                         IntegerArgumentType.getInteger(context, "max_rooms"),
                                         IntegerArgumentType.getInteger(context, "min_rooms"),
                                         0.5F,
-                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                 ))))
                 .then(dangerArgument);
         var maxRoomsArgument = Commands.argument("max_rooms", IntegerArgumentType.integer(1))
@@ -254,7 +255,7 @@ public final class StationStructureCommands {
                         RequiredPieceSpec.empty()
                 ))
                 .then(Commands.literal("required")
-                        .then(Commands.argument("required_pieces", StringArgumentType.greedyString())
+                        .then(Commands.argument(TagsConstants.Keys.REQUIRED_PIECES, StringArgumentType.greedyString())
                                 .suggests(StationStructureCommands::suggestPieces)
                                 .executes(context -> generateAt(
                                         context.getSource(),
@@ -265,7 +266,7 @@ public final class StationStructureCommands {
                                         IntegerArgumentType.getInteger(context, "max_rooms"),
                                         10,
                                         0.5F,
-                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, "required_pieces"))
+                                        parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                 ))))
                 .then(minRoomsArgument);
         return Commands.literal("generate_at")
@@ -383,7 +384,7 @@ public final class StationStructureCommands {
         connector.putString("name", name);
         connector.put("worldPosition", NbtPos.save(position));
         connector.putString("direction", direction.getSerializedName());
-        connector.putString("tags", tags);
+        connector.putString(TagsConstants.Keys.TAGS, tags);
         connector.putString("accepts", accepts);
         connector.putInt("priority", priority);
         connectors.add(connector);
@@ -464,7 +465,8 @@ public final class StationStructureCommands {
                     config.id() + " pool=" + config.pool()
                             + " floors=" + config.maxFloors()
                             + " rooms=" + config.minRooms() + "-" + config.maxRooms()
-                            + " danger=" + config.minDanger() + "-" + config.maxDanger()
+                            + " danger_multiply=" + config.minDangerMultiplier() + "-" + config.maxDangerMultiplier()
+                            + " quest_only=" + config.questOnly()
                             + " required=" + config.requiredRoomsTotal()
             ), false);
         }

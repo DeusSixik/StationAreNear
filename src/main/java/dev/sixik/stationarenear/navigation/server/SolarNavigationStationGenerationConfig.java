@@ -20,9 +20,10 @@ public final class SolarNavigationStationGenerationConfig {
     }
 
     public static StationGenerationSettings create(ServerLevel level, boolean quest, long generationSeed) {
+        float baseDanger = quest ? QUEST_DANGER : DEFAULT_DANGER;
         StationGenerationSettings fallbackSettings = fallback(quest, generationSeed);
         return StationStructureConfigManager.random(level.getRandom())
-                .map(config -> config.createSettings(level.getRandom(), generationSeed))
+                .map(config -> config.createSettings(level.getRandom(), generationSeed, baseDanger))
                 .orElse(fallbackSettings);
     }
 

@@ -17,6 +17,8 @@ public class StationStructureSpawnTriggerEvent extends Event {
     private boolean placementCanceled;
     private String forcedMob;
     private int forcedMobCount = -1;
+    private boolean forcePlaceObjectZone;
+    private int forcedObjectZoneCount = -1;
 
     public StationStructureSpawnTriggerEvent(
             ServerLevel level,
@@ -86,5 +88,21 @@ public class StationStructureSpawnTriggerEvent extends Event {
 
     public void setForcedMobCount(int forcedMobCount) {
         this.forcedMobCount = forcedMobCount;
+    }
+
+    public boolean isForcePlaceObjectZone() {
+        return forcePlaceObjectZone;
+    }
+
+    public void setForcePlaceObjectZone(boolean forcePlaceObjectZone) {
+        this.forcePlaceObjectZone = forcePlaceObjectZone;
+    }
+
+    public int getForcedObjectZoneCount() {
+        return forcedObjectZoneCount;
+    }
+
+    public void setForcedObjectZoneCount(int forcedObjectZoneCount) {
+        this.forcedObjectZoneCount = forcedObjectZoneCount;
     }
 }

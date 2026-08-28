@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
 import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -239,7 +240,7 @@ public final class StationStructureEditorStick {
             connector.put("worldPosition", NbtPos.save(clampPos(firstConnectorWorldPos(connector, min, normalizedMin, "worldPosition", "position"), normalizedMin, normalizedMax)));
             Direction direction = Direction.byName(connector.getString("direction"));
             connector.putString("direction", (direction == null ? Direction.NORTH : direction).getSerializedName());
-            connector.putString("tags", defaultString(connector.getString("tags"), "corridor"));
+            connector.putString(TagsConstants.Keys.TAGS, defaultString(connector.getString(TagsConstants.Keys.TAGS), "corridor"));
             connector.putString("accepts", defaultString(connector.getString("accepts"), "corridor,dock"));
             connector.putInt("width", Math.max(1, connector.contains("width") ? connector.getInt("width") : 3));
             connector.putInt("height", Math.max(1, connector.contains("height") ? connector.getInt("height") : 3));

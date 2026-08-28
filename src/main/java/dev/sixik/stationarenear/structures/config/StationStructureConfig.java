@@ -15,13 +15,15 @@ public record StationStructureConfig(
         int maxFloors,
         int minRooms,
         int maxRooms,
-        float minDanger,
-        float maxDanger,
+        float minDangerMultiplier,
+        float maxDangerMultiplier,
+        boolean questOnly,
         Map<ResourceLocation, Integer> requiredPieces,
         Map<String, Integer> requiredPieceTags,
         Map<String, Integer> questElementSpawnSkips
 ) {
     public static final ResourceLocation DEFAULT_ID = StationStructureIds.normalize("default_station", "default_station");
+    public static final float DEFAULT_BASE_DANGER = 0.35F;
 
     public StationStructureConfig {
         id = id == null ? DEFAULT_ID : id;
@@ -29,12 +31,12 @@ public record StationStructureConfig(
         maxFloors = Math.max(1, maxFloors);
         minRooms = Math.max(0, minRooms);
         maxRooms = Math.max(Math.max(1, minRooms), maxRooms);
-        minDanger = Mth.clamp(minDanger, 0.0F, 1.0F);
-        maxDanger = Mth.clamp(maxDanger, 0.0F, 1.0F);
-        if (minDanger > maxDanger) {
-            float oldMin = minDanger;
-            minDanger = maxDanger;
-            maxDanger = oldMin;
+        minDangerMultiplier = sanitizeDangerMultiplier(minDangerMultiplier, 1.0F);
+        maxDangerMultiplier = sanitizeDangerMultiplier(maxDangerMultiplier, 1.0F);
+        if (minDangerMultiplier > maxDangerMultiplier) {
+            float oldMin = minDangerMultiplier;
+            minDangerMultiplier = maxDangerMultiplier;
+            maxDangerMultiplier = oldMin;
         }
         requiredPieces = copyPositiveResourceMap(requiredPieces);
         requiredPieceTags = copyPositiveStringMap(requiredPieceTags);
@@ -42,7 +44,11 @@ public record StationStructureConfig(
     }
 
     public StationGenerationSettings createSettings(RandomSource random, long seed) {
-        float danger = minDanger == maxDanger ? minDanger : Mth.lerp(random.nextFloat(), minDanger, maxDanger);
+        return createSettings(random, seed, DEFAULT_BASE_DANGER);
+    }
+
+    public StationGenerationSettings createSettings(RandomSource random, long seed, float baseDanger) {
+        float danger = Mth.clamp(baseDanger, 0.0F, 1.0F) * rollDangerMultiplier(random);
         return new StationGenerationSettings(
                 pool,
                 danger,
@@ -57,6 +63,12 @@ public record StationStructureConfig(
         );
     }
 
+    public float rollDangerMultiplier(RandomSource random) {
+        return minDangerMultiplier == maxDangerMultiplier
+                ? minDangerMultiplier
+                : Mth.lerp(random.nextFloat(), minDangerMultiplier, maxDangerMultiplier);
+    }
+
     public int requiredRoomsTotal() {
         int total = 0;
         for (int count : requiredPieces.values()) {
@@ -66,6 +78,13 @@ public record StationStructureConfig(
             total += count;
         }
         return total;
+    }
+
+    private static float sanitizeDangerMultiplier(float value, float fallback) {
+        if (!Float.isFinite(value)) {
+            return fallback;
+        }
+        return Mth.clamp(value, 0.0F, 100.0F);
     }
 
     private static Map<ResourceLocation, Integer> copyPositiveResourceMap(Map<ResourceLocation, Integer> map) {

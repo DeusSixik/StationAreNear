@@ -9,7 +9,13 @@ import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.config.director.DirectorConfigManager;
+import dev.sixik.stationarenear.quest.config.director.DirectorProfileConfig;
+import dev.sixik.stationarenear.quest.director.DirectorContext;
+import dev.sixik.stationarenear.quest.director.DirectorPlan;
+import dev.sixik.stationarenear.quest.director.QuestDirector;
 import dev.sixik.stationarenear.quest.data.QuestLocalization;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.data.QuestTask;
 import dev.sixik.stationarenear.quest.registry.StationQuests;
@@ -23,6 +29,7 @@ import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.trigger.StationTriggerHandlers;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -31,7 +38,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.Vec3;
@@ -49,18 +55,15 @@ import java.util.UUID;
 public final class QuestTestScenario {
 
     public static final String MARKER_ID = StationAreNear.MODID + ":test_quest_station";
-    public static final ResourceLocation QUEST_ROOM = StationStructureIds.normalize("quest_room", "quest_room");
+    public static final ResourceLocation QUEST_ROOM = StationStructureIds.normalize(TagsConstants.Quest.QUEST_ROOM, TagsConstants.Quest.QUEST_ROOM);
     public static final UUID PENDING_STATION_ID = UUID.nameUUIDFromBytes(MARKER_ID.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-    private static final int MIN_DISTANCE = 1000;
-    private static final int MAX_DISTANCE = 5000;
+    private static final String DEFAULT_DIRECTOR_ID = DirectorConfigManager.DEFAULT_PROFILE_ID;
     private static final int TERMINAL_SEARCH_RADIUS = 64;
-    private static final long DURATION_SECONDS = 10L * 60L;
-    private static final int TEST_TRASH_REQUIRED = 20;
     private static final int TEST_TRASH_EXTRA = 3;
-    private static final String TEST_FRIDGE_TAG = "socket";
-    private static final String TEST_SINK_TAG = "pipes";
-    private static final String TEST_TRASH_ZONE_TAG = "trash";
+    private static final String TEST_FRIDGE_TAG = TagsConstants.Quest.SOCKET;
+    private static final String TEST_SINK_TAG = TagsConstants.Quest.PIPES;
+    private static final String TEST_TRASH_ZONE_TAG = TagsConstants.Quest.TRASH;
     private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
     private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
 
@@ -72,40 +75,70 @@ public final class QuestTestScenario {
     }
 
     public static SolarNavigationQuestMarker createQuestMarker(ServerLevel level, Vec3 sourcePosition, int trashSpawnSkip) {
+        return createQuestMarker(level, sourcePosition, trashSpawnSkip, "");
+    }
+
+    public static SolarNavigationQuestMarker createQuestMarker(ServerLevel level, Vec3 sourcePosition, int trashSpawnSkip, String directorId) {
         Optional<BlockPos> terminal = nearestNavigationTerminal(level, BlockPos.containing(sourcePosition), TERMINAL_SEARCH_RADIUS);
         SolarNavigationShipState shipState = terminal
                 .map(pos -> SolarNavigationSavedData.get(level).shipState(pos))
                 .orElse(SolarNavigationShipState.DEFAULT);
 
         RandomSource random = level.getRandom();
-        float distance = MIN_DISTANCE + random.nextInt(MAX_DISTANCE - MIN_DISTANCE + 1);
+        DirectorProfileConfig profile = selectProfile(level, random, directorId);
+        float distance = profile.rollSpawnDistance(random);
         double angle = random.nextDouble() * Math.PI * 2.0D;
         float x = shipState.shipX() + (float) Math.cos(angle) * distance;
         float y = shipState.shipY() + (float) Math.sin(angle) * distance;
-        long seed = level.getSeed() ^ MARKER_ID.hashCode() ^ Mth.getSeed((int) x, 0, (int) y) ^ random.nextLong();
-        SolarNavigationQuestMarker marker = SolarNavigationApi.createQuestDungeon(level, MARKER_ID, "TEST QUEST", x, y, 86.0F, 0xFFF7C45A, seed);
-        startPendingQuest(level, marker);
+        long seed = level.getSeed() ^ profile.id().hashCode() ^ Mth.getSeed((int) x, 0, (int) y) ^ random.nextLong();
+        DirectorPlan plan = createDirectorPlan(level, profile, seed);
+        if (plan.tasks().isEmpty()) {
+            throw new IllegalStateException("Director profile has no affordable quest offers: " + profile.id());
+        }
+        SolarNavigationQuestMarker marker = SolarNavigationApi.createQuestDungeon(level, MARKER_ID, plan.displayName(), x, y, profile.markerRadius(), profile.markerColor(), seed);
+        startPendingQuest(level, marker, plan);
         storePendingTrashSpawnSkip(level, trashSpawnSkip);
         return marker;
     }
 
     public static void startPendingQuest(ServerLevel level, SolarNavigationQuestMarker marker) {
+        DirectorProfileConfig profile = selectProfile(level, level.getRandom(), "");
+        startPendingQuest(level, marker, createDirectorPlan(level, profile, marker.seed()));
+    }
+
+    public static void startPendingQuest(ServerLevel level, SolarNavigationQuestMarker marker, DirectorPlan plan) {
         QuestApi.startQuestLocalized(
                 level,
                 PENDING_STATION_ID,
-                pendingTasks(),
-                testTexts(),
-                DURATION_SECONDS,
-                StationCodeGenerator.code(marker.seed(), marker.x(), marker.y())
+                plan.tasks(),
+                plan.localizations(),
+                plan.profile().durationSeconds(),
+                StationCodeGenerator.code(marker.seed(), marker.x(), marker.y()),
+                plan.profile().moneyReward()
         );
+        QuestStationState state = QuestSavedData.get(level).station(PENDING_STATION_ID);
+        state.missionId(plan.missionId());
+        state.directorPlan(plan.save());
+        QuestSavedData.get(level).station(state);
+    }
+
+    public static StationGenerationSettings createGenerationSettings(ServerLevel level, long generationSeed, StationGenerationSettings fallback) {
+        QuestStationState state = QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID).orElse(null);
+        if (state == null || state.directorPlan().isEmpty()) {
+            return DirectorConfigManager.applyQuestRequirements(fallback, Map.of(QUEST_ROOM, 1), Map.of(), pendingQuestElementSpawnSkips(level));
+        }
+        StationGenerationSettings settings = DirectorConfigManager.createStationSettings(level, state.directorPlan(), generationSeed, fallback);
+        Map<String, Integer> skips = new LinkedHashMap<>(settings.questElementSpawnSkips());
+        pendingQuestElementSpawnSkips(level).forEach((key, value) -> skips.merge(key, value, Integer::sum));
+        return settings.withQuestElementSpawnSkips(skips);
     }
 
     public static StationGenerationSettings applyQuestRoomRequirement(StationGenerationSettings settings) {
-        return settings.withRequiredPieces(Map.of(QUEST_ROOM, 1));
+        return DirectorConfigManager.applyQuestRequirements(settings, Map.of(QUEST_ROOM, 1), Map.of(), Map.of());
     }
 
     public static StationGenerationSettings applyQuestRoomRequirement(StationGenerationSettings settings, Map<String, Integer> questElementSpawnSkips) {
-        return applyQuestRoomRequirement(settings).withQuestElementSpawnSkips(questElementSpawnSkips);
+        return DirectorConfigManager.applyQuestRequirements(settings, Map.of(QUEST_ROOM, 1), Map.of(), questElementSpawnSkips);
     }
 
     public static Map<String, Integer> pendingQuestElementSpawnSkips(ServerLevel level) {
@@ -161,12 +194,28 @@ public final class QuestTestScenario {
                 .sorted(Comparator.comparing((QuestObjectZoneTarget target) -> target.zone().id()))
                 .toList();
 
-        PlaceTargetPlan fridgePlan = selectPlaceTarget(placeTriggers, station.seed(), TEST_FRIDGE_TAG);
-        PlaceTargetPlan microwavePlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()));
-        PlaceTargetPlan sinkPlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG);
-        DoorSpawnPlan doorPlan = spawnBrokenRepairDoor(level, station, doorTriggers);
-        EnergyPanelPlan energyPanelPlan = spawnRepairEnergyPanel(level, station);
-        QuestSpawnPlan spawnPlan = spawnPseudoTrash(level, station, questTriggers, objectZoneTriggers, TEST_TRASH_REQUIRED, TEST_TRASH_EXTRA);
+        QuestStationState pendingState = QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID)
+                .orElseGet(() -> createPendingState(level, station));
+        int trashRequired = activeTargetCount(pendingState, StationQuests.CLEAR_TRASH);
+
+        PlaceTargetPlan fridgePlan = hasActiveObjective(pendingState, StationQuests.PLACE_FRIDGE)
+                ? selectPlaceTarget(placeTriggers, station.seed(), TEST_FRIDGE_TAG)
+                : new PlaceTargetPlan(false, "");
+        PlaceTargetPlan microwavePlan = hasActiveObjective(pendingState, StationQuests.PLACE_MICROWAVE)
+                ? selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()))
+                : new PlaceTargetPlan(false, "");
+        PlaceTargetPlan sinkPlan = hasActiveObjective(pendingState, StationQuests.PLACE_KITCHEN_SINK)
+                ? selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG)
+                : new PlaceTargetPlan(false, "");
+        DoorSpawnPlan doorPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_DOORS)
+                ? spawnBrokenRepairDoor(level, station, doorTriggers)
+                : new DoorSpawnPlan(false, "");
+        EnergyPanelPlan energyPanelPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_ELECTRIC_PANEL)
+                ? spawnRepairEnergyPanel(level, station)
+                : new EnergyPanelPlan(false, "");
+        QuestSpawnPlan spawnPlan = trashRequired > 0
+                ? spawnPseudoTrash(level, station, questTriggers, objectZoneTriggers, trashRequired, TEST_TRASH_EXTRA)
+                : new QuestSpawnPlan(0, 0, 0, "", List.of());
         movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
         return true;
     }
@@ -204,6 +253,9 @@ public final class QuestTestScenario {
         if (!code.isBlank()) {
             moved.displayStationCode(code);
         }
+        if (!moved.hasActiveObjectives() && !moved.missionId().isBlank()) {
+            data.markQuestCompleted(moved.missionId());
+        }
         data.remove(PENDING_STATION_ID);
         data.station(moved);
         data.currentStationId(station.id());
@@ -211,8 +263,14 @@ public final class QuestTestScenario {
 
     private static QuestStationState createPendingState(ServerLevel level, StationInstance station) {
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
-        QuestApi.startQuestLocalized(level, PENDING_STATION_ID, pendingTasks(), testTexts(), DURATION_SECONDS, code);
-        return QuestSavedData.get(level).station(PENDING_STATION_ID);
+        DirectorProfileConfig profile = selectProfile(level, level.getRandom(), "");
+        DirectorPlan plan = createDirectorPlan(level, profile, station.seed());
+        QuestApi.startQuestLocalized(level, PENDING_STATION_ID, plan.tasks(), plan.localizations(), profile.durationSeconds(), code, profile.moneyReward());
+        QuestStationState state = QuestSavedData.get(level).station(PENDING_STATION_ID);
+        state.missionId(plan.missionId());
+        state.directorPlan(plan.save());
+        QuestSavedData.get(level).station(state);
+        return state;
     }
 
     private static void storePendingTrashSpawnSkip(ServerLevel level, int trashSpawnSkip) {
@@ -257,7 +315,8 @@ public final class QuestTestScenario {
     }
 
     public static boolean isTestQuest(QuestStationState state) {
-        return state.objective(StationQuests.CLEAR_TRASH).isPresent()
+        return !state.missionId().isBlank()
+                || state.objective(StationQuests.CLEAR_TRASH).isPresent()
                 || state.objective(StationQuests.PLACE_ITEM).isPresent()
                 || state.objective(StationQuests.PLACE_FRIDGE).isPresent()
                 || state.objective(StationQuests.PLACE_MICROWAVE).isPresent()
@@ -268,16 +327,55 @@ public final class QuestTestScenario {
                 || state.objective(StationQuests.REPAIR_ELECTRIC_PANEL).isPresent();
     }
 
-    private static List<QuestTask> pendingTasks() {
-        return List.of(
-                QuestApi.quest(StationQuests.CLEAR_TRASH, TEST_TRASH_REQUIRED),
-                QuestApi.quest(StationQuests.PLACE_FRIDGE, 1),
-                QuestApi.quest(StationQuests.PLACE_MICROWAVE, 1),
-                QuestApi.quest(StationQuests.PLACE_KITCHEN_SINK, 1),
-                QuestApi.quest(StationQuests.REPAIR_BLOCKS, 1),
-                QuestApi.quest(StationQuests.REPAIR_DOORS, 1),
-                QuestApi.quest(StationQuests.REPAIR_ELECTRIC_PANEL, 1)
-        );
+    public static boolean hasAvailableQuest(ServerLevel level) {
+        return !DirectorConfigManager.availableProfiles(level).isEmpty();
+    }
+
+    public static Optional<String> pendingDirectorName(ServerLevel level) {
+        return QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID)
+                .map(QuestStationState::directorPlan)
+                .filter(plan -> !plan.isEmpty())
+                .map(plan -> plan.getString("displayName"))
+                .filter(name -> !name.isBlank());
+    }
+
+    public static Optional<DirectorProfileConfig> pendingDirectorProfile(ServerLevel level) {
+        return QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID)
+                .map(QuestStationState::missionId)
+                .flatMap(DirectorConfigManager::profile);
+    }
+
+    private static DirectorProfileConfig selectProfile(ServerLevel level, RandomSource random, String directorId) {
+        if (directorId != null && !directorId.isBlank()) {
+            return DirectorConfigManager.profile(directorId)
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown StationAreNear Director profile: " + directorId));
+        }
+        return DirectorConfigManager.randomAvailableProfile(level, random)
+                .or(() -> DirectorConfigManager.profile(DEFAULT_DIRECTOR_ID))
+                .or(() -> DirectorConfigManager.defaultProfileConfig())
+                .orElseThrow(() -> new IllegalStateException("No configured StationAreNear Director profiles are available"));
+    }
+
+    private static DirectorContext directorContext(ServerLevel level, long seed) {
+        QuestSavedData data = QuestSavedData.get(level);
+        return new DirectorContext(level, seed, -1, -1, data.completedMissionCount(), data.completedQuestIds());
+    }
+
+    private static DirectorPlan createDirectorPlan(ServerLevel level, DirectorProfileConfig profile, long seed) {
+        return QuestDirector.createPlan(profile, directorContext(level, seed));
+    }
+
+    private static boolean hasActiveObjective(QuestStationState state, String questId) {
+        return state.objective(questId)
+                .map(objective -> !objective.completed())
+                .orElse(false);
+    }
+
+    private static int activeTargetCount(QuestStationState state, String questId) {
+        return state.objective(questId)
+                .filter(objective -> !objective.completed())
+                .map(QuestObjectiveState::targetCount)
+                .orElse(0);
     }
 
     private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan) {
@@ -294,13 +392,14 @@ public final class QuestTestScenario {
 
     private static Map<String, QuestLocalization> testTexts() {
         Map<String, QuestLocalization> texts = new LinkedHashMap<>();
-        texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0441\u0435\u0432\u0434\u043e-\u0433\u0440\u044f\u0437\u044c \u0448\u0432\u0430\u0431\u0440\u043e\u0439", "Clean up the test dirt piles with the mop."));
+        texts.put(StationQuests.CLEAR_TRASH, new QuestLocalization("\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u043c\u0443\u0441\u043e\u0440 \u043d\u0430 \u0441\u0442\u0430\u043d\u0446\u0438\u0438", "Clean up the station trash."));
         texts.put(StationQuests.PLACE_FRIDGE, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0445\u043e\u043b\u043e\u0434\u0438\u043b\u044c\u043d\u0438\u043a \u0440\u044f\u0434\u043e\u043c \u0441 \u0440\u043e\u0437\u0435\u0442\u043a\u043e\u0439", "Install the fridge near the marked power socket."));
         texts.put(StationQuests.PLACE_MICROWAVE, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u043c\u0438\u043a\u0440\u043e\u0432\u043e\u043b\u043d\u043e\u0432\u043a\u0443 \u0440\u044f\u0434\u043e\u043c \u0441 \u0440\u043e\u0437\u0435\u0442\u043a\u043e\u0439", "Install the microwave near the marked power socket."));
         texts.put(StationQuests.PLACE_KITCHEN_SINK, new QuestLocalization("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0440\u0430\u043a\u043e\u0432\u0438\u043d\u0443 \u0440\u044f\u0434\u043e\u043c \u0441 \u0442\u0440\u0443\u0431\u0430\u043c\u0438", "Install the kitchen sink near the marked pipes."));
-        texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u043a\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
-        texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
+        texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u0442\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
+        texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0441\u043b\u043e\u043c\u0430\u043d\u043d\u0443\u044e \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
         texts.put(StationQuests.REPAIR_ELECTRIC_PANEL, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0449\u0438\u0442\u043e\u043a", "Repair the electrical panel with engineering gear."));
+        texts.putAll(DirectorConfigManager.questLocalizations());
         return texts;
     }
 
@@ -352,7 +451,7 @@ public final class QuestTestScenario {
         if (requiredTag == null || requiredTag.isBlank()) {
             return true;
         }
-        String tags = zone.data().contains("tags") ? zone.data().getString("tags") : zone.data().getString("tag");
+        String tags = zone.data().contains(TagsConstants.Keys.TAGS) ? zone.data().getString(TagsConstants.Keys.TAGS) : zone.data().getString(TagsConstants.Keys.TAG);
         if (tags == null || tags.isBlank()) {
             return false;
         }
@@ -400,7 +499,7 @@ public final class QuestTestScenario {
             int remaining = totalToSpawn - totalPlaced;
             int zonesRemaining = clusterZones.size() - i;
             int countForZone = Math.max(1, (remaining + zonesRemaining - 1) / zonesRemaining);
-            int placed = StationTriggerHandlers.placeObjectZoneForQuest(level, station, target.piece(), target.zone(), countForZone);
+            int placed = StationTriggerHandlers.placeBlocksInObjectZoneForQuest(level, target.zone(), DirectorConfigManager.trashBlockStates(), countForZone);
             if (placed <= 0) {
                 continue;
             }
@@ -623,7 +722,8 @@ public final class QuestTestScenario {
     }
 
     private static BlockState pseudoTrashState(int index) {
-        return (index & 1) == 0 ? Blocks.DIRT.defaultBlockState() : Blocks.COARSE_DIRT.defaultBlockState();
+        List<BlockState> trashStates = DirectorConfigManager.trashBlockStates();
+        return trashStates.get(Math.floorMod(index, trashStates.size()));
     }
 
     private static int questElementSpawnSkip(StationInstance station, String questId) {

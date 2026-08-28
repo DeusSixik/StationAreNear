@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.quest.runtime;
 
 import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.config.director.DirectorConfigManager;
 import dev.sixik.stationarenear.quest.data.QuestDefinition;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
@@ -25,6 +26,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -51,10 +53,11 @@ public final class QuestTaskInteractionHandler {
             return;
         }
         BlockState state = event.getState();
-        if (!state.is(QuestTags.TRASH_BLOCKS)) {
+        if (!state.is(QuestTags.TRASH_BLOCKS) && !DirectorConfigManager.isTrashBlock(state)) {
             return;
         }
-        stationPieceAt(level, event.getPos()).ifPresent(context -> incrementCleanup(level, context, event.getPos()));
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        stationPieceAt(level, event.getPos()).ifPresent(context -> incrementCleanup(level, context, event.getPos(), player));
     }
 
     @SubscribeEvent
@@ -67,13 +70,14 @@ public final class QuestTaskInteractionHandler {
             return;
         }
 
+        ServerPlayer player = event.getEntity() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
         BlockState state = event.getPlacedBlock();
-        incrementPlaceItems(level, context.get(), event.getPos(), state);
+        incrementPlaceItems(level, context.get(), event.getPos(), state, player);
         if (state.is(QuestTags.REPAIRABLE_BLOCKS)) {
-            increment(level, context.get().station().id(), StationQuests.REPAIR_BLOCKS, event.getPos());
+            increment(level, context.get().station().id(), StationQuests.REPAIR_BLOCKS, event.getPos(), player);
         }
         if (state.is(QuestTags.BUILD_TARGET_BLOCKS)) {
-            increment(level, context.get().station().id(), StationQuests.BUILD_SHEATHING, event.getPos());
+            increment(level, context.get().station().id(), StationQuests.BUILD_SHEATHING, event.getPos(), player);
         }
     }
 
@@ -82,22 +86,22 @@ public final class QuestTaskInteractionHandler {
         if (StationStructureTriggerType.from(event.getZone().type()) != StationStructureTriggerType.QUEST) {
             return;
         }
-        progressZoneQuest(event.getLevel(), event.getStation().id(), event.getZone(), event.getPlayer().getMainHandItem());
+        progressZoneQuest(event.getLevel(), event.getStation().id(), event.getZone(), event.getPlayer().getMainHandItem(), event.getPlayer());
     }
 
-    private static void progressZoneQuest(ServerLevel level, UUID stationId, PlacedTriggerZone zone, ItemStack stack) {
+    private static void progressZoneQuest(ServerLevel level, UUID stationId, PlacedTriggerZone zone, ItemStack stack, ServerPlayer player) {
         String questId = zone.data().contains("quest", Tag.TAG_STRING) ? zone.data().getString("quest") : zone.id();
         if (questId == null || questId.isBlank()) {
             return;
         }
         if (stack.is(QuestItems.PUTTY_BUCKET.get()) && QuestApi.isActive(level, stationId, StationQuests.REPAIR_BLOCKS)) {
             if (zoneMatches(level, stationId, StationQuests.REPAIR_BLOCKS, zone)) {
-                increment(level, stationId, StationQuests.REPAIR_BLOCKS, zone.min());
+                increment(level, stationId, StationQuests.REPAIR_BLOCKS, zone.min(), player);
             }
         }
         if (stack.is(QuestItems.STATION_SHEATHING.get()) && QuestApi.isActive(level, stationId, StationQuests.BUILD_SHEATHING)) {
             if (zoneMatches(level, stationId, StationQuests.BUILD_SHEATHING, zone)) {
-                increment(level, stationId, StationQuests.BUILD_SHEATHING, zone.min());
+                increment(level, stationId, StationQuests.BUILD_SHEATHING, zone.min(), player);
             }
         }
     }
@@ -131,14 +135,14 @@ public final class QuestTaskInteractionHandler {
         return location != null && ForgeRegistries.ITEMS.getValue(location) == stack.getItem();
     }
 
-    private static void incrementPlaceItems(ServerLevel level, StationPieceContext context, BlockPos pos, BlockState placedState) {
+    private static void incrementPlaceItems(ServerLevel level, StationPieceContext context, BlockPos pos, BlockState placedState, ServerPlayer player) {
         Optional<QuestStationState> station = QuestSavedData.get(level).stationIfPresent(context.station().id());
         if (station.isEmpty()) {
             return;
         }
         for (QuestObjectiveState objective : new java.util.ArrayList<>(station.get().objectives())) {
             if (isPlaceItemObjective(objective)) {
-                incrementPlaceItem(level, context, objective, pos, placedState);
+                incrementPlaceItem(level, context, objective, pos, placedState, player);
             }
         }
     }
@@ -150,7 +154,7 @@ public final class QuestTaskInteractionHandler {
                 .orElse(StationQuests.PLACE_ITEM.equals(objective.id()));
     }
 
-    private static boolean incrementPlaceItem(ServerLevel level, StationPieceContext context, QuestObjectiveState objective, BlockPos pos, BlockState placedState) {
+    private static boolean incrementPlaceItem(ServerLevel level, StationPieceContext context, QuestObjectiveState objective, BlockPos pos, BlockState placedState, ServerPlayer player) {
         if (objective.completed() || alreadyDone(objective, pos)) {
             return false;
         }
@@ -165,7 +169,7 @@ public final class QuestTaskInteractionHandler {
         }
         markDone(level, context.station().id(), objective.id(), pos);
         if (next >= objective.targetCount()) {
-            QuestApi.complete(level, context.station().id(), objective.id());
+            QuestApi.complete(level, context.station().id(), objective.id(), player);
         }
         return true;
     }
@@ -243,17 +247,19 @@ public final class QuestTaskInteractionHandler {
 
     @SubscribeEvent
     public static void onPressureDoorRepaired(PressureTightDoorRepairedEvent event) {
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
         stationPieceAt(event.getLevel(), event.getMasterPos())
-                .ifPresent(context -> incrementRepairDoor(event.getLevel(), context, event.getMasterPos()));
+                .ifPresent(context -> incrementRepairDoor(event.getLevel(), context, event.getMasterPos(), player));
     }
 
     @SubscribeEvent
     public static void onEnergyPanelRepaired(EnergyPanelRepairedEvent event) {
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
         stationPieceAt(event.getLevel(), event.getPos())
-                .ifPresent(context -> incrementRepairElectricPanel(event.getLevel(), context, event.getPos()));
+                .ifPresent(context -> incrementRepairElectricPanel(event.getLevel(), context, event.getPos(), player));
     }
 
-    private static boolean increment(ServerLevel level, UUID stationId, String questId, BlockPos pos) {
+    private static boolean increment(ServerLevel level, UUID stationId, String questId, BlockPos pos, ServerPlayer player) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(stationId)
                 .flatMap(state -> state.objective(questId));
@@ -268,12 +274,12 @@ public final class QuestTaskInteractionHandler {
         }
         markDone(level, stationId, questId, pos);
         if (next >= objective.get().targetCount()) {
-            QuestApi.complete(level, stationId, questId);
+            QuestApi.complete(level, stationId, questId, player);
         }
         return true;
     }
 
-    private static boolean incrementCleanup(ServerLevel level, StationPieceContext context, BlockPos pos) {
+    private static boolean incrementCleanup(ServerLevel level, StationPieceContext context, BlockPos pos, ServerPlayer player) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(context.station().id())
                 .flatMap(state -> state.objective(StationQuests.CLEAR_TRASH));
@@ -291,12 +297,12 @@ public final class QuestTaskInteractionHandler {
         }
         markDone(level, context.station().id(), StationQuests.CLEAR_TRASH, pos);
         if (next >= objective.get().targetCount()) {
-            QuestApi.complete(level, context.station().id(), StationQuests.CLEAR_TRASH);
+            QuestApi.complete(level, context.station().id(), StationQuests.CLEAR_TRASH, player);
         }
         return true;
     }
 
-    private static boolean incrementRepairElectricPanel(ServerLevel level, StationPieceContext context, BlockPos pos) {
+    private static boolean incrementRepairElectricPanel(ServerLevel level, StationPieceContext context, BlockPos pos, ServerPlayer player) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(context.station().id())
                 .flatMap(state -> state.objective(StationQuests.REPAIR_ELECTRIC_PANEL));
@@ -314,12 +320,12 @@ public final class QuestTaskInteractionHandler {
         }
         markDone(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, pos);
         if (next >= objective.get().targetCount()) {
-            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL);
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, player);
         }
         return true;
     }
 
-    private static boolean incrementRepairDoor(ServerLevel level, StationPieceContext context, BlockPos pos) {
+    private static boolean incrementRepairDoor(ServerLevel level, StationPieceContext context, BlockPos pos, ServerPlayer player) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(context.station().id())
                 .flatMap(state -> state.objective(StationQuests.REPAIR_DOORS));
@@ -337,7 +343,7 @@ public final class QuestTaskInteractionHandler {
         }
         markDone(level, context.station().id(), StationQuests.REPAIR_DOORS, pos);
         if (next >= objective.get().targetCount()) {
-            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_DOORS);
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_DOORS, player);
         }
         return true;
     }

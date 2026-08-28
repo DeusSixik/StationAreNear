@@ -10,6 +10,7 @@ import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -110,7 +111,7 @@ public final class QuestAnnouncementHandler {
             return false;
         }
         String type = triggerZone.type() == null ? "" : triggerZone.type().trim();
-        return type.isBlank() || type.equalsIgnoreCase("trigger") || type.equalsIgnoreCase("other");
+        return type.isBlank() || type.equalsIgnoreCase(TagsConstants.Trigger.TRIGGER) || type.equalsIgnoreCase(TagsConstants.Trigger.OTHER);
     }
 
     private static Vec3 center(BoundingBox bounds) {

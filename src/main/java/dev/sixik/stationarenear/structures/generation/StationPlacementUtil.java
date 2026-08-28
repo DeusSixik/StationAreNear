@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.structures.data.StationConnector;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.util.NbtPos;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -96,7 +97,7 @@ public final class StationPlacementUtil {
         CompoundTag data = triggerZone.data().copy();
         rotateTriggerDirection(triggerZone, data, rotation, selectionMin, selectionMax);
         rotateShapePoints(triggerZone, origin, data, bounds, rotation);
-        data.putFloat("stationDanger", danger);
+        data.putFloat(TagsConstants.Keys.STATION_DANGER, danger);
         return new PlacedTriggerZone(
                 triggerZone.id(),
                 triggerZone.type(),

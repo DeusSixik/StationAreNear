@@ -12,6 +12,7 @@ import dev.sixik.stationarenear.quest.data.QuestValueCodec;
 import dev.sixik.stationarenear.quest.event.QuestAssignedEvent;
 import dev.sixik.stationarenear.quest.event.QuestCompletedEvent;
 import dev.sixik.stationarenear.quest.event.QuestMissionCompletedEvent;
+import dev.sixik.stationarenear.quest.event.PlayerQuestMissionCompletedEvent;
 import dev.sixik.stationarenear.quest.event.QuestMissionFailedEvent;
 import dev.sixik.stationarenear.quest.event.QuestProgressChangedEvent;
 import dev.sixik.stationarenear.quest.event.QuestStartedEvent;
@@ -23,6 +24,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
@@ -207,6 +209,10 @@ public final class QuestApi {
      * @return {@code true}, если задача была выполнена именно этим вызовом
      */
     public static boolean complete(ServerLevel level, UUID stationId, String id) {
+        return complete(level, stationId, id, null);
+    }
+
+    public static boolean complete(ServerLevel level, UUID stationId, String id, ServerPlayer player) {
         QuestDefinition definition = requireDefinition(id);
         QuestSavedData data = QuestSavedData.get(level);
         Optional<QuestStationState> stationOptional = data.stationIfPresent(stationId);
@@ -225,11 +231,19 @@ public final class QuestApi {
         CompoundTag progress = QuestValueCodec.encode(definition.progressType(), completedValue);
         stationState.put(objective.complete(progress));
         data.station(stationState);
+        data.markQuestCompleted(definition.id());
 
         MinecraftForge.EVENT_BUS.post(new QuestTaskCompletedEvent(level, stationId, definition, completedValue));
         MinecraftForge.EVENT_BUS.post(new QuestCompletedEvent(level, stationId, definition, completedValue));
         if (!stationState.hasActiveObjectives()) {
-            MinecraftForge.EVENT_BUS.post(new QuestMissionCompletedEvent(level, stationId));
+            if (!stationState.missionId().isBlank()) {
+                data.markQuestCompleted(stationState.missionId());
+            }
+            data.incrementCompletedMissionCount();
+            MinecraftForge.EVENT_BUS.post(new QuestMissionCompletedEvent(level, stationId, stationState.moneyReward()));
+            if (player != null) {
+                MinecraftForge.EVENT_BUS.post(new PlayerQuestMissionCompletedEvent(level, player, stationId, stationState.missionId(), stationState));
+            }
             MinecraftForge.EVENT_BUS.post(new StationQuestsCompletedEvent(level, stationId));
         }
         return true;
@@ -346,31 +360,51 @@ public final class QuestApi {
     }
 
     public static void startQuest(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationSeconds) {
-        startQuestMillis(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L));
+        startQuest(level, stationId, tasks, objectiveTexts, durationSeconds, 0.0D);
+    }
+
+    public static void startQuest(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationSeconds, double moneyReward) {
+        startQuestMillis(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L), moneyReward);
     }
 
     public static void startQuestMillis(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis) {
+        startQuestMillis(level, stationId, tasks, objectiveTexts, durationMillis, 0.0D);
+    }
+
+    public static void startQuestMillis(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis, double moneyReward) {
         Map<String, QuestLocalization> localizations = new Object2ObjectLinkedOpenHashMap<>();
         Map<String, String> sourceTexts = objectiveTexts == null ? Map.of() : objectiveTexts;
         for (Map.Entry<String, String> entry : sourceTexts.entrySet()) {
             localizations.put(normalizeId(entry.getKey()), new QuestLocalization(entry.getValue(), ""));
         }
-        startQuestMillisLocalized(level, stationId, tasks, localizations, durationMillis);
+        startQuestMillisLocalized(level, stationId, tasks, localizations, durationMillis, "", moneyReward);
     }
 
     public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds) {
-        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L));
+        startQuestLocalized(level, stationId, tasks, objectiveTexts, durationSeconds, 0.0D);
+    }
+
+    public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds, double moneyReward) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L), "", moneyReward);
     }
 
     public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds, String stationCode) {
-        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L), stationCode);
+        startQuestLocalized(level, stationId, tasks, objectiveTexts, durationSeconds, stationCode, 0.0D);
+    }
+
+    public static void startQuestLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationSeconds, String stationCode, double moneyReward) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, Math.multiplyExact(durationSeconds, 1000L), stationCode, moneyReward);
     }
 
     public static void startQuestMillisLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationMillis) {
-        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, durationMillis, "");
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, durationMillis, "", 0.0D);
     }
 
     public static void startQuestMillisLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationMillis, String stationCode) {
+        startQuestMillisLocalized(level, stationId, tasks, objectiveTexts, durationMillis, stationCode, 0.0D);
+    }
+
+    public static void startQuestMillisLocalized(ServerLevel level, UUID stationId, Collection<QuestTask> tasks, Map<String, QuestLocalization> objectiveTexts, long durationMillis, String stationCode, double moneyReward) {
         if (tasks == null || tasks.isEmpty()) {
             throw new IllegalArgumentException("Quest must contain at least one task");
         }
@@ -381,6 +415,7 @@ public final class QuestApi {
         QuestSavedData data = QuestSavedData.get(level);
         QuestStationState stationState = data.station(stationId);
         stationState.displayStationCode(stationCode);
+        stationState.moneyReward(moneyReward);
         List<QuestTask> normalizedTasks = new ArrayList<>();
         Map<String, String> normalizedTexts = new Object2ObjectLinkedOpenHashMap<>();
         Map<String, String> normalizedSamTexts = new Object2ObjectLinkedOpenHashMap<>();
@@ -413,7 +448,7 @@ public final class QuestApi {
         data.currentStationId(stationId);
 
         String announcement = missionAnnouncement(level, stationId, normalizedTasks, normalizedSamTexts, durationMillis, stationCode);
-        MinecraftForge.EVENT_BUS.post(new QuestStartedEvent(level, stationId, normalizedTasks, normalizedTexts, durationMillis, announcement));
+        MinecraftForge.EVENT_BUS.post(new QuestStartedEvent(level, stationId, normalizedTasks, normalizedTexts, durationMillis, announcement, stationState.moneyReward()));
     }
 
     /**
@@ -519,20 +554,16 @@ public final class QuestApi {
     }
 
     /**
-     * Удобная перегрузка для {@link #startTimer(ServerLevel, UUID, long)}.
+     * Удобная перегрузка для {@link #startQuest(ServerLevel, UUID, Collection, Map, long)}.
      * Пытается автоматически найти level, к которому относится станция.
-     */
-    /**
-     * ??????? ?????????? ??? {@link #startQuest(ServerLevel, UUID, Collection, Map, long)}.
-     * ???????? ????????????? ????? level, ? ???????? ????????? ???????.
      */
     public static void startQuest(UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationSeconds) {
         startQuest(requireLevel(stationId), stationId, tasks, objectiveTexts, durationSeconds);
     }
 
     /**
-     * ??????? ?????????? ??? {@link #startQuestMillis(ServerLevel, UUID, Collection, Map, long)}.
-     * ???????? ????????????? ????? level, ? ???????? ????????? ???????.
+     * Удобная перегрузка для {@link #startQuestMillis(ServerLevel, UUID, Collection, Map, long)}.
+     * Пытается автоматически найти level, к которому относится станция.
      */
     public static void startQuestMillis(UUID stationId, Collection<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis) {
         startQuestMillis(requireLevel(stationId), stationId, tasks, objectiveTexts, durationMillis);

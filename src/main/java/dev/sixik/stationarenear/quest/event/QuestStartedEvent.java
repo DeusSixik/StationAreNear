@@ -16,14 +16,20 @@ public class QuestStartedEvent extends Event {
     private final Map<String, String> objectiveTexts;
     private final long durationMillis;
     private final String announcementText;
+    private final double moneyReward;
 
     public QuestStartedEvent(ServerLevel level, UUID stationId, List<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis, String announcementText) {
+        this(level, stationId, tasks, objectiveTexts, durationMillis, announcementText, 0.0D);
+    }
+
+    public QuestStartedEvent(ServerLevel level, UUID stationId, List<QuestTask> tasks, Map<String, String> objectiveTexts, long durationMillis, String announcementText, double moneyReward) {
         this.level = level;
         this.stationId = stationId;
         this.tasks = List.copyOf(tasks);
         this.objectiveTexts = Map.copyOf(objectiveTexts);
         this.durationMillis = durationMillis;
         this.announcementText = announcementText;
+        this.moneyReward = Double.isFinite(moneyReward) ? Math.max(0.0D, moneyReward) : 0.0D;
     }
 
     public ServerLevel getLevel() {
@@ -48,5 +54,9 @@ public class QuestStartedEvent extends Event {
 
     public String getAnnouncementText() {
         return announcementText;
+    }
+
+    public double getMoneyReward() {
+        return moneyReward;
     }
 }

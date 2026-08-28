@@ -1,22 +1,19 @@
 package dev.sixik.stationarenear.navigation.network.packet;
 
-import dev.sixik.stationarenear.navigation.SolarNavigationConfig;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
+import dev.sixik.stationarenear.navigation.server.SolarNavigationStationGenerationConfig;
 import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
-import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.generation.StationGenerator;
-import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -27,10 +24,6 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.function.Supplier;
 
 public record DockSolarStationPacket(BlockPos terminalPos, String stationName, String stationCode, long stationSeed, boolean quest, float stationX, float stationY) {
-
-    private static final ResourceLocation DEFAULT_POOL = StationStructureIds.pool("space_station");
-    private static final int MIN_ROOMS = 10;
-    private static final int MAX_FLOORS = 1;
 
     public void encode(FriendlyByteBuf buffer) {
         buffer.writeBlockPos(terminalPos);
@@ -90,13 +83,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         Direction stationDirection = dockingAnchor.stationDirection();
         BlockPos doorCenter = dockingAnchor.doorCenter();
         long generationSeed = packet.stationSeed() ^ level.getSeed() ^ Mth.getSeed(packet.terminalPos());
-        float missionDanger = packet.quest() ? 0.55F : 0.35F;
-
-        int maxRooms = Math.max(MIN_ROOMS, SolarNavigationConfig.DUNGEON_PREVIEW_MAX_ROOMS.get() + 8);
-        StationGenerationSettings fallbackSettings = new StationGenerationSettings(DEFAULT_POOL, missionDanger, true, MAX_FLOORS, MIN_ROOMS, maxRooms, generationSeed);
-        StationGenerationSettings generationSettings = StationStructureConfigManager.random(level.getRandom())
-                .map(config -> config.createSettings(level.getRandom(), generationSeed))
-                .orElse(fallbackSettings);
+        StationGenerationSettings generationSettings = SolarNavigationStationGenerationConfig.create(level, packet.quest(), generationSeed);
         if (packet.quest()) {
             generationSettings = QuestTestScenario.applyQuestRoomRequirement(generationSettings, QuestTestScenario.pendingQuestElementSpawnSkips(level));
         }

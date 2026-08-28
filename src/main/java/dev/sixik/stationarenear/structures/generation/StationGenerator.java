@@ -33,6 +33,8 @@ import java.util.Set;
 
 public class StationGenerator {
 
+    private final Map<ResourceLocation, Optional<StructureTemplate>> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     private static final int FLOOR_HEIGHT_BLOCKS = 16;
     private static final int START_BOUNDARY_DEAD_END_DISTANCE = 4;
     private static final int START_BOUNDARY_DEAD_END_SCORE_BONUS = 8_000;
@@ -52,6 +54,15 @@ public class StationGenerator {
     private static final int CANDIDATE_SCORE_WEIGHT_CAP = 96;
     private static final int FLOOR_TRANSITION_NEEDED_SCORE_BONUS = 9_000;
     private static final int FLOOR_TRANSITION_SCORE_BONUS = 140;
+    private static final int LAYOUT_THREAD_COUNT = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
+    private static final java.util.concurrent.ExecutorService LAYOUT_EXECUTOR = java.util.concurrent.Executors.newFixedThreadPool(
+            LAYOUT_THREAD_COUNT,
+            task -> {
+                Thread thread = new Thread(task, "StationAreNear layout planner");
+                thread.setDaemon(true);
+                return thread;
+            }
+    );
     private static final Set<String> FLOOR_TRANSITION_TAGS = Set.of(
             "stair",
             "stairs",
@@ -81,6 +92,7 @@ public class StationGenerator {
         StationPoolDefinition pool = poolOptional.get();
         RandomSource random = RandomSource.create(settings.seed());
         float danger = settings.rollDanger(random);
+        preloadTemplates(level, library, danger);
         StationBoundary boundary = new StationBoundary(shuttleDoorCenter, stationDirection);
         StationLayout layout = planStationLayout(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary);
         if (layout == null) {
@@ -235,8 +247,52 @@ public class StationGenerator {
             float danger,
             StationBoundary boundary
     ) {
-        StationLayout bestLayout = null;
         int attempts = layoutAttemptCount(settings.maxRooms());
+        if (LAYOUT_THREAD_COUNT <= 1 || attempts <= 1) {
+            return planStationLayoutSync(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary, attempts);
+        }
+
+        List<java.util.concurrent.CompletableFuture<StationLayout>> futures = new ArrayList<>(attempts);
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            final long attemptSeed = settings.seed() ^ (0x9E3779B97F4A7C15L * (attempt + 1L));
+            futures.add(java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> buildLayoutAttempt(
+                            level,
+                            library,
+                            pool,
+                            shuttleDoorCenter,
+                            stationDirection,
+                            settings,
+                            danger,
+                            boundary,
+                            RandomSource.create(attemptSeed)
+                    ),
+                    LAYOUT_EXECUTOR
+            ).exceptionally(exception -> null));
+        }
+
+        StationLayout bestLayout = null;
+        for (java.util.concurrent.CompletableFuture<StationLayout> future : futures) {
+            StationLayout layout = future.join();
+            if (layout != null && (bestLayout == null || layout.score() > bestLayout.score())) {
+                bestLayout = layout;
+            }
+        }
+        return bestLayout;
+    }
+
+    private StationLayout planStationLayoutSync(
+            ServerLevel level,
+            StationStructureLibraryData library,
+            StationPoolDefinition pool,
+            BlockPos shuttleDoorCenter,
+            Direction stationDirection,
+            StationGenerationSettings settings,
+            float danger,
+            StationBoundary boundary,
+            int attempts
+    ) {
+        StationLayout bestLayout = null;
         for (int attempt = 0; attempt < attempts; attempt++) {
             long attemptSeed = settings.seed() ^ (0x9E3779B97F4A7C15L * (attempt + 1L));
             StationLayout layout = buildLayoutAttempt(
@@ -265,6 +321,14 @@ public class StationGenerator {
 
     private int layoutAttemptCount(int maxRooms) {
         return Math.max(12, Math.min(48, maxRooms * 4));
+    }
+
+    private void preloadTemplates(ServerLevel level, StationStructureLibraryData library, float danger) {
+        for (StationPieceDefinition definition : library.pieces()) {
+            if (definition.canSpawnAtDanger(danger)) {
+                templateCache.computeIfAbsent(definition.template(), id -> level.getStructureManager().get(id));
+            }
+        }
     }
 
     private StationLayout buildLayoutAttempt(
@@ -337,9 +401,10 @@ public class StationGenerator {
         }
 
         capRemainingOpenConnectors(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors, pieceUsage);
-        pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
         repairDanglingSections(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors);
-        pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
+        if (!openConnectors.isEmpty()) {
+            return null;
+        }
         syncPieceOpenConnectors(pieces, openConnectors);
         return new StationLayout(new ObjectArrayList<>(pieces), new ObjectArrayList<>(openConnectors), scoreLayout(pieces, openConnectors, boundary, requiredMinRooms, targetPieces));
     }
@@ -437,7 +502,7 @@ public class StationGenerator {
             if (!pieceAllowedForFloors(definition, maxFloors)) {
                 continue;
             }
-            Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+            Optional<StructureTemplate> template = template(definition);
             if (template.isEmpty()) {
                 continue;
             }
@@ -457,7 +522,8 @@ public class StationGenerator {
                     continue;
                 }
                 List<BoundingBox> startCollisionBounds = List.of(piece.bounds());
-                if (!requiredPassageConnectorsUsable(piece.openConnectors(), startCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
+                if (!requiredPassageConnectorsUsable(piece.openConnectors(), startCollisionBounds, boundary, allowVerticalConnections(maxFloors))
+                        || hasUnfillableOpenConnector(piece.openConnectors(), List.of(), null, List.of(), boundary, allowVerticalConnections(maxFloors))) {
                     continue;
                 }
                 int normalContinuations = normalUsableOpenConnectors(piece.openConnectors(), startCollisionBounds, boundary, allowVerticalConnections(maxFloors)).size();
@@ -512,7 +578,7 @@ public class StationGenerator {
                 if (!pieceAllowedForFloors(definition, maxFloors) || (forceRequiredPiece && requiredPieceRemaining(settings, pieceUsage, tagUsage, definition) <= 0)) {
                     continue;
                 }
-                Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+                Optional<StructureTemplate> template = template(definition);
                 if (template.isEmpty()) {
                     continue;
                 }
@@ -544,7 +610,8 @@ public class StationGenerator {
                     List<BoundingBox> reservedWithCandidate = new ObjectArrayList<>(reservedClearances);
                     reserveExteriorClearance(definition, piece, reservedWithCandidate);
                     List<BoundingBox> candidateCollisionBounds = collisionBounds(occupiedWithCandidate, reservedWithCandidate);
-                    if (!requiredPassageConnectorsUsable(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
+                    if (!requiredPassageConnectorsUsable(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections(maxFloors))
+                            || hasUnfillableOpenConnector(piece.openConnectors(), openConnectors, openConnector, currentCollisionBounds, boundary, allowVerticalConnections(maxFloors))) {
                         continue;
                     }
                     List<StationConnector> usable = normalUsableOpenConnectors(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections(maxFloors));
@@ -608,6 +675,29 @@ public class StationGenerator {
             }
         }
         return true;
+    }
+
+    private boolean hasUnfillableOpenConnector(
+            List<StationConnector> candidateConnectors,
+            List<StationConnector> openConnectors,
+            StationConnector sourceConnector,
+            List<BoundingBox> currentCollisionBounds,
+            StationBoundary boundary,
+            boolean allowVerticalConnections
+    ) {
+        for (StationConnector connector : candidateConnectors) {
+            if (connector.requiresPassage() || !isRoomLinkConnector(connector, allowVerticalConnections)) {
+                continue;
+            }
+            if (isUsableConnector(connector, currentCollisionBounds, boundary, allowVerticalConnections)) {
+                continue;
+            }
+            if (findMatchingOpenConnector(openConnectors, connector, sourceConnector) != null) {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 
     private boolean isUsableConnector(StationConnector connector, List<BoundingBox> occupied, StationBoundary boundary, boolean allowVerticalConnections) {
@@ -973,7 +1063,7 @@ public class StationGenerator {
             if (!pieceAllowedForFloors(definition, maxFloors) || roomLinkConnectorCount(definition.connectors()) <= 1 || hasRequiredPassageConnector(definition.connectors())) {
                 continue;
             }
-            Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+            Optional<StructureTemplate> template = template(definition);
             if (template.isEmpty()) {
                 continue;
             }
@@ -1001,6 +1091,9 @@ public class StationGenerator {
                 occupiedWithCandidate.add(piece.bounds());
                 List<BoundingBox> reservedWithCandidate = new ObjectArrayList<>(reservedClearances);
                 reserveExteriorClearance(definition, piece, reservedWithCandidate);
+                if (hasUnfillableOpenConnector(piece.openConnectors(), openConnectors, openConnector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections(maxFloors))) {
+                    continue;
+                }
                 List<StationConnector> usable = normalUsableOpenConnectors(piece.openConnectors(), collisionBounds(occupiedWithCandidate, reservedWithCandidate), boundary, allowVerticalConnections(maxFloors));
                 int mainClosures = secondaryConnectorClosureCountToTargets(piece, mainTargets, openConnector);
                 if (usable.isEmpty() && mainClosures == 0) {
@@ -1336,7 +1429,7 @@ public class StationGenerator {
         shuffleWeighted(candidates, random);
 
         for (StationPieceDefinition definition : candidates) {
-            Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+            Optional<StructureTemplate> template = template(definition);
             if (template.isEmpty()) {
                 continue;
             }
@@ -1778,6 +1871,10 @@ public class StationGenerator {
                 random.nextInt(Math.max(1, right.weight())),
                 random.nextInt(Math.max(1, left.weight()))
         ));
+    }
+
+    private Optional<StructureTemplate> template(StationPieceDefinition definition) {
+        return templateCache.getOrDefault(definition.template(), Optional.empty());
     }
 
     private PlacedStationPiece buildPlacedPiece(

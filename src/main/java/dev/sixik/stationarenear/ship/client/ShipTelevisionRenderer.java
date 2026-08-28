@@ -155,9 +155,9 @@ public class ShipTelevisionRenderer implements BlockEntityRenderer<ShipTelevisio
     private static void rotateToFacing(PoseStack poseStack, Direction facing) {
         poseStack.translate(0.5D, 0.0D, 0.5D);
         poseStack.mulPose(Axis.YP.rotationDegrees(switch (facing) {
-            case EAST -> 90.0F;
+            case EAST -> 270.0F;
             case SOUTH -> 180.0F;
-            case WEST -> 270.0F;
+            case WEST -> 90.0F;
             default -> 0.0F;
         }));
         poseStack.translate(-0.5D, 0.0D, -0.5D);

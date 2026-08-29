@@ -65,7 +65,9 @@ public final class QuestItems {
                         output.accept(QuestBlocks.ENERGY_PANEL_ITEM.get());
                         output.accept(QuestBlocks.BROKEN_ENERGY_PANEL_ITEM.get());
                         output.accept(QuestBlocks.OXYGEN_PANEL_ITEM.get());
+                        output.accept(QuestBlocks.BROKEN_OXYGEN_PANEL_ITEM.get());
                         output.accept(QuestBlocks.GRAVITATION_PANEL_ITEM.get());
+                        output.accept(QuestBlocks.BROKEN_GRAVITATION_PANEL_ITEM.get());
                         output.accept(QuestBlocks.CONSOLE_NO_ANGLE_ITEM.get());
                         output.accept(QuestBlocks.WORKBENCH_ITEM.get());
                         output.accept(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get());

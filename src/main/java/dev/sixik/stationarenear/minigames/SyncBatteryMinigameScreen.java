@@ -6,6 +6,7 @@ import dev.sixik.unigui.api.core.InvalidationFlags;
 import dev.sixik.unigui.api.core.UIContext;
 import dev.sixik.unigui.api.core.UnityLikeUIScaleProvider;
 import dev.sixik.unigui.api.event.*;
+import dev.sixik.unigui.api.input.KeyCodes;
 import dev.sixik.unigui.api.input.MouseCursor;
 import dev.sixik.unigui.api.input.PointerButton;
 import dev.sixik.unigui.api.layout.Alignment;
@@ -25,6 +26,7 @@ import dev.sixik.unigui.widgets.feedback.OverlayLayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -73,6 +75,16 @@ public final class SyncBatteryMinigameScreen {
             @Override
             public void onClose() {
                 Minecraft.getInstance().setScreen(previous);
+            }
+
+            @Override
+            public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+
+                if(keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                    onClose();
+                }
+
+                return super.keyPressed(keyCode, scanCode, modifiers);
             }
         };
         closeAction[0] = screen::onClose;

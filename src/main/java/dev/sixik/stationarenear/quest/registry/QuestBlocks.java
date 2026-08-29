@@ -103,6 +103,11 @@ public final class QuestBlocks {
             () -> new BlockItem(OXYGEN_PANEL.get(), new Item.Properties())
     );
 
+    public static final RegistryObject<Item> BROKEN_OXYGEN_PANEL_ITEM = ITEMS.register(
+            "broken_oxygen_panel",
+            () -> new dev.sixik.stationarenear.quest.item.BrokenWallMountedPanelItem(OXYGEN_PANEL.get(), new Item.Properties())
+    );
+
     public static final RegistryObject<WallMountedPanelBlock> GRAVITATION_PANEL = BLOCKS.register(
             "gravitation_panel",
             () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
@@ -117,6 +122,11 @@ public final class QuestBlocks {
     public static final RegistryObject<Item> GRAVITATION_PANEL_ITEM = ITEMS.register(
             "gravitation_panel",
             () -> new BlockItem(GRAVITATION_PANEL.get(), new Item.Properties())
+    );
+
+    public static final RegistryObject<Item> BROKEN_GRAVITATION_PANEL_ITEM = ITEMS.register(
+            "broken_gravitation_panel",
+            () -> new dev.sixik.stationarenear.quest.item.BrokenWallMountedPanelItem(GRAVITATION_PANEL.get(), new Item.Properties())
     );
 
     public static final RegistryObject<ConsoleNoAngleBlock> CONSOLE_NO_ANGLE = BLOCKS.register(

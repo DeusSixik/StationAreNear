@@ -1,18 +1,33 @@
 {
   "variants": {
-    "facing=north": {
+    "broken=false,facing=north": {
       "model": "stationarenear:block/oxygen_panel"
     },
-    "facing=east": {
+    "broken=false,facing=east": {
       "model": "stationarenear:block/oxygen_panel",
       "y": 90
     },
-    "facing=south": {
+    "broken=false,facing=south": {
       "model": "stationarenear:block/oxygen_panel",
       "y": 180
     },
-    "facing=west": {
+    "broken=false,facing=west": {
       "model": "stationarenear:block/oxygen_panel",
+      "y": 270
+    },
+    "broken=true,facing=north": {
+      "model": "stationarenear:block/oxygen_panel_broken"
+    },
+    "broken=true,facing=east": {
+      "model": "stationarenear:block/oxygen_panel_broken",
+      "y": 90
+    },
+    "broken=true,facing=south": {
+      "model": "stationarenear:block/oxygen_panel_broken",
+      "y": 180
+    },
+    "broken=true,facing=west": {
+      "model": "stationarenear:block/oxygen_panel_broken",
       "y": 270
     }
   }

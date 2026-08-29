@@ -1,16 +1,29 @@
 package dev.sixik.stationarenear.quest.block;
 
+import dev.sixik.stationarenear.minigames.SyncBatteryMinigameScreen;
+import dev.sixik.stationarenear.quest.network.QuestNetwork;
+import dev.sixik.stationarenear.quest.registry.QuestItems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -19,6 +32,7 @@ import org.jetbrains.annotations.Nullable;
 public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
 
     public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
+    public static final BooleanProperty BROKEN = BooleanProperty.create("broken");
 
     private final VoxelShape northShape;
     private final VoxelShape eastShape;
@@ -32,7 +46,9 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
         this.eastShape = Block.box(0.0D, 0.0D, 0.0D, clampedThickness, 16.0D, 16.0D);
         this.southShape = Block.box(0.0D, 0.0D, 0.0D, 16.0D, 16.0D, clampedThickness);
         this.westShape = Block.box(16.0D - clampedThickness, 0.0D, 0.0D, 16.0D, 16.0D, 16.0D);
-        registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
+        registerDefaultState(stateDefinition.any()
+                .setValue(FACING, Direction.NORTH)
+                .setValue(BROKEN, false));
     }
 
     @Nullable
@@ -41,7 +57,46 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
         Direction facing = context.getClickedFace().getAxis().isHorizontal()
                 ? context.getClickedFace()
                 : context.getHorizontalDirection().getOpposite();
-        return defaultBlockState().setValue(FACING, facing);
+        return defaultBlockState()
+                .setValue(FACING, facing)
+                .setValue(BROKEN, false);
+    }
+
+    @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        if (state.getValue(BROKEN)) {
+            ItemStack heldItem = player.getItemInHand(hand);
+            if (!heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+                if (!level.isClientSide) {
+                    player.displayClientMessage(Component.literal("Нужен инженерный инструмент (Engineering Gear) для починки панели."), true);
+                }
+                return InteractionResult.sidedSuccess(level.isClientSide);
+            }
+
+            if (level.isClientSide) {
+                SyncBatteryMinigameScreen.open(() -> {
+                    QuestNetwork.sendRepairWallPanel(pos);
+                });
+            }
+            return InteractionResult.sidedSuccess(level.isClientSide);
+        }
+
+        if (!level.isClientSide) {
+            player.displayClientMessage(Component.literal("Панель исправна и работает в штатном режиме."), true);
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    public static void performRepair(ServerLevel level, BlockPos pos, Player player, InteractionHand hand) {
+        BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof WallMountedPanelBlock && state.getValue(BROKEN)) {
+            level.setBlock(pos, state.setValue(BROKEN, false), 3);
+            ItemStack heldItem = player.getItemInHand(hand);
+            if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
+                heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));
+            }
+            player.displayClientMessage(Component.literal("Панель успешно починена и синхронизирована."), true);
+        }
     }
 
     @Override
@@ -86,6 +141,6 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING);
+        builder.add(FACING, BROKEN);
     }
 }

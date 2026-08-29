@@ -51,7 +51,7 @@ public final class StationCodeGenerator {
         return normalize(stationCode).equals(normalizedQuery);
     }
 
-    private static long mix(long value) {
+    public static long mix(long value) {
         value ^= value >>> 33;
         value *= 0xff51afd7ed558ccdL;
         value ^= value >>> 33;
@@ -60,7 +60,7 @@ public final class StationCodeGenerator {
         return value & Long.MAX_VALUE;
     }
 
-    private static long pow36(int length) {
+    public static long pow36(int length) {
         long value = 1L;
         for (int i = 0; i < length; i++) {
             value *= 36L;

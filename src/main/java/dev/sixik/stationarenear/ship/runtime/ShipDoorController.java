@@ -75,6 +75,29 @@ public final class ShipDoorController {
                 return Optional.of(new DoorLookup(masterPos, PressureTightDoorBlock.isOpen(masterState)));
             }
         }
+
+        for (BlockPos pos : BlockPos.betweenClosed(anchor.anchorPos().offset(-3, -2, -3), anchor.anchorPos().offset(3, 3, 3))) {
+            BlockState state = level.getBlockState(pos);
+            if (state.getBlock() instanceof PressureTightDoorBlock) {
+                BlockPos masterPos = PressureTightDoorBlock.masterPos(pos, state);
+                BlockState masterState = level.getBlockState(masterPos);
+                if (masterState.getBlock() instanceof PressureTightDoorBlock) {
+                    return Optional.of(new DoorLookup(masterPos, PressureTightDoorBlock.isOpen(masterState)));
+                }
+            }
+        }
+
+        for (BlockPos pos : BlockPos.betweenClosed(anchor.shipBounds().minX(), anchor.shipBounds().minY(), anchor.shipBounds().minZ(), anchor.shipBounds().maxX(), anchor.shipBounds().maxY(), anchor.shipBounds().maxZ())) {
+            BlockState state = level.getBlockState(pos);
+            if (state.getBlock() instanceof PressureTightDoorBlock) {
+                BlockPos masterPos = PressureTightDoorBlock.masterPos(pos, state);
+                BlockState masterState = level.getBlockState(masterPos);
+                if (masterState.getBlock() instanceof PressureTightDoorBlock) {
+                    return Optional.of(new DoorLookup(masterPos, PressureTightDoorBlock.isOpen(masterState)));
+                }
+            }
+        }
+
         return Optional.empty();
     }
 

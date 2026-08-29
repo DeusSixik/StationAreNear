@@ -70,6 +70,9 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         if (SolarNavigationStationCleaner.hasDockedStation(level, packet.terminalPos(), packet.stationSeed())) {
             SolarNavigationControlManager.forceStop(level, packet.terminalPos());
             ShipManager.setDocking(level, packet.terminalPos(), true);
+            if (ShipManager.state(level, packet.terminalPos()).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.AUTO_DOORS)) {
+                dev.sixik.stationarenear.ship.runtime.ShipDoorController.setOpen(level, packet.terminalPos(), true);
+            }
             player.displayClientMessage(Component.literal("Already docked with " + packet.stationName() + "."), false);
             return;
         }
@@ -116,9 +119,8 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         });
         SolarNavigationControlManager.forceStop(level, packet.terminalPos());
         ShipManager.setDocking(level, packet.terminalPos(), true);
-
-//        int pieces = result.station().map(station -> station.pieces().size()).orElse(0);
-//        String cleanupMessage = clearedOldStations > 0 ? " cleared old=" + clearedOldStations : "";
-//        player.displayClientMessage(Component.literal("Docked with " + packet.stationCode() + ": generated " + pieces + " station pieces." + cleanupMessage), false);
+        if (ShipManager.state(level, packet.terminalPos()).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.AUTO_DOORS)) {
+            dev.sixik.stationarenear.ship.runtime.ShipDoorController.setOpen(level, packet.terminalPos(), true);
+        }
     }
 }

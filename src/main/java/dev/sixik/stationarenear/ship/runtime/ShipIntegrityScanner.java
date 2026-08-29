@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.ship.runtime;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
+import dev.sixik.stationarenear.ship.data.ShipState;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
@@ -36,8 +37,14 @@ public final class ShipIntegrityScanner {
         }
 
         ShipDockingAnchor value = anchor.get();
-        boolean docked = isDocked(level, terminalPos, value) || ShipManager.state(level, terminalPos).isDocking();
+        ShipState shipState = ShipManager.state(level, terminalPos);
+        boolean docked = isDocked(level, terminalPos, value) || shipState.isDocking();
         boolean doorOpen = isDoorOpen(level, value);
+
+        if (shipState.hp() <= 0.0F) {
+            return new IntegrityReport(true, true, doorOpen, docked, "hull_destroyed");
+        }
+
         BlockPos navigationTerminal = navigationTerminal(level, terminalPos, value);
         ClosureResult closure = docked ? ClosureResult.closedResult() : closedSystem(level, value, navigationTerminal, false);
         boolean decompressed = !closure.sealed();

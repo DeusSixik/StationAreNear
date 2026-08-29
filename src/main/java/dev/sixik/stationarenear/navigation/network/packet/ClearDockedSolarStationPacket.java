@@ -55,6 +55,9 @@ public record ClearDockedSolarStationPacket(BlockPos terminalPos, String station
         int cleared = SolarNavigationStationCleaner.clearByNavigationSeed(level, packet.stationSeed());
         if (cleared > 0) {
             ShipManager.setDocking(level, packet.terminalPos(), false);
+            if (ShipManager.state(level, packet.terminalPos()).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.AUTO_DOORS)) {
+                dev.sixik.stationarenear.ship.runtime.ShipDoorController.setOpen(level, packet.terminalPos(), false);
+            }
             player.displayClientMessage(Component.literal("Undocked from " + packet.stationCode() + ": cleared generated station."), false);
         }
     }

@@ -37,6 +37,9 @@ public class PressureTightDoorBlockEntity extends BlockEntity implements GeoBloc
     public void setDoorId(String doorId) {
         this.doorId = doorId == null ? "" : doorId.trim().toUpperCase(java.util.Locale.ROOT);
         setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
     }
 
     public void markAnimationDirty() {
@@ -75,6 +78,19 @@ public class PressureTightDoorBlockEntity extends BlockEntity implements GeoBloc
     public void load(CompoundTag tag) {
         super.load(tag);
         doorId = tag.contains("doorId") ? tag.getString("doorId") : "";
+    }
+
+    @Override
+    public CompoundTag getUpdateTag() {
+        CompoundTag tag = super.getUpdateTag();
+        saveAdditional(tag);
+        return tag;
+    }
+
+    @org.jetbrains.annotations.Nullable
+    @Override
+    public net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket getUpdatePacket() {
+        return net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket.create(this);
     }
 
     @Override

@@ -128,7 +128,28 @@ public final class RetroTerminalScreen {
             return false;
         }
 
-        return minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) > BLOCK_UI_MAX_DISTANCE_SQ;
+        if (minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) <= BLOCK_UI_MAX_DISTANCE_SQ) {
+            return false;
+        }
+
+        BlockPos playerPos = minecraft.player.blockPosition();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int dx = -3; dx <= 3; dx++) {
+            for (int dy = -3; dy <= 3; dy++) {
+                for (int dz = -3; dz <= 3; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    net.minecraft.world.level.block.state.BlockState state = minecraft.level.getBlockState(mutable);
+                    if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.CONSOLE_NO_ANGLE.get())
+                            || state.is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())) {
+                        if (minecraft.player.distanceToSqr(Vec3.atCenterOf(mutable)) <= BLOCK_UI_MAX_DISTANCE_SQ) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     public static void syncHistory(BlockPos terminalPos, List<TerminalHistoryLine> history) {
@@ -487,7 +508,7 @@ public final class RetroTerminalScreen {
                 registerCommand(command.command(), command.description(), switch (command.command()) {
                     case "help" -> (console, call) -> appendHelp(console);
                     case "status" -> (console, call) -> appendStatus(console);
-                    case "modules" -> (console, call) -> appendModules(console);
+                    case "modules" -> (console, call) -> console.appendInfo("Submit /modules to list upgrade requirements, or /modules buy <name>.");
                     case "door" -> (console, call) -> console.appendInfo("Submit /door open, /door close, or /door open <id> for station doors.");
                     case "tv" -> (console, call) -> console.appendInfo("Submit /tv text <message>, /tv ship_status, /tv ship_scan or /tv clear.");
                     case "tv_clear" -> (console, call) -> console.appendInfo("Submit /tv_clear to clear manual TV text.");
@@ -551,6 +572,31 @@ public final class RetroTerminalScreen {
                 addTvCompletion(items, typed, "0.75", "tv_scale 0.75", "smaller TV text", valueStart, input.length());
                 addTvCompletion(items, typed, "1.0", "tv_scale 1.0", "default TV text", valueStart, input.length());
                 addTvCompletion(items, typed, "1.5", "tv_scale 1.5", "larger TV text", valueStart, input.length());
+                return items;
+            }
+
+            if (lower.startsWith("modules ") || lower.equals("modules") || lower.startsWith("module ") || lower.equals("module")) {
+                int prefixLen = lower.startsWith("modules") ? 7 : 6;
+                String after = normalized.length() <= prefixLen ? "" : normalized.substring(prefixLen);
+                String trimmedAfter = after.trim();
+                String[] parts = trimmedAfter.isEmpty() ? new String[0] : trimmedAfter.split("\\s+", 2);
+                String sub = parts.length > 0 ? parts[0].toLowerCase(Locale.ROOT) : "";
+                int subStart = commandStart + prefixLen + (after.startsWith(" ") ? 1 : 0);
+                List<CompletionItem> items = new ArrayList<>();
+
+                if (parts.length <= 1 && !trimmedAfter.startsWith("buy ") && !trimmedAfter.startsWith("install ")) {
+                    addTvCompletion(items, sub, "buy ", "modules buy <Module Name>", "purchase ship upgrade", subStart, input.length());
+                }
+
+                if (sub.equals("buy") || sub.equals("install") || trimmedAfter.startsWith("buy ") || trimmedAfter.startsWith("install ")) {
+                    String moduleTyped = parts.length > 1 ? parts[1].trim().toLowerCase(Locale.ROOT) : "";
+                    int moduleStart = subStart + sub.length() + 1;
+                    for (dev.sixik.stationarenear.ship.data.ShipSystemType type : dev.sixik.stationarenear.ship.data.ShipSystemType.values()) {
+                        if (type.isUpgrade()) {
+                            addTvCompletion(items, moduleTyped, type.id(), "modules buy " + type.id(), type.displayName(), moduleStart, input.length());
+                        }
+                    }
+                }
                 return items;
             }
 

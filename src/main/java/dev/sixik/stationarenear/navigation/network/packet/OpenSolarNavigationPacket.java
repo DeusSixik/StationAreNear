@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> dockedStations) {
+public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> dockedStations, boolean hasManeuverability, boolean hasStationLocator) {
 
     public OpenSolarNavigationPacket {
         questMarkers = List.copyOf(questMarkers);
@@ -32,6 +32,8 @@ public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNa
         for (SolarNavigationDockedStation station : dockedStations) {
             station.encode(buffer);
         }
+        buffer.writeBoolean(hasManeuverability);
+        buffer.writeBoolean(hasStationLocator);
     }
 
     public static OpenSolarNavigationPacket decode(FriendlyByteBuf buffer) {
@@ -48,13 +50,15 @@ public record OpenSolarNavigationPacket(long seed, BlockPos terminalPos, SolarNa
         for (int i = 0; i < dockedStationCount; i++) {
             dockedStations.add(SolarNavigationDockedStation.decode(buffer));
         }
-        return new OpenSolarNavigationPacket(seed, terminalPos, shipState, questMarkers, dockedStations);
+        boolean hasManeuverability = buffer.readBoolean();
+        boolean hasStationLocator = buffer.readBoolean();
+        return new OpenSolarNavigationPacket(seed, terminalPos, shipState, questMarkers, dockedStations, hasManeuverability, hasStationLocator);
     }
 
     public static void handle(OpenSolarNavigationPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () ->
-                dev.sixik.stationarenear.navigation.SolarNavigationScreen.openGui(packet.seed(), packet.terminalPos(), packet.shipState(), packet.questMarkers(), packet.dockedStations())
+                dev.sixik.stationarenear.navigation.SolarNavigationScreen.openGui(packet.seed(), packet.terminalPos(), packet.shipState(), packet.questMarkers(), packet.dockedStations(), packet.hasManeuverability(), packet.hasStationLocator())
         ));
         context.setPacketHandled(true);
     }

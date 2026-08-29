@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.navigation.data.SolarNavigationStationInfo;
 import dev.sixik.stationarenear.quest.runtime.QuestObjectiveFormatter;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
+import dev.sixik.stationarenear.ship.data.ShipState;
 import dev.sixik.stationarenear.ship.data.ShipSystemModule;
 import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.TelevisionTextPosition;
 import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity.TelevisionContentMode;
@@ -90,7 +91,8 @@ public final class TerminalCommandProcessor {
         switch (root) {
             case "help" -> appendHelp(output);
             case "status" -> appendStatus(snapshot, output);
-            case "modules" -> appendModules(snapshot, output);
+            case "repair" -> appendRepairCommand(player, terminalPos, output);
+            case "modules", "module" -> appendModuleCommand(player, level, terminalPos, snapshot, argument, output);
             case "door" -> appendDoorCommand(level, terminalPos, argument, output);
             case "tv", "television" -> appendTelevisionCommand(level, terminalPos, snapshot, argument, output);
             case "tv_clear" -> appendTelevisionCommand(level, terminalPos, snapshot, "clear", output);
@@ -221,6 +223,39 @@ public final class TerminalCommandProcessor {
         }
     }
 
+    private static final double REPAIR_COST = 100.0;
+
+    private static void appendRepairCommand(ServerPlayer player, BlockPos terminalPos, List<TerminalHistoryLine> output) {
+        ServerLevel level = player.serverLevel();
+        BlockPos stateTerminal = dev.sixik.stationarenear.ship.runtime.ShipManager.stateTerminal(level, terminalPos);
+        ShipState state = dev.sixik.stationarenear.ship.runtime.ShipManager.state(level, stateTerminal);
+
+        PlayerBalanceSavedData balanceData = PlayerBalanceSavedData.get(level);
+        if (!balanceData.canAfford(player.getUUID(), REPAIR_COST)) {
+            double balance = balanceData.getBalance(player.getUUID());
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    String.format(Locale.ROOT,
+                            "Insufficient funds. Repair costs %.2f credits, but you have %.2f.",
+                            REPAIR_COST, balance)));
+            return;
+        }
+
+        if (state.hp() >= state.maxHp()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING,
+                    String.format(Locale.ROOT, "Ship hull is already at maximum integrity (%.0f/%.0f HP).", state.hp(), state.maxHp())));
+            return;
+        }
+
+        double newBalance = balanceData.addBalance(player.getUUID(), -REPAIR_COST);
+        ShipState repaired = dev.sixik.stationarenear.ship.runtime.ShipManager.repair(level, stateTerminal, state.maxHp(), "terminal_repair");
+        level.playSound(null, terminalPos, net.minecraft.sounds.SoundEvents.ANVIL_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                String.format(Locale.ROOT,
+                        "Ship hull fully repaired to %.0f/%.0f HP. Deducted %.2f credits. Balance: %.2f",
+                        repaired.hp(), repaired.maxHp(), REPAIR_COST, newBalance)));
+    }
+
     private static void appendHelp(List<TerminalHistoryLine> output) {
         output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Available terminal commands:"));
         for (var command : TerminalCommandCatalog.COMMANDS) {
@@ -246,16 +281,130 @@ public final class TerminalCommandProcessor {
                 "Solar speed: " + formatNumber(speed(snapshot))));
     }
 
-    private static void appendModules(ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> output) {
-        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Ship modules:"));
-        for (ShipSystemModule module : snapshot.shipState().modules()) {
-            float durabilityRatio = module.maxDurability() <= 0.0F ? 0.0F : module.durability() / module.maxDurability();
-            TerminalHistoryKind kind = durabilityRatio <= 0.25F ? TerminalHistoryKind.ERROR : durabilityRatio <= 0.55F ? TerminalHistoryKind.WARNING : TerminalHistoryKind.OUTPUT;
-            output.add(new TerminalHistoryLine(kind, "  " + module.type().displayName()
-                    + " | Lv." + module.level()
-                    + " | DUR " + formatNumber(module.durability()) + "/" + formatNumber(module.maxDurability())
-                    + " (" + formatPercent(durabilityRatio) + ")"));
+    private static void appendModuleCommand(ServerPlayer player, ServerLevel level, BlockPos terminalPos, ShipTerminalSnapshot snapshot, String argument, List<TerminalHistoryLine> output) {
+        String[] parts = argument.isBlank() ? new String[0] : argument.split("\\s+", 2);
+        String sub = parts.length > 0 ? parts[0].toLowerCase(Locale.ROOT) : "";
+        String param = parts.length > 1 ? parts[1].trim() : "";
+
+        if (sub.equals("buy") || sub.equals("install")) {
+            if (param.isBlank()) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Usage: modules buy <module_name>"));
+                return;
+            }
+            dev.sixik.stationarenear.ship.data.ShipSystemType type = findUpgradeType(param);
+            if (type == null) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Unknown upgrade module: " + param + ". Use 'modules' to list available upgrades."));
+                return;
+            }
+
+            BlockPos stateTerminal = dev.sixik.stationarenear.ship.runtime.ShipManager.stateTerminal(level, terminalPos);
+            ShipState shipState = dev.sixik.stationarenear.ship.runtime.ShipManager.state(level, stateTerminal);
+
+            if (type != dev.sixik.stationarenear.ship.data.ShipSystemType.EXTRA_STORAGE && shipState.hasModule(type)) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "Module " + type.displayName() + " is already installed!"));
+                return;
+            }
+
+            if (!dev.sixik.stationarenear.ship.data.ShipModuleRecipe.canAfford(player, type)) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Missing required materials for " + type.displayName() + ":"));
+                for (String missing : dev.sixik.stationarenear.ship.data.ShipModuleRecipe.missingIngredients(player, type)) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "  - " + missing));
+                }
+                return;
+            }
+
+            if (type == dev.sixik.stationarenear.ship.data.ShipSystemType.CRAFT_STATION) {
+                var res = dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.installCraftStation(level, stateTerminal);
+                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.NO_TRIGGERS_FOUND) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No 'craft_station' trigger zone found on ship structure."));
+                    return;
+                }
+                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.ALREADY_EXISTS) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "Crafting station is already installed on the ship."));
+                    return;
+                }
+            } else if (type == dev.sixik.stationarenear.ship.data.ShipSystemType.EXTRA_STORAGE) {
+                var res = dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.installExtraStorage(level, stateTerminal);
+                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.NO_TRIGGERS_FOUND) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No storage trigger zones found on ship structure."));
+                    return;
+                }
+                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.LIMIT_REACHED) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "All storage slots on the ship are already occupied."));
+                    return;
+                }
+            }
+
+            dev.sixik.stationarenear.ship.data.ShipModuleRecipe.consume(player, type);
+            ShipState newState = shipState.withInstalledModule(type);
+            dev.sixik.stationarenear.ship.world.ShipSavedData.get(level).ship(stateTerminal, newState);
+            level.playSound(null, terminalPos, net.minecraft.sounds.SoundEvents.ANVIL_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "Successfully installed upgrade: " + type.displayName()));
+            return;
         }
+
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "=== SHIP MODULES & UPGRADES ==="));
+        for (dev.sixik.stationarenear.ship.data.ShipSystemType type : dev.sixik.stationarenear.ship.data.ShipSystemType.values()) {
+            if (type.isUpgrade()) {
+                boolean installed = snapshot.shipState().hasModule(type);
+                if (installed) {
+                    int lvl = snapshot.shipState().moduleLevel(type);
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                            "[INSTALLED] " + type.displayName() + (lvl > 1 ? " x" + lvl : "")));
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.OUTPUT,
+                            "  " + type.description()));
+                } else {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.OUTPUT,
+                            "[AVAILABLE] " + type.displayName()));
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.OUTPUT,
+                            "  " + type.description()));
+                    List<dev.sixik.stationarenear.ship.data.ShipModuleRecipe.Ingredient> list = dev.sixik.stationarenear.ship.data.ShipModuleRecipe.ingredients(type);
+                    if (!list.isEmpty()) {
+                        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "  Required resources:"));
+                        for (dev.sixik.stationarenear.ship.data.ShipModuleRecipe.Ingredient ing : list) {
+                            boolean has = ing.has(player);
+                            TerminalHistoryKind kind = has ? TerminalHistoryKind.OUTPUT : TerminalHistoryKind.WARNING;
+                            output.add(new TerminalHistoryLine(kind, "   - " + ing.displayName() + " x" + ing.count() + (has ? " [OK]" : " [MISSING]")));
+                        }
+                    }
+                }
+            }
+        }
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "To purchase: modules buy <Module Name>"));
+    }
+
+    private static dev.sixik.stationarenear.ship.data.ShipSystemType findUpgradeType(String param) {
+        String query = param.trim().toLowerCase(Locale.ROOT).replace(" ", "_");
+        List<dev.sixik.stationarenear.ship.data.ShipSystemType> upgrades = new ArrayList<>();
+        for (dev.sixik.stationarenear.ship.data.ShipSystemType t : dev.sixik.stationarenear.ship.data.ShipSystemType.values()) {
+            if (t.isUpgrade()) {
+                upgrades.add(t);
+            }
+        }
+
+        try {
+            int index = Integer.parseInt(query);
+            if (index >= 1 && index <= upgrades.size()) {
+                return upgrades.get(index - 1);
+            }
+        } catch (NumberFormatException ignored) {
+        }
+
+        for (dev.sixik.stationarenear.ship.data.ShipSystemType t : upgrades) {
+            if (t.id().equalsIgnoreCase(query) || t.name().equalsIgnoreCase(query) || t.id().replace("_", "").equalsIgnoreCase(query.replace("_", ""))) {
+                return t;
+            }
+            if (t.displayName().toLowerCase(Locale.ROOT).replace(" ", "_").equals(query)) {
+                return t;
+            }
+        }
+        for (dev.sixik.stationarenear.ship.data.ShipSystemType t : upgrades) {
+            if (t.id().toLowerCase(Locale.ROOT).contains(query) || t.displayName().toLowerCase(Locale.ROOT).contains(query)) {
+                return t;
+            }
+        }
+        return null;
     }
 
     private static void appendDoorCommand(ServerLevel level, BlockPos terminalPos, String argument, List<TerminalHistoryLine> output) {
@@ -326,6 +475,10 @@ public final class TerminalCommandProcessor {
                 message = "TV ship status mode enabled.";
             }
             case "ship_scan" -> {
+                if (!snapshot.shipState().hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.STATION_LOCATOR)) {
+                    output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Station locator module required. Install 'station_locator' upgrade to enable TV station scan."));
+                    return;
+                }
                 changed = ShipTelevisionManager.setManualContentMode(level, terminalPos, TelevisionContentMode.SHIP_SCAN);
                 message = "TV ship scan mode enabled.";
             }
@@ -382,6 +535,11 @@ public final class TerminalCommandProcessor {
     }
 
     private static void appendStations(ShipTerminalSnapshot snapshot, List<TerminalHistoryLine> output) {
+        if (!snapshot.shipState().hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.STATION_LOCATOR)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Station locator module required. Install 'station_locator' upgrade to scan stations."));
+            return;
+        }
+
         if (snapshot.nearbyStations().isEmpty()) {
             output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "No known stations near current solar position."));
             return;
@@ -398,6 +556,11 @@ public final class TerminalCommandProcessor {
     }
 
     private static void appendStationScan(ServerLevel level, ShipTerminalSnapshot snapshot, String stationId, List<TerminalHistoryLine> output) {
+        if (!snapshot.shipState().hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.STATION_LOCATOR)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Station locator module required. Install 'station_locator' upgrade to scan stations."));
+            return;
+        }
+
         List<SolarNavigationStationInfo> matches = SolarNavigationProceduralMap.nearbyStations(
                         SolarNavigationTerminalBlock.terminalSeed(level, snapshot.navigationTerminalPos()),
                         snapshot.navigationState(),
@@ -437,10 +600,38 @@ public final class TerminalCommandProcessor {
             return false;
         }
         ServerLevel level = player.serverLevel();
+        if (!level.isLoaded(terminalPos)) {
+            return false;
+        }
         BlockState state = level.getBlockState(terminalPos);
-        return level.isLoaded(terminalPos)
-                && state.is(TerminalBlocks.TERMINAL.get())
-                && player.distanceToSqr(Vec3.atCenterOf(terminalPos)) <= MAX_TERMINAL_DISTANCE_SQ;
+        if ((state.is(TerminalBlocks.TERMINAL.get()) || state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.CONSOLE_NO_ANGLE.get()))
+                && player.distanceToSqr(Vec3.atCenterOf(terminalPos)) <= MAX_TERMINAL_DISTANCE_SQ) {
+            return true;
+        }
+        return isNearLinkedConsole(player, level, terminalPos);
+    }
+
+    private static boolean isNearLinkedConsole(ServerPlayer player, ServerLevel level, BlockPos terminalPos) {
+        BlockPos playerPos = player.blockPosition();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int dx = -6; dx <= 6; dx++) {
+            for (int dy = -6; dy <= 6; dy++) {
+                for (int dz = -6; dz <= 6; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    BlockState state = level.getBlockState(mutable);
+                    if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.CONSOLE_NO_ANGLE.get())) {
+                        BlockPos consoleMaster = state.getValue(dev.sixik.stationarenear.quest.block.ConsoleNoAngleBlock.HALF) == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER
+                                ? mutable.below()
+                                : mutable.immutable();
+                        BlockPos resolved = dev.sixik.stationarenear.quest.block.ConsoleNoAngleBlock.resolveShipTerminal(level, consoleMaster);
+                        if (resolved.equals(terminalPos)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isClearCommand(String command) {

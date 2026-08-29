@@ -98,6 +98,10 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
             int partY = partPos.getY() - pos.getY();
             level.setBlock(partPos, state.setValue(PART_X, partX).setValue(PART_Y, partY), 3);
         }
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        if (blockEntity instanceof PressureTightDoorBlockEntity pressureDoor && pressureDoor.doorId().isBlank()) {
+            pressureDoor.setDoorId(generateDoorId(level.getRandom().nextLong(), pos));
+        }
         refreshShipIntegrity(level, pos);
     }
 
@@ -122,15 +126,30 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
 
-        if (!level.isClientSide) {
-            BlockEntity blockEntity = level.getBlockEntity(master);
-            if (blockEntity instanceof PressureTightDoorBlockEntity door && !door.doorId().isBlank()) {
-                player.displayClientMessage(Component.literal("Door ID: " + door.doorId() + " | Use terminal: door open " + door.doorId()), true);
-            } else {
-                player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close."), true);
+        BlockEntity blockEntity = level.getBlockEntity(master);
+        String doorId = blockEntity instanceof PressureTightDoorBlockEntity door ? door.doorId() : "";
+
+        if (level.isClientSide) {
+            if (!isOpen(masterState) && !doorId.isBlank()) {
+                copyDoorIdToClipboard(doorId);
             }
+            return InteractionResult.SUCCESS;
         }
-        return InteractionResult.sidedSuccess(level.isClientSide);
+
+        if (!doorId.isBlank()) {
+            if (!isOpen(masterState)) {
+                player.displayClientMessage(Component.literal("Door ID: " + doorId + " (copied to clipboard) | Use terminal: door open " + doorId), true);
+            } else {
+                player.displayClientMessage(Component.literal("Door ID: " + doorId + " | Use terminal: door close " + doorId), true);
+            }
+        } else {
+            player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close."), true);
+        }
+        return InteractionResult.CONSUME;
+    }
+
+    private static void copyDoorIdToClipboard(String doorId) {
+        net.minecraft.client.Minecraft.getInstance().keyboardHandler.setClipboard(doorId);
     }
 
     public static void performRepair(ServerLevel level, BlockPos master, Player player, InteractionHand hand) {
@@ -226,11 +245,21 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         }
         BlockEntity blockEntity = level.getBlockEntity(masterPos);
         if (blockEntity instanceof PressureTightDoorBlockEntity pressureDoor) {
-            pressureDoor.setDoorId(doorId);
+            String finalDoorId = (doorId == null || doorId.isBlank()) ? generateDoorId(level.getRandom().nextLong(), masterPos) : doorId;
+            pressureDoor.setDoorId(finalDoorId);
             pressureDoor.markAnimationDirty();
         }
         doorBlock.afterDoorPlaced(level, masterPos);
         return true;
+    }
+
+    public static String generateDoorId(long seed, BlockPos pos) {
+        long value = seed ^ net.minecraft.util.Mth.getSeed(pos) ^ 0xD00A51DL;
+        long mixed = dev.sixik.stationarenear.navigation.StationCodeGenerator.mix(value);
+        long codeVal = Math.floorMod(mixed, 36 * 36 * 36);
+        String text = Long.toString(codeVal, 36).toUpperCase(java.util.Locale.ROOT);
+        String code = "0".repeat(Math.max(0, 3 - text.length())) + text;
+        return "DR-" + code;
     }
 
 

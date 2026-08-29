@@ -16,12 +16,20 @@ public record StationMapSnapshot(
         int dockZ,
         int minFloor,
         int maxFloor,
-        List<StationMapPiece> pieces
+        List<StationMapPiece> pieces,
+        List<StationMapPlayer> trackedPlayers,
+        List<StationMapPanel> trackedPanels
 ) {
+
+    public StationMapSnapshot(BlockPos terminalPos, UUID stationId, String stationCode, int dockY, int dockX, int dockZ, int minFloor, int maxFloor, List<StationMapPiece> pieces) {
+        this(terminalPos, stationId, stationCode, dockY, dockX, dockZ, minFloor, maxFloor, pieces, List.of(), List.of());
+    }
 
     public StationMapSnapshot {
         stationCode = stationCode == null || stationCode.isBlank() ? stationId.toString().substring(0, 8).toUpperCase() : stationCode;
         pieces = List.copyOf(pieces == null ? List.of() : pieces);
+        trackedPlayers = List.copyOf(trackedPlayers == null ? List.of() : trackedPlayers);
+        trackedPanels = List.copyOf(trackedPanels == null ? List.of() : trackedPanels);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -36,6 +44,14 @@ public record StationMapSnapshot(
         buffer.writeVarInt(pieces.size());
         for (StationMapPiece piece : pieces) {
             piece.encode(buffer);
+        }
+        buffer.writeVarInt(trackedPlayers.size());
+        for (StationMapPlayer player : trackedPlayers) {
+            player.encode(buffer);
+        }
+        buffer.writeVarInt(trackedPanels.size());
+        for (StationMapPanel panel : trackedPanels) {
+            panel.encode(buffer);
         }
     }
 
@@ -53,6 +69,16 @@ public record StationMapSnapshot(
         for (int i = 0; i < count; i++) {
             pieces.add(StationMapPiece.decode(buffer));
         }
-        return new StationMapSnapshot(terminalPos, stationId, stationCode, dockY, dockX, dockZ, minFloor, maxFloor, pieces);
+        int playerCount = buffer.readVarInt();
+        List<StationMapPlayer> trackedPlayers = new ArrayList<>(playerCount);
+        for (int i = 0; i < playerCount; i++) {
+            trackedPlayers.add(StationMapPlayer.decode(buffer));
+        }
+        int panelCount = buffer.readVarInt();
+        List<StationMapPanel> trackedPanels = new ArrayList<>(panelCount);
+        for (int i = 0; i < panelCount; i++) {
+            trackedPanels.add(StationMapPanel.decode(buffer));
+        }
+        return new StationMapSnapshot(terminalPos, stationId, stationCode, dockY, dockX, dockZ, minFloor, maxFloor, pieces, trackedPlayers, trackedPanels);
     }
 }

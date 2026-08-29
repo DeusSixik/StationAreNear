@@ -24,7 +24,16 @@ public class ShipDockingAnchorSavedData extends SavedData {
     }
 
     public Optional<ShipDockingAnchor> anchor(BlockPos terminalPos) {
-        return Optional.ofNullable(anchors.get(terminalPos.asLong()));
+        ShipDockingAnchor direct = anchors.get(terminalPos.asLong());
+        if (direct != null) {
+            return Optional.of(direct);
+        }
+        for (ShipDockingAnchor anchor : anchors.values()) {
+            if (anchor.shipBounds().isInside(terminalPos) || anchor.terminalPos().distSqr(terminalPos) <= 576.0D) {
+                return Optional.of(anchor);
+            }
+        }
+        return Optional.empty();
     }
 
     public Collection<ShipDockingAnchor> anchors() {

@@ -860,9 +860,7 @@ public final class QuestTestScenario {
     }
 
     private static String doorId(long stationSeed, BlockPos pos) {
-        long value = stationSeed ^ Mth.getSeed(pos) ^ 0xD00A51DL;
-        String code = StationCodeGenerator.code(value).substring(3);
-        return "DR-" + code;
+        return dev.sixik.stationarenear.ship.block.PressureTightDoorBlock.generateDoorId(stationSeed, pos);
     }
 
     private static List<PlacedTriggerZone> preferredDoorZones(List<PlacedTriggerZone> questTriggers, long seed) {

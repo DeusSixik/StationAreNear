@@ -132,7 +132,29 @@ public final class StationMapScreen {
             return true;
         }
 
-        return minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) > BLOCK_UI_MAX_DISTANCE_SQ;
+        if (minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) <= BLOCK_UI_MAX_DISTANCE_SQ) {
+            return false;
+        }
+
+        BlockPos playerPos = minecraft.player.blockPosition();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int dx = -3; dx <= 3; dx++) {
+            for (int dy = -3; dy <= 3; dy++) {
+                for (int dz = -3; dz <= 3; dz++) {
+                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    net.minecraft.world.level.block.state.BlockState state = minecraft.level.getBlockState(mutable);
+                    if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.CONSOLE_NO_ANGLE.get())
+                            || state.is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())
+                            || state.is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.STATION_MAP_TERMINAL.get())) {
+                        if (minecraft.player.distanceToSqr(Vec3.atCenterOf(mutable)) <= BLOCK_UI_MAX_DISTANCE_SQ) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     public static final class OpenParams {
@@ -681,6 +703,34 @@ public final class StationMapScreen {
             for (StationMapPiece piece : snapshot.pieces()) {
                 if (!pieceVisibleOnFloor(piece, activeFloor)) continue;
                 drawConnections(draw, piece);
+            }
+            drawPanels(draw);
+            drawPlayers(draw);
+        }
+
+        private void drawPlayers(DrawScope draw) {
+            for (dev.sixik.stationarenear.terminal.map.data.StationMapPlayer player : snapshot.trackedPlayers()) {
+                if (player.floor() != activeFloor) continue;
+                float px = mapX((float) player.x());
+                float py = mapY((float) player.z());
+                float r = Math.max(5.0f, 7.0f * viewport().zoom());
+                draw.addCircleFilled(px, py, r + 2.0f, MutableColor.rgba(0.0f, 0.0f, 0.0f, 0.75f), 24);
+                draw.addCircleFilled(px, py, r, MutableColor.rgba(0.20f, 0.95f, 0.35f, 0.95f), 24);
+                draw.addCircle(px, py, r, MutableColor.rgba(1.0f, 1.0f, 1.0f, 0.90f), 24, 1.2f);
+                draw.addText(player.name(), px - 35.0f, py - r - 13.0f, 70.0f, 12.0f, MutableColor.rgba(0.90f, 1.0f, 0.90f, 0.95f));
+            }
+        }
+
+        private void drawPanels(DrawScope draw) {
+            for (dev.sixik.stationarenear.terminal.map.data.StationMapPanel panel : snapshot.trackedPanels()) {
+                if (panel.floor() != activeFloor) continue;
+                float px = mapX(panel.x() + 0.5f);
+                float py = mapY(panel.z() + 0.5f);
+                float size = Math.max(8.0f, 10.0f * viewport().zoom());
+                MutableColor fill = panel.broken() ? MutableColor.rgba(0.95f, 0.25f, 0.20f, 0.95f) : MutableColor.rgba(0.25f, 0.75f, 1.0f, 0.95f);
+                draw.addRectFilled(px - size * 0.5f, py - size * 0.5f, size, size, 2.0f, fill);
+                draw.addRect(px - size * 0.5f, py - size * 0.5f, size, size, 2.0f, MutableColor.rgba(1.0f, 1.0f, 1.0f, 0.85f), 1.0f);
+                draw.addText(panel.broken() ? "!" : "+", px - 10.0f, py - 6.0f, 20.0f, 12.0f, MutableColor.rgba(1.0f, 1.0f, 1.0f, 0.95f));
             }
         }
 

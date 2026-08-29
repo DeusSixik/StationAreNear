@@ -8,7 +8,8 @@ public final class TerminalCommandCatalog {
     public static final List<TerminalCommandDefinition> COMMANDS = List.of(
             new TerminalCommandDefinition("help", "available terminal commands"),
             new TerminalCommandDefinition("status", "ship HP, sealing and navigation speed"),
-            new TerminalCommandDefinition("modules", "installed ship modules"),
+            new TerminalCommandDefinition("repair", "repair ship to 100% HP (costs 100 credits)"),
+            new TerminalCommandDefinition("modules", "modules [buy <name>] — list upgrades and requirements or buy"),
             new TerminalCommandDefinition("door", "door open|close [id] pressure-tight door"),
             new TerminalCommandDefinition("tv", "tv text|ship_status|ship_scan|clear television"),
             new TerminalCommandDefinition("tv_clear", "clear manual ship television text"),

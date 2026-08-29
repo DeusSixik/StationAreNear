@@ -132,7 +132,17 @@ public final class StationDoorController {
     }
 
     private static String normalizeDoorId(String doorId) {
-        return doorId == null ? "" : doorId.trim().toUpperCase(Locale.ROOT);
+        if (doorId == null) {
+            return "";
+        }
+        String normalized = doorId.trim().toUpperCase(Locale.ROOT);
+        if (normalized.startsWith("DR-")) {
+            return normalized;
+        }
+        if (normalized.startsWith("DR")) {
+            return "DR-" + normalized.substring(2);
+        }
+        return "DR-" + normalized;
     }
 
     private static String stateText(boolean open) {

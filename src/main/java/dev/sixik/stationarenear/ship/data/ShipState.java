@@ -39,6 +39,41 @@ public record ShipState(float hp, float maxHp, List<ShipSystemModule> modules, b
         return new ShipState(hp, maxHp, modules, decompressed, decompressionReason, isDocking);
     }
 
+    public boolean hasModule(ShipSystemType type) {
+        for (ShipSystemModule module : modules) {
+            if (module.type() == type && module.level() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int moduleLevel(ShipSystemType type) {
+        for (ShipSystemModule module : modules) {
+            if (module.type() == type) {
+                return module.level();
+            }
+        }
+        return 0;
+    }
+
+    public ShipState withInstalledModule(ShipSystemType type) {
+        List<ShipSystemModule> updated = new ArrayList<>(modules);
+        boolean found = false;
+        for (int i = 0; i < updated.size(); i++) {
+            ShipSystemModule mod = updated.get(i);
+            if (mod.type() == type) {
+                updated.set(i, mod.withLevel(mod.level() + 1));
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            updated.add(new ShipSystemModule(type, 1, type.defaultDurability(), type.defaultDurability()));
+        }
+        return withModules(updated);
+    }
+
     public float hpPercent() {
         return maxHp <= 0.0F ? 0.0F : hp / maxHp;
     }
@@ -101,7 +136,9 @@ public record ShipState(float hp, float maxHp, List<ShipSystemModule> modules, b
     private static List<ShipSystemModule> defaultModules() {
         List<ShipSystemModule> modules = new ArrayList<>();
         for (ShipSystemType type : ShipSystemType.values()) {
-            modules.add(ShipSystemModule.defaultModule(type));
+            if (!type.isUpgrade()) {
+                modules.add(ShipSystemModule.defaultModule(type));
+            }
         }
         return modules;
     }

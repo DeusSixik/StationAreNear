@@ -91,12 +91,17 @@ public final class SolarNavigationNetwork {
     public static void openTerminal(ServerPlayer player, BlockPos terminalPos, long seed) {
         SolarNavigationSavedData data = SolarNavigationSavedData.get(player.serverLevel());
         SolarNavigationShipState state = SolarNavigationControlManager.open(player, terminalPos, seed, data.shipState(terminalPos));
+        var shipState = dev.sixik.stationarenear.ship.runtime.ShipManager.state(player.serverLevel(), terminalPos);
+        boolean hasManeuverability = shipState.hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.MANEUVERABILITY);
+        boolean hasStationLocator = shipState.hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.STATION_LOCATOR);
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new OpenSolarNavigationPacket(
                 seed,
                 terminalPos,
                 state,
                 List.copyOf(data.questMarkers()),
-                SolarNavigationStationCleaner.dockedStations(player.serverLevel(), terminalPos)
+                SolarNavigationStationCleaner.dockedStations(player.serverLevel(), terminalPos),
+                hasManeuverability,
+                hasStationLocator
         ));
     }
 

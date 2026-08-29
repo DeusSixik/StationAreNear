@@ -65,6 +65,70 @@ public class ConsoleNoAngleBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    public net.minecraft.world.InteractionResult use(BlockState state, Level level, BlockPos pos, net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand, net.minecraft.world.phys.BlockHitResult hit) {
+        if (level.isClientSide) {
+            return net.minecraft.world.InteractionResult.SUCCESS;
+        }
+        BlockPos masterPos = state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos;
+        if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            BlockPos targetTerminal = resolveShipTerminal(serverPlayer.serverLevel(), masterPos);
+            dev.sixik.stationarenear.terminal.network.TerminalNetwork.openTerminal(serverPlayer, targetTerminal);
+        }
+        return net.minecraft.world.InteractionResult.CONSUME;
+    }
+
+    public static BlockPos resolveShipTerminal(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+        BlockState currentState = level.getBlockState(pos);
+        if (currentState.is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())
+                || currentState.is(dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks.SOLAR_NAVIGATION_TERMINAL.get())) {
+            return pos;
+        }
+
+        dev.sixik.stationarenear.structures.world.StationSavedData stationData = dev.sixik.stationarenear.structures.world.StationSavedData.get(level);
+        for (dev.sixik.stationarenear.structures.data.StationInstance station : stationData.stations()) {
+            boolean inside = false;
+            for (dev.sixik.stationarenear.structures.data.PlacedStationPiece piece : station.pieces()) {
+                if (piece.bounds().inflatedBy(16).isInside(pos)) {
+                    inside = true;
+                    break;
+                }
+            }
+            if (inside) {
+                if (station.customData().contains(dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)) {
+                    BlockPos navPos = BlockPos.of(station.customData().getLong(dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS));
+                    java.util.Optional<dev.sixik.stationarenear.ship.docking.ShipDockingAnchor> anchor = dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData.get(level).anchor(navPos);
+                    if (anchor.isPresent()) {
+                        for (Long related : dev.sixik.stationarenear.ship.runtime.ShipIntegrityScanner.relatedTerminalPositions(level, navPos, anchor.get())) {
+                            BlockPos relatedPos = BlockPos.of(related);
+                            if (level.getBlockState(relatedPos).is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())) {
+                                return relatedPos;
+                            }
+                        }
+                    }
+                    if (level.getBlockState(navPos).is(dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks.SOLAR_NAVIGATION_TERMINAL.get())
+                            || level.getBlockState(navPos).is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())) {
+                        return navPos;
+                    }
+                }
+            }
+        }
+
+        java.util.Optional<dev.sixik.stationarenear.ship.docking.ShipDockingAnchor> anchor = dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData.get(level)
+                .anchor(pos)
+                .or(() -> dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver.bindNearbyShip(level, pos));
+        if (anchor.isPresent()) {
+            for (Long related : dev.sixik.stationarenear.ship.runtime.ShipIntegrityScanner.relatedTerminalPositions(level, pos, anchor.get())) {
+                BlockPos relatedPos = BlockPos.of(related);
+                if (level.getBlockState(relatedPos).is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())) {
+                    return relatedPos;
+                }
+            }
+        }
+
+        return pos;
+    }
+
+    @Override
     public RenderShape getRenderShape(BlockState state) {
         return state.getValue(HALF) == DoubleBlockHalf.LOWER ? RenderShape.MODEL : RenderShape.INVISIBLE;
     }

@@ -185,6 +185,10 @@ public final class ShipTelevisionManager {
     }
 
     public static String shipScanText(ShipTerminalSnapshot snapshot) {
+        if (!snapshot.shipState().hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.STATION_LOCATOR)) {
+            return "SHIP SCAN\nStation locator module required.\nInstall 'station_locator' upgrade.";
+        }
+
         if (snapshot.nearbyStations().isEmpty()) {
             return "SHIP SCAN\nNo known stations near current solar position.";
         }

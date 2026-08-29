@@ -110,7 +110,52 @@ public final class StationMapSnapshotFactory {
         if (code.isBlank()) {
             code = StationCodeGenerator.code(station.id());
         }
-        return Optional.of(new StationMapSnapshot(terminalPos, station.id(), code, dockY, dockX, dockZ, minFloor, maxFloor, pieces));
+
+        List<dev.sixik.stationarenear.terminal.map.data.StationMapPlayer> trackedPlayers = new ArrayList<>();
+        List<dev.sixik.stationarenear.terminal.map.data.StationMapPanel> trackedPanels = new ArrayList<>();
+
+        var shipState = dev.sixik.stationarenear.ship.runtime.ShipManager.state(level, terminalPos);
+        if (shipState.hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.PLAYER_TRACKER)) {
+            for (net.minecraft.server.level.ServerPlayer p : level.players()) {
+                if (Math.abs(p.getX() - dockX) <= 400.0 && Math.abs(p.getZ() - dockZ) <= 400.0) {
+                    trackedPlayers.add(new dev.sixik.stationarenear.terminal.map.data.StationMapPlayer(p.getScoreboardName(), p.getX(), p.getZ(), floorIndex((int) p.getY(), dockY)));
+                }
+            }
+        }
+
+        if (shipState.hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.PANEL_DETECTOR)) {
+            for (PlacedStationPiece piece : station.pieces()) {
+                for (PlacedTriggerZone zone : piece.triggerZones()) {
+                    if (isPanelZone(zone)) {
+                        BlockPos pos = new BlockPos((zone.min().getX() + zone.max().getX()) / 2, (zone.min().getY() + zone.max().getY()) / 2, (zone.min().getZ() + zone.max().getZ()) / 2);
+                        boolean broken = false;
+                        if (level.isLoaded(pos)) {
+                            var bState = level.getBlockState(pos);
+                            if (bState.getBlock() instanceof dev.sixik.stationarenear.quest.block.EnergyPanelBlock) {
+                                broken = bState.getValue(dev.sixik.stationarenear.quest.block.EnergyPanelBlock.BROKEN);
+                            }
+                        }
+                        trackedPanels.add(new dev.sixik.stationarenear.terminal.map.data.StationMapPanel(pos.getX(), pos.getY(), pos.getZ(), floorIndex(pos.getY(), dockY), broken));
+                    }
+                }
+            }
+        }
+
+        return Optional.of(new StationMapSnapshot(terminalPos, station.id(), code, dockY, dockX, dockZ, minFloor, maxFloor, pieces, trackedPlayers, trackedPanels));
+    }
+
+    private static boolean isPanelZone(PlacedTriggerZone zone) {
+        if ("ENERGY_PANEL".equalsIgnoreCase(zone.type()) || "LAMP_SWITCH".equalsIgnoreCase(zone.type()) || "ELECTRICK_BROKEN".equalsIgnoreCase(zone.type()) || "ELECTRICK_NORMAL".equalsIgnoreCase(zone.type())) {
+            return true;
+        }
+        if (zone.id() != null && (zone.id().toLowerCase().contains("energy_panel") || zone.id().toLowerCase().contains("panel") || zone.id().toLowerCase().contains("electrick"))) {
+            return true;
+        }
+        if (zone.data() != null && zone.data().contains(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)) {
+            String tags = zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS).toLowerCase();
+            return tags.contains("energy_panel") || tags.contains("panel") || tags.contains("electrick");
+        }
+        return false;
     }
 
 

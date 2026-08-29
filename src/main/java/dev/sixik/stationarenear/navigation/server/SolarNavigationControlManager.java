@@ -189,9 +189,17 @@ public final class SolarNavigationControlManager {
             int turnAxis = axis(UpdateMasks.RIGHT, UpdateMasks.LEFT, inputs.values());
             simulate(thrustAxis, turnAxis);
             SolarNavigationSavedData.get(level).shipState(terminalPos, state);
+            if (thrustAxis != 0 || Math.abs(state.velocityX()) > 0.5F || Math.abs(state.velocityY()) > 0.5F) {
+                if (ShipManager.state(level, terminalPos).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.AUTO_DOORS)) {
+                    dev.sixik.stationarenear.ship.runtime.ShipDoorController.setOpen(level, terminalPos, false);
+                }
+            }
             int clearedStations = SolarNavigationStationCleaner.clearFarFromShip(level, terminalPos, state, SolarNavigationConfig.STATION_UNLOAD_DISTANCE.get().floatValue());
             if (clearedStations > 0) {
                 ShipManager.setDocking(level, terminalPos, false);
+                if (ShipManager.state(level, terminalPos).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.AUTO_DOORS)) {
+                    dev.sixik.stationarenear.ship.runtime.ShipDoorController.setOpen(level, terminalPos, false);
+                }
             }
             sync();
         }
@@ -199,13 +207,22 @@ public final class SolarNavigationControlManager {
         private void simulate(int thrustAxis, int turnAxis) {
             tickMovingAsteroids(SERVER_TIMESTEP);
 
-            if (turnAxis != 0) {
-                turnVelocity += turnAxis * TURN_ACCELERATION * SERVER_TIMESTEP;
-                turnVelocity = clamp(turnVelocity, -MAX_TURN_SPEED, MAX_TURN_SPEED);
-            } else if (turnVelocity != 0.0F) {
-                turnVelocity *= (float) Math.pow(TURN_DECAY, SERVER_TIMESTEP);
-                if (Math.abs(turnVelocity) < 0.01F) {
+            boolean hasManeuverability = ShipManager.state(level, terminalPos).hasModule(dev.sixik.stationarenear.ship.data.ShipSystemType.MANEUVERABILITY);
+            if (hasManeuverability) {
+                if (turnAxis != 0) {
+                    turnVelocity = turnAxis * MAX_TURN_SPEED;
+                } else {
                     turnVelocity = 0.0F;
+                }
+            } else {
+                if (turnAxis != 0) {
+                    turnVelocity += turnAxis * TURN_ACCELERATION * SERVER_TIMESTEP;
+                    turnVelocity = clamp(turnVelocity, -MAX_TURN_SPEED, MAX_TURN_SPEED);
+                } else if (turnVelocity != 0.0F) {
+                    turnVelocity *= (float) Math.pow(TURN_DECAY, SERVER_TIMESTEP);
+                    if (Math.abs(turnVelocity) < 0.01F) {
+                        turnVelocity = 0.0F;
+                    }
                 }
             }
 

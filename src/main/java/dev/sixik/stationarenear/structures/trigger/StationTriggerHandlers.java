@@ -317,9 +317,7 @@ public final class StationTriggerHandlers {
     }
 
     private static String doorId(long stationSeed, BlockPos pos) {
-        long value = stationSeed ^ net.minecraft.util.Mth.getSeed(pos) ^ 0xD00A51DL;
-        String code = dev.sixik.stationarenear.navigation.StationCodeGenerator.code(value).substring(3);
-        return "DR-" + code;
+        return dev.sixik.stationarenear.ship.block.PressureTightDoorBlock.generateDoorId(stationSeed, pos);
     }
 
     private static boolean placeObject(StationStructureSpawnTriggerEvent event) {

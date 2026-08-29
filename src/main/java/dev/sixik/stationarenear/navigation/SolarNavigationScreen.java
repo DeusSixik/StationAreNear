@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.navigation;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import dev.sixik.unigui.api.core.FrameContext;
 import dev.sixik.unigui.api.core.InvalidationFlags;
 import dev.sixik.unigui.api.core.UIContext;
@@ -12,14 +13,19 @@ import dev.sixik.unigui.api.math.MutableColor;
 import dev.sixik.unigui.api.math.RectView;
 import dev.sixik.unigui.api.render.DrawPoint;
 import dev.sixik.unigui.api.render.DrawScope;
+import dev.sixik.unigui.api.render.TextureHandle;
+import dev.sixik.unigui.api.render.TextureOptions;
 import dev.sixik.unigui.api.render.UiRenderPolicy;
 import dev.sixik.unigui.api.text.RichText;
 import dev.sixik.unigui.backend.minecraft_impl.MinecraftClipboardService;
 import dev.sixik.unigui.backend.minecraft_impl.MinecraftFonts;
 import dev.sixik.unigui.backend.minecraft_impl.MinecraftWidgetScreen;
+import dev.sixik.unigui.backend.minecraft_impl.UniGuiTextures;
 import dev.sixik.unigui.impl.core.DefaultUIContext;
 import dev.sixik.unigui.widgets.world.WorldCanvas;
 import dev.sixik.stationarenear.navigation.StationCodeGenerator;
+import java.io.IOException;
+import java.io.InputStream;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationDockedStation;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationShipState;
@@ -72,14 +78,18 @@ public final class SolarNavigationScreen {
     }
 
     public static void openGui() {
-        openGui(0x5EED_51A7L, BlockPos.ZERO, SolarNavigationShipState.DEFAULT, List.of(), List.of());
+        openGui(0x5EED_51A7L, BlockPos.ZERO, SolarNavigationShipState.DEFAULT, List.of(), List.of(), false, false);
     }
 
     public static void openGui(long seed, BlockPos terminalPos) {
-        openGui(seed, terminalPos, SolarNavigationShipState.DEFAULT, List.of(), List.of());
+        openGui(seed, terminalPos, SolarNavigationShipState.DEFAULT, List.of(), List.of(), false, false);
     }
 
     public static void openGui(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations) {
+        openGui(seed, terminalPos, shipState, questMarkers, restoredDockedStations, false, false);
+    }
+
+    public static void openGui(long seed, BlockPos terminalPos, SolarNavigationShipState shipState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations, boolean hasManeuverability, boolean hasStationLocator) {
         UnityLikeUIScaleProvider scaleProvider = new UnityLikeUIScaleProvider()
                 .referenceResolution(1920.0f, 1080.0f)
                 .matchBalanced()
@@ -87,9 +97,7 @@ public final class SolarNavigationScreen {
         DefaultUIContext context = new DefaultUIContext(new MinecraftClipboardService())
                 .scaleProvider(scaleProvider);
 
-//        context.debugFlags(DebugFlags.ALL);
-
-        SolarNavigationCanvas canvas = new SolarNavigationCanvas(seed, terminalPos, shipState, questMarkers, restoredDockedStations);
+        SolarNavigationCanvas canvas = new SolarNavigationCanvas(seed, terminalPos, shipState, questMarkers, restoredDockedStations, hasManeuverability, hasStationLocator);
         currentCanvas = canvas;
         canvas.layout(style -> style
                 .align(Alignment.STRETCH, Alignment.STRETCH)
@@ -220,10 +228,14 @@ public final class SolarNavigationScreen {
         private float impactInterference;
         private long dockingTargetSeed = Long.MIN_VALUE;
         private String dockingTargetName = "";
+        private final boolean hasManeuverability;
+        private final boolean hasStationLocator;
 
-        private SolarNavigationCanvas(long seed, BlockPos terminalPos, SolarNavigationShipState initialState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations) {
+        private SolarNavigationCanvas(long seed, BlockPos terminalPos, SolarNavigationShipState initialState, List<SolarNavigationQuestMarker> questMarkers, List<SolarNavigationDockedStation> restoredDockedStations, boolean hasManeuverability, boolean hasStationLocator) {
             this.seed = seed;
             this.terminalPos = terminalPos;
+            this.hasManeuverability = hasManeuverability;
+            this.hasStationLocator = hasStationLocator;
             this.questMarkers.addAll(questMarkers);
             for (SolarNavigationDockedStation station : restoredDockedStations) {
                 dockedStations.add(station.seed());
@@ -460,13 +472,21 @@ public final class SolarNavigationScreen {
         }
 
         private void predictLocalRotation(int turnAxis, float delta) {
-            if (turnAxis != 0) {
-                turnVelocity += turnAxis * TURN_ACCELERATION * delta;
-                turnVelocity = clamp(turnVelocity, -MAX_TURN_SPEED, MAX_TURN_SPEED);
-            } else if (turnVelocity != 0.0f) {
-                turnVelocity *= (float) Math.pow(TURN_DECAY, delta);
-                if (Math.abs(turnVelocity) < 0.01f) {
+            if (hasManeuverability) {
+                if (turnAxis != 0) {
+                    turnVelocity = turnAxis * MAX_TURN_SPEED;
+                } else {
                     turnVelocity = 0.0f;
+                }
+            } else {
+                if (turnAxis != 0) {
+                    turnVelocity += turnAxis * TURN_ACCELERATION * delta;
+                    turnVelocity = clamp(turnVelocity, -MAX_TURN_SPEED, MAX_TURN_SPEED);
+                } else if (turnVelocity != 0.0f) {
+                    turnVelocity *= (float) Math.pow(TURN_DECAY, delta);
+                    if (Math.abs(turnVelocity) < 0.01f) {
+                        turnVelocity = 0.0f;
+                    }
                 }
             }
             angle = wrapRadians(angle + turnVelocity * delta);
@@ -726,11 +746,36 @@ public final class SolarNavigationScreen {
                 float radius = asteroid.radius() * canvas.viewport().zoom();
                 if (!visible(canvas.layoutBounds(), sx, sy, radius + 6.0f)) continue;
 
-                draw.addCircleFilled(sx + 3.0f, sy + 4.0f, radius + 1.0f, MutableColor.rgba(0.0f, 0.0f, 0.0f, 0.28f), asteroid.segments());
-                draw.addNgonFilled(sx, sy, radius, ASTEROID, asteroid.segments());
-                draw.addNgon(sx, sy, radius, ASTEROID_DARK, asteroid.segments(), 2.0f);
-                draw.addCircleFilled(sx - radius * 0.23f, sy - radius * 0.18f, Math.max(2.0f, radius * 0.18f), ASTEROID_DARK, 8);
+                TextureHandle texture = SpaceTextures.forAsteroid(asteroid.seed());
+                if (texture != null) {
+                    float size = radius * 2.0f;
+                    drawRotatedImage(draw, texture, sx, sy, size, size, asteroid.rotation());
+                } else {
+                    draw.addCircleFilled(sx + 3.0f, sy + 4.0f, radius + 1.0f, MutableColor.rgba(0.0f, 0.0f, 0.0f, 0.28f), asteroid.segments());
+                    draw.addNgonFilled(sx, sy, radius, ASTEROID, asteroid.segments());
+                    draw.addNgon(sx, sy, radius, ASTEROID_DARK, asteroid.segments(), 2.0f);
+                    draw.addCircleFilled(sx - radius * 0.23f, sy - radius * 0.18f, Math.max(2.0f, radius * 0.18f), ASTEROID_DARK, 8);
+                }
             }
+        }
+
+        private void drawRotatedImage(DrawScope draw, TextureHandle texture, float centerX, float centerY,
+                                      float width, float height, float angle) {
+            float hw = width * 0.5f;
+            float hh = height * 0.5f;
+            draw.addImageQuad(texture,
+                    rotated(centerX, centerY, angle, -hw, -hh),
+                    rotated(centerX, centerY, angle, hw, -hh),
+                    rotated(centerX, centerY, angle, hw, hh),
+                    rotated(centerX, centerY, angle, -hw, hh),
+                    new DrawPoint(0.0f, 0.0f), new DrawPoint(1.0f, 0.0f),
+                    new DrawPoint(1.0f, 1.0f), new DrawPoint(0.0f, 1.0f), WHITE);
+        }
+
+        private static DrawPoint rotated(float originX, float originY, float angle, float localX, float localY) {
+            float cos = (float) Math.cos(angle);
+            float sin = (float) Math.sin(angle);
+            return new DrawPoint(originX + localX * cos - localY * sin, originY + localX * sin + localY * cos);
         }
 
         private void drawStations(WorldCanvas canvas, DrawScope draw) {
@@ -878,7 +923,9 @@ public final class SolarNavigationScreen {
                         dockMessage.contains("impact") || dockMessage.contains("No ") ? RED : ORANGE);
             }
 
-            drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
+            if (hasStationLocator) {
+                drawRadar(draw, radarX(x, w, h), radarY(y), radarSize(w, h));
+            }
         }
 
         private void drawDockingProgress(DrawScope draw, float x, float y, float w, float h) {
@@ -1150,6 +1197,41 @@ public final class SolarNavigationScreen {
         }
 
         private record Star(float x, float y, float size, float alpha) {
+        }
+
+        private static final class SpaceTextures {
+            private static final TextureHandle[] METEORS = new TextureHandle[6];
+            private static boolean loadAttempted = false;
+
+            private static TextureHandle forAsteroid(long seed) {
+                ensureLoaded();
+                int index = (int) Math.floorMod(seed ^ 0x51A7A57EL, METEORS.length);
+                return METEORS[index];
+            }
+
+            private static void ensureLoaded() {
+                if (loadAttempted) return;
+                loadAttempted = true;
+                for (int i = 0; i < 6; i++) {
+                    try {
+                        METEORS[i] = load("meteor_" + (i + 1), "meteor_" + (i + 1) + ".png");
+                    } catch (IOException | RuntimeException ignored) {
+                    }
+                }
+            }
+
+            private static TextureHandle load(String id, String fileName) throws IOException {
+                String resource = "assets/stationarenear/textures/gui/space/" + fileName;
+                ClassLoader loader = SolarNavigationScreen.class.getClassLoader();
+                try (InputStream stream = loader.getResourceAsStream(resource)) {
+                    if (stream == null) {
+                        throw new IOException("Missing space texture resource: " + resource);
+                    }
+                    return UniGuiTextures.replace("stationarenear:dynamic/space/" + id,
+                            NativeImage.read(stream),
+                            TextureOptions.nearest());
+                }
+            }
         }
     }
 }

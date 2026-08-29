@@ -167,10 +167,6 @@ public final class StationTriggerHandlers {
 
     public static boolean placeEnergyPanel(net.minecraft.server.level.ServerLevel level, dev.sixik.stationarenear.structures.data.StationInstance station, PlacedTriggerZone zone, boolean powered) {
         BlockPos pos = centerPos(zone);
-        net.minecraft.world.level.block.state.BlockState current = level.getBlockState(pos);
-        if (!current.isAir() && !current.is(QuestBlocks.ENERGY_PANEL.get())) {
-            return false;
-        }
         Direction facing = panelFacing(zone.data(), station.stationDirection());
         level.setBlock(pos, QuestBlocks.ENERGY_PANEL.get().defaultBlockState()
                 .setValue(EnergyPanelBlock.FACING, facing)

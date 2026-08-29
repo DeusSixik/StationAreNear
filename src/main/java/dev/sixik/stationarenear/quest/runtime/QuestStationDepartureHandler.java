@@ -17,6 +17,7 @@ import dev.sixik.stationarenear.ship.world.ShipControlLockSavedData;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
+import dev.sixik.stationarenear.terminal.shop.PlayerBalanceSavedData;
 import dev.sixik.stationarenear.structures.data.StationInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -58,15 +59,17 @@ public final class QuestStationDepartureHandler {
     private static void completeMission(ServerLevel level, StationInstance station, QuestStationState state, Optional<BlockPos> terminalPos) {
         QuestSavedData data = QuestSavedData.get(level);
         double reward = state.moneyReward();
-        double balance = BalanceSavedData.get(level).add(reward);
+        PlayerBalanceSavedData playerBalanceData = PlayerBalanceSavedData.get(level);
+        BalanceSavedData.get(level).add(reward);
         if (!state.missionId().isBlank()) {
             data.markQuestCompleted(state.missionId());
         }
         data.incrementCompletedMissionCount();
         MinecraftForge.EVENT_BUS.post(new QuestMissionCompletedEvent(level, station.id(), reward));
         for (ServerPlayer player : affectedPlayers(level, station, terminalPos)) {
+            double playerBalance = playerBalanceData.addBalance(player.getUUID(), reward);
             MinecraftForge.EVENT_BUS.post(new PlayerQuestMissionCompletedEvent(level, player, station.id(), state.missionId(), state));
-            player.displayClientMessage(Component.literal(String.format(java.util.Locale.ROOT, "Mission completed. Reward: %.2f. Balance: %.2f.", reward, balance)), false);
+            player.displayClientMessage(Component.literal(String.format(java.util.Locale.ROOT, "Mission completed. Reward: %.2f. Balance: %.2f.", reward, playerBalance)), false);
         }
         data.remove(station.id());
         removeNavigationMarker(level, station);

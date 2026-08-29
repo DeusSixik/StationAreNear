@@ -28,7 +28,24 @@ public final class QuestDirector {
         int questSpent = tasks.stream().mapToInt(QuestTaskPlan::totalCost).sum();
         int questLeft = Math.max(0, questBudget - questSpent);
         int stationBudget = context.stationBudget(profile.stationBudgetForPlayMinutes(context.playMinutes())) + (profile.leftoverQuestCreditsToStation() ? questLeft : 0);
-        StationDirector.Result stationResult = StationDirector.createPlan(DirectorConfigManager.stationOffers(profile.stationOfferPool()), stationBudget, random);
+        List<dev.sixik.stationarenear.quest.config.director.StationOfferConfig> allStationOffers = DirectorConfigManager.stationOffers(profile.stationOfferPool());
+        List<StationSpawnPlan> requiredSpawns = new ArrayList<>();
+        for (QuestTaskPlan task : tasks) {
+            dev.sixik.stationarenear.quest.config.director.StationOfferType requiredType = null;
+            if (task.offer().kind() == dev.sixik.stationarenear.quest.data.QuestObjectiveKind.REPAIR_DOOR) {
+                requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.BROKEN_DOOR;
+            } else if (task.offer().kind() == dev.sixik.stationarenear.quest.data.QuestObjectiveKind.REPAIR_ELECTRIC_PANEL) {
+                requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.ENERGY_FAILURE;
+            }
+            if (requiredType != null) {
+                dev.sixik.stationarenear.quest.config.director.StationOfferType finalType = requiredType;
+                allStationOffers.stream()
+                        .filter(o -> o.type() == finalType)
+                        .findFirst()
+                        .ifPresent(offer -> requiredSpawns.add(new StationSpawnPlan(offer, task.count(), 0)));
+            }
+        }
+        StationDirector.Result stationResult = StationDirector.createPlan(allStationOffers, stationBudget, requiredSpawns, random);
         return new DirectorPlan(profile, tasks, stationResult.spawns(), new DirectorCredits(context.playMinutes(), context.completedMissionCount(), questBudget, questSpent, questLeft, stationBudget, stationResult.spent(), stationResult.leftover()));
     }
 

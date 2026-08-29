@@ -331,9 +331,6 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
             if (!partPos.equals(masterPos) && context != null && !partState.canBeReplaced(context)) {
                 return false;
             }
-            if (!partPos.equals(masterPos) && context == null && !partState.isAir()) {
-                return false;
-            }
         }
         return true;
     }

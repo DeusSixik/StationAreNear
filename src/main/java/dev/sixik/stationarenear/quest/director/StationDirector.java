@@ -13,9 +13,12 @@ public final class StationDirector {
     private StationDirector() {
     }
 
-    public static Result createPlan(List<StationOfferConfig> offers, int budget, RandomSource random) {
-        List<StationSpawnPlan> result = new ArrayList<>();
+    public static Result createPlan(List<StationOfferConfig> offers, int budget, List<StationSpawnPlan> requiredSpawns, RandomSource random) {
+        List<StationSpawnPlan> result = new ArrayList<>(requiredSpawns);
         Map<String, Integer> picked = new HashMap<>();
+        for (StationSpawnPlan spawn : requiredSpawns) {
+            picked.merge(spawn.offer().id(), spawn.count(), Integer::sum);
+        }
         int remaining = Math.max(0, budget);
         for (int guard = 0; guard < 128; guard++) {
             int budgetLeft = remaining;

@@ -56,7 +56,8 @@ public record DirectorPlan(
     public Map<String, Integer> requiredPieceTags() {
         Map<String, Integer> result = new LinkedHashMap<>();
         for (QuestTaskPlan task : questTasks) {
-            task.offer().requiredPieceTags().forEach((key, value) -> result.merge(key, value, Integer::sum));
+            int multiplier = task.offer().kind().questZoneRequired() ? task.count() : 1;
+            task.offer().requiredPieceTags().forEach((key, value) -> result.merge(key, value * multiplier, Integer::sum));
         }
         return Map.copyOf(result);
     }

@@ -380,10 +380,24 @@ public class StationStructureToolItem extends Item {
                     triggerType(triggerTag),
                     localMin,
                     localMax,
-                    triggerTag.getCompound("data")
+                    triggerData(triggerTag)
             ));
         }
         return triggerZones;
+    }
+
+    private static CompoundTag triggerData(CompoundTag triggerTag) {
+        CompoundTag data = triggerTag.getCompound("data").copy();
+        copyStringIfMissing(triggerTag, data, "direction");
+        copyStringIfMissing(triggerTag, data, "shapeDirection");
+        copyStringIfMissing(triggerTag, data, "objectDirection");
+        return data;
+    }
+
+    private static void copyStringIfMissing(CompoundTag source, CompoundTag target, String key) {
+        if (!target.contains(key) && source.contains(key) && !source.getString(key).isBlank()) {
+            target.putString(key, source.getString(key));
+        }
     }
 
     private static String triggerType(CompoundTag triggerTag) {

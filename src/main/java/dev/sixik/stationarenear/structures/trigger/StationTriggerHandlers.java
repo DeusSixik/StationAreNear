@@ -1,6 +1,5 @@
 package dev.sixik.stationarenear.structures.trigger;
 
-import dev.sixik.stationarenear.mob.registry.StationMobEntities;
 import dev.sixik.stationarenear.quest.director.DirectorStationSpawnHandler;
 import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.registry.QuestBlocks;
@@ -26,12 +25,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -61,19 +54,7 @@ public final class StationTriggerHandlers {
     }
 
     private static void onStationTrigger(StationTriggerEvent event) {
-        if (!event.isFirstGlobalActivation() || DirectorStationSpawnHandler.hasDirectorPlan(event.getStation())) {
-            return;
-        }
-        if (!event.getZone().type().equals(TagsConstants.Trigger.MOB_SPAWN) && !event.getZone().type().equals(TagsConstants.Trigger.DANGER_MOB_SPAWN)) {
-            return;
-        }
-
-        float danger = Mth.clamp(event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER), 0.0F, 1.0F);
-        int count = 1 + Mth.ceil(danger * 4.0F);
-        RandomSource random = event.getLevel().getRandom();
-        for (int i = 0; i < count; i++) {
-            spawnDangerMob(event.getLevel(), event.getZone(), danger, random, null);
-        }
+        MobTriggerSpawner.spawnOnActivation(event, DirectorStationSpawnHandler.hasDirectorPlan(event.getStation()));
     }
 
     private static void onStructureSpawnTrigger(StationStructureSpawnTriggerEvent event) {
@@ -82,8 +63,11 @@ public final class StationTriggerHandlers {
         }
         switch (event.getTriggerType()) {
             case OBJECT_PLACER -> placeObject(event);
+            case QUEST_OBJECT_PLACER -> {
+                // Quest object placers are activated explicitly by quest generation code.
+            }
             case OBJECT_ZONE_PLACER -> placeObjectZone(event, event.isForcePlaceObjectZone(), event.getForcedObjectZoneCount());
-            case MOB_SPAWN -> placeMobs(event);
+            case MOB_SPAWN -> MobTriggerSpawner.spawnFromStructureTrigger(event);
             case DOOR_TRIGGER -> placeDoor(event);
             case QUEST_PLACE -> placeEnergyPanel(event);
             case QUEST -> {
@@ -100,6 +84,21 @@ public final class StationTriggerHandlers {
         }
         StationStructureSpawnTriggerEvent event = new StationStructureSpawnTriggerEvent(level, station, piece, zone, StationStructureTriggerType.OBJECT_ZONE_PLACER);
         return placeObjectZone(event, true, count);
+    }
+
+    public static int placeQuestObjectForQuest(ServerLevel level, StationInstance station, PlacedStationPiece piece, PlacedTriggerZone zone, String requiredObject, int count) {
+        if (count <= 0 || StationStructureTriggerType.from(zone.type()) != StationStructureTriggerType.QUEST_OBJECT_PLACER) {
+            return 0;
+        }
+        StationStructureSpawnTriggerEvent event = new StationStructureSpawnTriggerEvent(level, station, piece, zone, StationStructureTriggerType.QUEST_OBJECT_PLACER);
+        int placed = 0;
+        int attempts = Math.max(8, count * 8);
+        while (placed < count && attempts-- > 0) {
+            if (placeObject(event, true, requiredObject)) {
+                placed++;
+            }
+        }
+        return placed;
     }
 
     public static boolean isObjectZoneQuestOnly(PlacedTriggerZone zone) {
@@ -180,14 +179,23 @@ public final class StationTriggerHandlers {
     }
 
     private static Optional<EnergyPanelTarget> selectEnergyPanelTarget(dev.sixik.stationarenear.structures.data.StationInstance station) {
-        List<EnergyPanelTarget> candidates = new ObjectArrayList<>();
+        List<EnergyPanelTarget> preferred = new ObjectArrayList<>();
+        List<EnergyPanelTarget> fallback = new ObjectArrayList<>();
         for (PlacedStationPiece piece : station.pieces()) {
             for (PlacedTriggerZone zone : piece.triggerZones()) {
-                if (StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE && isEnergySwitchTrigger(zone)) {
-                    candidates.add(new EnergyPanelTarget(piece, zone));
+                StationStructureTriggerType type = StationStructureTriggerType.from(zone.type());
+                if (type != StationStructureTriggerType.QUEST_PLACE && type != StationStructureTriggerType.QUEST_OBJECT_PLACER) {
+                    continue;
+                }
+                EnergyPanelTarget target = new EnergyPanelTarget(piece, zone);
+                if (isEnergySwitchTrigger(zone)) {
+                    preferred.add(target);
+                } else {
+                    fallback.add(target);
                 }
             }
         }
+        List<EnergyPanelTarget> candidates = preferred.isEmpty() ? fallback : preferred;
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
@@ -221,6 +229,10 @@ public final class StationTriggerHandlers {
         Direction parsed = Direction.byName(data.getString("direction").toLowerCase(Locale.ROOT));
         if (parsed != null && parsed.getAxis().isHorizontal()) {
             return parsed;
+        }
+        Direction objectDirection = Direction.byName(data.getString("objectDirection").toLowerCase(Locale.ROOT));
+        if (objectDirection != null && objectDirection.getAxis().isHorizontal()) {
+            return objectDirection;
         }
         return fallback.getAxis().isHorizontal() ? fallback : Direction.NORTH;
     }
@@ -286,40 +298,51 @@ public final class StationTriggerHandlers {
         return "DR-" + code;
     }
 
-    private static void placeObject(StationStructureSpawnTriggerEvent event) {
+    private static boolean placeObject(StationStructureSpawnTriggerEvent event) {
+        return placeObject(event, false, "");
+    }
+
+    private static boolean placeObject(StationStructureSpawnTriggerEvent event, boolean questInvocation, String requiredObject) {
         CompoundTag data = event.getZone().data();
         if (data.contains("place") && !data.getBoolean("place")) {
-            return;
+            return false;
         }
 
-        int chance = Mth.clamp((data.contains("placeChance") ? data.getInt("placeChance") : data.getInt("chance")) + event.getAdditionalPlaceObjectChance(), 0, 100);
-        boolean ignoreChance = data.getBoolean("ignoreChancePlace");
         RandomSource random = event.getLevel().getRandom();
-        if (!ignoreChance && random.nextInt(100) >= chance) {
-            return;
+        if (!questInvocation) {
+            int chance = Mth.clamp((data.contains("placeChance") ? data.getInt("placeChance") : data.getInt("chance")) + event.getAdditionalPlaceObjectChance(), 0, 100);
+            boolean ignoreChance = data.getBoolean("ignoreChancePlace");
+            if (!ignoreChance && random.nextInt(100) >= chance) {
+                return false;
+            }
         }
 
-        ResourceLocation poolId = StationStructureIds.pool(data.getString("pool"));
         StationStructureLibraryData library = StationStructureLibraryData.get(event.getLevel());
-        Optional<StationPoolDefinition> poolOptional = library.pool(poolId);
-        if (poolOptional.isEmpty()) {
-            return;
+        List<StationPieceDefinition> candidates;
+        if (questInvocation) {
+            candidates = questObjectCandidates(library, data, event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER), requiredObject);
+        } else {
+            ResourceLocation poolId = StationStructureIds.pool(data.getString("pool"));
+            Optional<StationPoolDefinition> poolOptional = library.pool(poolId);
+            if (poolOptional.isEmpty()) {
+                return false;
+            }
+            candidates = objectCandidates(library, poolOptional.get(), event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER));
         }
-
-        List<StationPieceDefinition> candidates = objectCandidates(library, poolOptional.get(), event.getZone().data().getFloat(TagsConstants.Keys.STATION_DANGER));
         if (candidates.isEmpty()) {
-            return;
+            return false;
         }
 
         Optional<ObjectPlacement> placement = selectObjectPlacement(event, candidates, random);
         if (placement.isEmpty()) {
-            return;
+            return false;
         }
 
         StructurePlaceSettings settings = new StructurePlaceSettings()
                 .setRotation(placement.get().rotation())
                 .addProcessor(BlockIgnoreProcessor.AIR);
         placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
+        return true;
     }
 
     private static int placeObjectZone(StationStructureSpawnTriggerEvent event, boolean questInvocation, int forcedCount) {
@@ -370,25 +393,6 @@ public final class StationTriggerHandlers {
             placed++;
         }
         return placed;
-    }
-
-    private static void placeMobs(StationStructureSpawnTriggerEvent event) {
-        CompoundTag data = event.getZone().data();
-        if (data.contains("place") && !data.getBoolean("place")) {
-            return;
-        }
-
-        float danger = Mth.clamp(data.getFloat(TagsConstants.Keys.STATION_DANGER), 0.0F, 1.0F);
-        int count = event.getForcedMobCount() >= 0
-                ? event.getForcedMobCount()
-                : Math.max(0, data.contains("count") ? data.getInt("count") : 1 + Mth.ceil(danger * 4.0F));
-        String mobId = event.getForcedMob() != null && !event.getForcedMob().isBlank()
-                ? event.getForcedMob()
-                : data.getString("mob");
-        RandomSource random = event.getLevel().getRandom();
-        for (int i = 0; i < count; i++) {
-            spawnDangerMob(event.getLevel(), event.getZone(), danger, random, mobId);
-        }
     }
 
     private static Optional<ObjectPlacement> selectObjectPlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random) {
@@ -596,6 +600,80 @@ public final class StationTriggerHandlers {
         return candidates;
     }
 
+    private static List<StationPieceDefinition> questObjectCandidates(StationStructureLibraryData library, CompoundTag data, float danger, String requiredObject) {
+        List<StationPieceDefinition> candidates = objectZoneCandidates(library, data, danger);
+        String normalizedObject = normalizeObjectId(requiredObject);
+        if (normalizedObject.isBlank()) {
+            return candidates;
+        }
+        List<StationPieceDefinition> matched = new ObjectArrayList<>();
+        for (StationPieceDefinition definition : candidates) {
+            if (objectMatchesRequired(definition, normalizedObject)) {
+                matched.add(definition);
+            }
+        }
+        if (matched.isEmpty() && objectDataMatchesRequired(data, normalizedObject)) {
+            return candidates;
+        }
+        return matched;
+    }
+
+    private static boolean objectDataMatchesRequired(CompoundTag data, String requiredObject) {
+        String shortName = shortObjectName(requiredObject);
+        for (String key : List.of("object", "objectId", "piece", "template", "item", "requiredItem", TagsConstants.Keys.TAG, TagsConstants.Keys.TAGS)) {
+            String value = data.getString(key);
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            for (String part : value.split("[,;]")) {
+                String normalized = normalizeObjectId(part);
+                if (normalized.equals(requiredObject) || normalized.equals(shortName) || shortObjectName(normalized).equals(shortName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean objectMatchesRequired(StationPieceDefinition definition, String requiredObject) {
+        if (matchesResourceName(definition.id(), requiredObject) || matchesResourceName(definition.template(), requiredObject)) {
+            return true;
+        }
+        String shortName = shortObjectName(requiredObject);
+        for (String tag : definition.tags()) {
+            String normalizedTag = normalizeObjectId(tag);
+            if (normalizedTag.equals(requiredObject) || normalizedTag.equals(shortName) || shortObjectName(normalizedTag).equals(shortName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesResourceName(ResourceLocation id, String requiredObject) {
+        if (id == null) {
+            return false;
+        }
+        String full = normalizeObjectId(id.toString());
+        String path = normalizeObjectId(id.getPath());
+        String shortName = shortObjectName(requiredObject);
+        return full.equals(requiredObject)
+                || path.equals(requiredObject)
+                || path.equals(shortName)
+                || path.endsWith("/" + shortName);
+    }
+
+    private static String shortObjectName(String objectId) {
+        String normalized = normalizeObjectId(objectId);
+        int slash = normalized.lastIndexOf('/');
+        String tail = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        int colon = tail.lastIndexOf(':');
+        return colon >= 0 ? tail.substring(colon + 1) : tail;
+    }
+
+    private static String normalizeObjectId(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
     private static List<ResourceLocation> objectPoolIds(CompoundTag data) {
         Set<ResourceLocation> poolIds = new LinkedHashSet<>();
         if (data.contains("pools", Tag.TAG_LIST)) {
@@ -758,57 +836,6 @@ public final class StationTriggerHandlers {
             case 3 -> Rotation.COUNTERCLOCKWISE_90;
             default -> Rotation.NONE;
         };
-    }
-
-    private static void spawnDangerMob(net.minecraft.server.level.ServerLevel level, PlacedTriggerZone zone, float danger, RandomSource random, String mobId) {
-        EntityType<?> entityType = mobType(mobId, danger);
-        Entity entity = entityType.create(level);
-        if (!(entity instanceof Mob mob)) {
-            return;
-        }
-
-        BlockPos spawnPos = randomPosInside(zone, random);
-        mob.moveTo(spawnPos.getX() + 0.5D, spawnPos.getY(), spawnPos.getZ() + 0.5D, random.nextFloat() * 360.0F, 0.0F);
-        mob.finalizeSpawn(
-                (ServerLevelAccessor) level,
-                level.getCurrentDifficultyAt(spawnPos),
-                MobSpawnType.STRUCTURE,
-                null,
-                null
-        );
-        scaleDanger(mob, danger);
-        level.addFreshEntity(mob);
-    }
-
-    private static EntityType<?> mobType(String mobId, float danger) {
-        if (mobId != null && !mobId.isBlank()) {
-            ResourceLocation id = ResourceLocation.tryParse(mobId);
-            if (id != null && net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.containsKey(id)) {
-                EntityType<?> entityType = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getValue(id);
-                if (entityType != null) {
-                    return entityType;
-                }
-            }
-        }
-        return StationMobEntities.LIVING_TRASH.get();
-    }
-
-    private static BlockPos randomPosInside(PlacedTriggerZone zone, RandomSource random) {
-        int x = Mth.nextInt(random, zone.min().getX(), zone.max().getX());
-        int y = Mth.nextInt(random, zone.min().getY(), zone.max().getY());
-        int z = Mth.nextInt(random, zone.min().getZ(), zone.max().getZ());
-        return new BlockPos(x, y, z);
-    }
-
-    private static void scaleDanger(Mob mob, float danger) {
-        double multiplier = 1.0D + danger;
-        if (mob.getAttribute(Attributes.MAX_HEALTH) != null) {
-            mob.getAttribute(Attributes.MAX_HEALTH).setBaseValue(mob.getAttribute(Attributes.MAX_HEALTH).getBaseValue() * multiplier);
-            mob.setHealth(mob.getMaxHealth());
-        }
-        if (mob.getAttribute(Attributes.ATTACK_DAMAGE) != null) {
-            mob.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(mob.getAttribute(Attributes.ATTACK_DAMAGE).getBaseValue() * multiplier);
-        }
     }
 
     private record EnergyPanelTarget(PlacedStationPiece piece, PlacedTriggerZone zone) {

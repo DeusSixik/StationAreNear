@@ -42,6 +42,7 @@ public final class StationMapSnapshotFactory {
     private static final int PLAYER_SHIP_MAP_HALF_SIZE = 2;
     private static final ResourceLocation PLAYER_SHIP_MAP_ID = ResourceLocation.tryParse(StationAreNear.MODID + ":player_ship");
     private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
+    private static final String KEY_COMPLETED_TARGET_TRIGGER_IDS = "completedTargetTriggerIds";
 
     private StationMapSnapshotFactory() {
     }
@@ -272,14 +273,15 @@ public final class StationMapSnapshotFactory {
                         if (objective.completed()) {
                             continue;
                         }
-                        if (!objective.targetTriggerId().isBlank()) {
+                        Set<String> completedTargetTriggers = completedQuestTargetTriggers(objective);
+                        if (!objective.targetTriggerId().isBlank() && !completedTargetTriggers.contains(objective.targetTriggerId())) {
                             triggers.add(objective.targetTriggerId());
                         }
                         if (objective.progress().contains(KEY_TARGET_TRIGGER_IDS, Tag.TAG_LIST)) {
                             ListTag targetTriggerIds = objective.progress().getList(KEY_TARGET_TRIGGER_IDS, Tag.TAG_STRING);
                             for (int i = 0; i < targetTriggerIds.size(); i++) {
                                 String targetTriggerId = targetTriggerIds.getString(i);
-                                if (!targetTriggerId.isBlank()) {
+                                if (!targetTriggerId.isBlank() && !completedTargetTriggers.contains(targetTriggerId)) {
                                     triggers.add(targetTriggerId);
                                 }
                             }
@@ -288,6 +290,21 @@ public final class StationMapSnapshotFactory {
                     return triggers;
                 })
                 .orElse(Set.of());
+    }
+
+    private static Set<String> completedQuestTargetTriggers(QuestObjectiveState objective) {
+        if (!objective.progress().contains(KEY_COMPLETED_TARGET_TRIGGER_IDS, Tag.TAG_LIST)) {
+            return Set.of();
+        }
+        Set<String> completed = new HashSet<>();
+        ListTag completedTargetTriggerIds = objective.progress().getList(KEY_COMPLETED_TARGET_TRIGGER_IDS, Tag.TAG_STRING);
+        for (int i = 0; i < completedTargetTriggerIds.size(); i++) {
+            String targetTriggerId = completedTargetTriggerIds.getString(i);
+            if (!targetTriggerId.isBlank()) {
+                completed.add(targetTriggerId);
+            }
+        }
+        return completed;
     }
 
     private static String questPieceMarker(PlacedStationPiece piece, Set<String> questTargetTriggers) {

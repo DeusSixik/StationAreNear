@@ -9,6 +9,7 @@ public enum StationEditorNodeType {
     QUEST_PLACE,
     DOOR_TRIGGER,
     OBJECT_PLACER,
+    QUEST_OBJECT_PLACER,
     OBJECT_ZONE_PLACER,
     LOOT,
     MOB_SPAWN

@@ -49,12 +49,10 @@ public final class DirectorStationSpawnHandler {
     private static void applyMobOffer(StationStructureSpawnTriggerEvent event, CompoundTag plan) {
         CompoundTag offer = takeOffer(plan, StationOfferType.MOB, event.getZone());
         if (offer.isEmpty()) {
-            event.setPlacementCanceled(true);
             return;
         }
         int count = consume(offer, Math.min(3, offer.getInt("remaining")));
         if (count <= 0) {
-            event.setPlacementCanceled(true);
             return;
         }
         event.setForcedMobCount(count);

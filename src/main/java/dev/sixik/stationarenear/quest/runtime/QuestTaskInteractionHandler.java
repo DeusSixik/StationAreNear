@@ -43,6 +43,7 @@ public final class QuestTaskInteractionHandler {
 
     private static final String KEY_DONE_POSITIONS = "donePositions";
     private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
+    private static final String KEY_COMPLETED_TARGET_TRIGGER_IDS = "completedTargetTriggerIds";
 
     private QuestTaskInteractionHandler() {
     }
@@ -177,9 +178,14 @@ public final class QuestTaskInteractionHandler {
     private static boolean placeTargetMatches(PlacedStationPiece piece, QuestObjectiveState objective, BlockPos pos, BlockState placedState) {
         Set<String> targetTriggerIds = targetTriggerIds(objective);
         return piece.triggerZones().stream()
-                .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_PLACE)
+                .filter(QuestTaskInteractionHandler::isPlaceTargetTrigger)
                 .filter(zone -> targetTriggerIds.isEmpty() || targetTriggerIds.contains(zone.id()))
                 .anyMatch(zone -> placeZoneContains(zone, pos) && placedBlockMatches(objective, zone, placedState));
+    }
+
+    private static boolean isPlaceTargetTrigger(PlacedTriggerZone zone) {
+        StationStructureTriggerType type = StationStructureTriggerType.from(zone.type());
+        return type == StationStructureTriggerType.QUEST_PLACE || type == StationStructureTriggerType.QUEST_OBJECT_PLACER;
     }
 
     private static boolean placeZoneContains(PlacedTriggerZone zone, BlockPos pos) {
@@ -402,11 +408,82 @@ public final class QuestTaskInteractionHandler {
         station.objective(questId).ifPresent(objective -> {
             net.minecraft.nbt.CompoundTag progress = objective.progress();
             net.minecraft.nbt.ListTag positions = progress.getList(KEY_DONE_POSITIONS, Tag.TAG_LONG);
-            positions.add(net.minecraft.nbt.LongTag.valueOf(pos.asLong()));
+            net.minecraft.nbt.LongTag positionTag = net.minecraft.nbt.LongTag.valueOf(pos.asLong());
+            if (!positions.contains(positionTag)) {
+                positions.add(positionTag);
+            }
             progress.put(KEY_DONE_POSITIONS, positions);
+            markCompletedTargetTriggers(level, objective, progress, pos);
             station.put(objective.withProgress(progress));
             data.station(station);
         });
+    }
+
+    private static void markCompletedTargetTriggers(ServerLevel level, QuestObjectiveState objective, CompoundTag progress, BlockPos donePos) {
+        Set<String> targetTriggerIds = targetTriggerIds(objective);
+        if (targetTriggerIds.isEmpty()) {
+            return;
+        }
+        Optional<StationPieceContext> context = stationPieceAt(level, donePos);
+        if (context.isEmpty()) {
+            return;
+        }
+
+        java.util.List<String> completed = new java.util.ArrayList<>();
+        if (StationQuests.CLEAR_TRASH.equals(objective.id())) {
+            if (pieceHasRemainingTrash(level, context.get().piece(), donePos)) {
+                return;
+            }
+            for (PlacedTriggerZone zone : context.get().piece().triggerZones()) {
+                if (targetTriggerIds.contains(zone.id())) {
+                    completed.add(zone.id());
+                }
+            }
+        } else {
+            for (PlacedTriggerZone zone : context.get().piece().triggerZones()) {
+                if (targetTriggerIds.contains(zone.id()) && contains(zone, donePos)) {
+                    completed.add(zone.id());
+                }
+            }
+        }
+        addCompletedTargetTriggerIds(progress, completed);
+    }
+
+    private static boolean pieceHasRemainingTrash(ServerLevel level, PlacedStationPiece piece, BlockPos ignoredPos) {
+        net.minecraft.world.level.levelgen.structure.BoundingBox bounds = piece.selectionBounds();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    mutable.set(x, y, z);
+                    if (mutable.equals(ignoredPos)) {
+                        continue;
+                    }
+                    BlockState state = level.getBlockState(mutable);
+                    if (state.is(QuestTags.TRASH_BLOCKS) || DirectorConfigManager.isTrashBlock(state)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void addCompletedTargetTriggerIds(CompoundTag progress, java.util.List<String> completed) {
+        if (completed.isEmpty()) {
+            return;
+        }
+        Set<String> existing = new HashSet<>();
+        net.minecraft.nbt.ListTag list = progress.getList(KEY_COMPLETED_TARGET_TRIGGER_IDS, Tag.TAG_STRING);
+        for (int i = 0; i < list.size(); i++) {
+            existing.add(list.getString(i));
+        }
+        for (String triggerId : completed) {
+            if (triggerId != null && !triggerId.isBlank() && existing.add(triggerId)) {
+                list.add(net.minecraft.nbt.StringTag.valueOf(triggerId));
+            }
+        }
+        progress.put(KEY_COMPLETED_TARGET_TRIGGER_IDS, list);
     }
 
     private static Optional<StationInstance> stationAt(ServerLevel level, BlockPos pos) {

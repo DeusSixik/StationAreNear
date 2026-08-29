@@ -34,6 +34,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
@@ -61,8 +62,8 @@ public final class QuestTestScenario {
     private static final String DEFAULT_DIRECTOR_ID = DirectorConfigManager.DEFAULT_PROFILE_ID;
     private static final int TERMINAL_SEARCH_RADIUS = 64;
     private static final int TEST_TRASH_EXTRA = 3;
-    private static final String TEST_FRIDGE_TAG = TagsConstants.Quest.SOCKET;
-    private static final String TEST_SINK_TAG = TagsConstants.Quest.PIPES;
+    private static final String TEST_ELECTRIC_TAG = TagsConstants.Quest.ELECTRIC;
+    private static final String TEST_SINK_TAG = "kitchen_sink";
     private static final String TEST_TRASH_ZONE_TAG = TagsConstants.Quest.TRASH;
     private static final String KEY_QUEST_ELEMENT_SPAWN_SKIPS = "questElementSpawnSkips";
     private static final String KEY_TARGET_TRIGGER_IDS = "targetTriggerIds";
@@ -162,20 +163,11 @@ public final class QuestTestScenario {
     }
 
     public static boolean startDockedQuest(ServerLevel level, StationInstance station) {
-        Optional<PlacedStationPiece> questRoom = station.pieces().stream()
-                .filter(QuestTestScenario::isQuestRoom)
-                .findFirst();
-        if (questRoom.isEmpty()) {
-            return false;
-        }
-
-        List<PlacedTriggerZone> questTriggers = questRoom.get().triggerZones().stream()
+        List<PlacedTriggerZone> questTriggers = station.pieces().stream()
+                .flatMap(piece -> piece.triggerZones().stream())
                 .filter(zone -> StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST)
                 .sorted(Comparator.comparing(PlacedTriggerZone::id))
                 .toList();
-        if (questTriggers.isEmpty()) {
-            return false;
-        }
 
         List<PlacedTriggerZone> placeTriggers = station.pieces().stream()
                 .flatMap(piece -> piece.triggerZones().stream())
@@ -193,22 +185,49 @@ public final class QuestTestScenario {
                         .map(zone -> new QuestObjectZoneTarget(piece, zone)))
                 .sorted(Comparator.comparing((QuestObjectZoneTarget target) -> target.zone().id()))
                 .toList();
+        List<QuestObjectTarget> questObjectPlacers = station.pieces().stream()
+                .flatMap(piece -> piece.triggerZones().stream()
+                        .filter(QuestTestScenario::isQuestObjectPlacerTrigger)
+                        .map(zone -> new QuestObjectTarget(piece, zone)))
+                .sorted(Comparator.comparing((QuestObjectTarget target) -> target.zone().id()))
+                .toList();
+        if (questTriggers.isEmpty() && placeTriggers.isEmpty() && doorTriggers.isEmpty() && objectZoneTriggers.isEmpty() && questObjectPlacers.isEmpty()) {
+            return false;
+        }
 
         QuestStationState pendingState = QuestSavedData.get(level).stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
+        Map<String, String> placeItems = placeItems(pendingState);
+        Map<String, List<String>> targetTags = targetTags(pendingState);
         int trashRequired = activeTargetCount(pendingState, StationQuests.CLEAR_TRASH);
+        Set<String> usedQuestObjectPlacers = new java.util.LinkedHashSet<>();
 
+        String fridgeItem = placeItem(placeItems, StationQuests.PLACE_FRIDGE, "stationarenear:fridge");
         PlaceTargetPlan fridgePlan = hasActiveObjective(pendingState, StationQuests.PLACE_FRIDGE)
-                ? selectPlaceTarget(placeTriggers, station.seed(), TEST_FRIDGE_TAG)
+                ? selectQuestObjectPlaceTarget(level, station, questObjectPlacers, StationQuests.PLACE_FRIDGE, fridgeItem, targetTags(targetTags, StationQuests.PLACE_FRIDGE, TEST_ELECTRIC_TAG), activeTargetCount(pendingState, StationQuests.PLACE_FRIDGE), usedQuestObjectPlacers)
                 : new PlaceTargetPlan(false, "");
+        if (!fridgePlan.present() && hasActiveObjective(pendingState, StationQuests.PLACE_FRIDGE)) {
+            fridgePlan = selectPlaceTarget(placeTriggers, station.seed(), TagsConstants.Quest.SOCKET);
+        }
+
+        String microwaveItem = placeItem(placeItems, StationQuests.PLACE_MICROWAVE, "stationarenear:microwave");
         PlaceTargetPlan microwavePlan = hasActiveObjective(pendingState, StationQuests.PLACE_MICROWAVE)
-                ? selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TEST_FRIDGE_TAG, Set.of(fridgePlan.targetTriggerId()))
+                ? selectQuestObjectPlaceTarget(level, station, questObjectPlacers, StationQuests.PLACE_MICROWAVE, microwaveItem, targetTags(targetTags, StationQuests.PLACE_MICROWAVE, TEST_ELECTRIC_TAG), activeTargetCount(pendingState, StationQuests.PLACE_MICROWAVE), usedQuestObjectPlacers)
                 : new PlaceTargetPlan(false, "");
+        if (!microwavePlan.present() && hasActiveObjective(pendingState, StationQuests.PLACE_MICROWAVE)) {
+            microwavePlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0xA110C0DEL, TagsConstants.Quest.SOCKET, Set.of(fridgePlan.targetTriggerId()));
+        }
+
+        String sinkItem = placeItem(placeItems, StationQuests.PLACE_KITCHEN_SINK, "stationarenear:kitchen_sink");
         PlaceTargetPlan sinkPlan = hasActiveObjective(pendingState, StationQuests.PLACE_KITCHEN_SINK)
-                ? selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TEST_SINK_TAG)
+                ? selectQuestObjectPlaceTarget(level, station, questObjectPlacers, StationQuests.PLACE_KITCHEN_SINK, sinkItem, targetTags(targetTags, StationQuests.PLACE_KITCHEN_SINK, TEST_SINK_TAG), activeTargetCount(pendingState, StationQuests.PLACE_KITCHEN_SINK), usedQuestObjectPlacers)
                 : new PlaceTargetPlan(false, "");
+        if (!sinkPlan.present() && hasActiveObjective(pendingState, StationQuests.PLACE_KITCHEN_SINK)) {
+            sinkPlan = selectPlaceTarget(placeTriggers, station.seed() ^ 0x51A4C0DEL, TagsConstants.Quest.PIPES);
+        }
+
         DoorSpawnPlan doorPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_DOORS)
-                ? spawnBrokenRepairDoor(level, station, doorTriggers)
+                ? spawnBrokenRepairDoor(level, station, doorTriggers, activeTargetCount(pendingState, StationQuests.REPAIR_DOORS))
                 : new DoorSpawnPlan(false, "");
         EnergyPanelPlan energyPanelPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_ELECTRIC_PANEL)
                 ? spawnRepairEnergyPanel(level, station)
@@ -216,11 +235,12 @@ public final class QuestTestScenario {
         QuestSpawnPlan spawnPlan = trashRequired > 0
                 ? spawnPseudoTrash(level, station, questTriggers, objectZoneTriggers, trashRequired, TEST_TRASH_EXTRA)
                 : new QuestSpawnPlan(0, 0, 0, "", List.of());
-        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
+
+        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan, placeItems);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan, Map<String, String> placeItems) {
         QuestSavedData data = QuestSavedData.get(level);
         Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
@@ -234,6 +254,9 @@ public final class QuestTestScenario {
                     objective.text()
             ).withProgress(progress));
         });
+        putPlaceItemProgress(moved, StationQuests.PLACE_FRIDGE, placeItem(placeItems, StationQuests.PLACE_FRIDGE, "stationarenear:fridge"), fridgePlan);
+        putPlaceItemProgress(moved, StationQuests.PLACE_MICROWAVE, placeItem(placeItems, StationQuests.PLACE_MICROWAVE, "stationarenear:microwave"), microwavePlan);
+        putPlaceItemProgress(moved, StationQuests.PLACE_KITCHEN_SINK, placeItem(placeItems, StationQuests.PLACE_KITCHEN_SINK, "stationarenear:kitchen_sink"), sinkPlan);
         if (!fridgePlan.present()) {
             moved.objective(StationQuests.PLACE_FRIDGE).ifPresent(objective -> moved.put(objective.complete(null)));
         }
@@ -245,6 +268,12 @@ public final class QuestTestScenario {
         }
         if (!doorPlan.placed()) {
             moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> moved.put(objective.complete(null)));
+        } else {
+            moved.objective(StationQuests.REPAIR_DOORS).ifPresent(objective -> {
+                CompoundTag progress = objective.progress();
+                putTargetTriggerIds(progress, doorPlan.targetTriggerIds());
+                moved.put(objective.withDisplay(Math.max(1, doorPlan.targetTriggerIds().size()), objective.text()).withProgress(progress));
+            });
         }
         if (!energyPanelPlan.placed()) {
             moved.objective(StationQuests.REPAIR_ELECTRIC_PANEL).ifPresent(objective -> moved.put(objective.complete(null)));
@@ -404,6 +433,9 @@ public final class QuestTestScenario {
     }
 
     private static String triggerId(List<PlacedTriggerZone> questTriggers, int index) {
+        if (questTriggers == null || questTriggers.isEmpty()) {
+            return "";
+        }
         return questTriggers.get(Math.min(index, questTriggers.size() - 1)).id();
     }
 
@@ -418,6 +450,10 @@ public final class QuestTestScenario {
     private static boolean isQuestObjectZoneTrigger(PlacedTriggerZone zone) {
         return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.OBJECT_ZONE_PLACER
                 && StationTriggerHandlers.isObjectZoneQuestOnly(zone);
+    }
+
+    private static boolean isQuestObjectPlacerTrigger(PlacedTriggerZone zone) {
+        return StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.QUEST_OBJECT_PLACER;
     }
 
     private static PlaceTargetPlan selectPlaceTarget(List<PlacedTriggerZone> placeTriggers, long seed, String requiredTag) {
@@ -455,7 +491,7 @@ public final class QuestTestScenario {
         if (tags == null || tags.isBlank()) {
             return false;
         }
-        for (String tag : tags.split(",")) {
+        for (String tag : tags.split("[,;]")) {
             if (requiredTag.equalsIgnoreCase(tag.trim())) {
                 return true;
             }
@@ -471,6 +507,9 @@ public final class QuestTestScenario {
         List<QuestObjectZoneTarget> trashZoneTargets = objectZoneTargets.stream()
                 .filter(target -> isTrashObjectZoneTarget(target.zone()))
                 .toList();
+        if (trashZoneTargets.isEmpty()) {
+            trashZoneTargets = objectZoneTargets;
+        }
         if (!trashZoneTargets.isEmpty()) {
             QuestSpawnPlan plan = spawnObjectZoneTrash(level, station, trashZoneTargets, requiredCount, extraCount);
             if (plan.requiredPlaced() > 0 || questTriggers.isEmpty() || requiredCount <= questElementSpawnSkip(station, StationQuests.CLEAR_TRASH)) {
@@ -551,8 +590,158 @@ public final class QuestTestScenario {
                 || hasTriggerTag(zone, StationQuests.CLEAR_TRASH);
     }
 
+    private static PlaceTargetPlan selectQuestObjectPlaceTarget(ServerLevel level, StationInstance station, List<QuestObjectTarget> objectTargets, String questId, String placeItem, List<String> targetTags, int requiredCount, Set<String> excludedIds) {
+        if (requiredCount <= 0 || objectTargets.isEmpty() || placeItem == null || placeItem.isBlank()) {
+            return new PlaceTargetPlan(false, "");
+        }
+        Set<String> excluded = excludedIds == null ? Set.of() : excludedIds;
+        List<QuestObjectTarget> candidates = objectTargets.stream()
+                .filter(target -> !excluded.contains(target.zone().id()))
+                .filter(target -> questObjectTargetMatches(target.zone(), questId, placeItem, targetTags))
+                .toList();
+        if (candidates.isEmpty() && (targetTags == null || targetTags.isEmpty())) {
+            candidates = objectTargets.stream()
+                    .filter(target -> !excluded.contains(target.zone().id()))
+                    .toList();
+        }
+        if (candidates.isEmpty()) {
+            return new PlaceTargetPlan(false, "");
+        }
+
+        List<QuestObjectTarget> shuffled = new ArrayList<>(candidates);
+        Collections.shuffle(shuffled, new java.util.Random(station.seed() ^ questId.hashCode() ^ placeItem.hashCode()));
+        int requiredTargets = Math.max(1, requiredCount);
+        List<String> targetTriggerIds = new ArrayList<>();
+        for (QuestObjectTarget target : shuffled) {
+            if (targetTriggerIds.size() >= requiredTargets) {
+                break;
+            }
+            int placedHere = StationTriggerHandlers.placeQuestObjectForQuest(level, station, target.piece(), target.zone(), placeItem, 1);
+            if (placedHere <= 0) {
+                continue;
+            }
+            targetTriggerIds.add(target.zone().id());
+            if (excludedIds != null) {
+                excludedIds.add(target.zone().id());
+            }
+        }
+        if (targetTriggerIds.isEmpty()) {
+            return new PlaceTargetPlan(false, "");
+        }
+        return new PlaceTargetPlan(true, primaryTarget(targetTriggerIds), targetTriggerIds);
+    }
+
+    private static boolean questObjectTargetMatches(PlacedTriggerZone zone, String questId, String placeItem, List<String> targetTags) {
+        if (targetTags != null) {
+            for (String targetTag : targetTags) {
+                if (hasTriggerTag(zone, targetTag)) {
+                    return true;
+                }
+            }
+        }
+        String shortName = shortObjectName(placeItem);
+        return hasTriggerTag(zone, placeItem)
+                || hasTriggerTag(zone, shortName)
+                || hasTriggerTag(zone, questId)
+                || hasTriggerTag(zone, shortObjectName(questId));
+    }
+
+    private static String shortObjectName(String id) {
+        if (id == null) {
+            return "";
+        }
+        String normalized = id.trim().toLowerCase(java.util.Locale.ROOT);
+        int slash = normalized.lastIndexOf('/');
+        String tail = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        int colon = tail.lastIndexOf(':');
+        return colon >= 0 ? tail.substring(colon + 1) : tail;
+    }
+
     private static String primaryTarget(List<String> targetTriggerIds) {
         return targetTriggerIds == null || targetTriggerIds.isEmpty() ? "" : targetTriggerIds.get(0);
+    }
+
+    private static Map<String, String> placeItems(QuestStationState state) {
+        if (state == null) {
+            return Map.of();
+        }
+        CompoundTag directorPlan = state.directorPlan();
+        if (!directorPlan.contains("questTasks", Tag.TAG_LIST)) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        ListTag tasks = directorPlan.getList("questTasks", Tag.TAG_COMPOUND);
+        for (int i = 0; i < tasks.size(); i++) {
+            CompoundTag task = tasks.getCompound(i);
+            String id = task.getString("id");
+            String placeItem = task.getString("placeItem");
+            if (!id.isBlank() && !placeItem.isBlank()) {
+                result.put(id, placeItem.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+        return result;
+    }
+
+    private static Map<String, List<String>> targetTags(QuestStationState state) {
+        if (state == null) {
+            return Map.of();
+        }
+        CompoundTag directorPlan = state.directorPlan();
+        if (!directorPlan.contains("questTasks", Tag.TAG_LIST)) {
+            return Map.of();
+        }
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        ListTag tasks = directorPlan.getList("questTasks", Tag.TAG_COMPOUND);
+        for (int i = 0; i < tasks.size(); i++) {
+            CompoundTag task = tasks.getCompound(i);
+            String id = task.getString("id");
+            if (id.isBlank() || !task.contains("targetTags", Tag.TAG_LIST)) {
+                continue;
+            }
+            List<String> tags = new ArrayList<>();
+            ListTag tagList = task.getList("targetTags", Tag.TAG_STRING);
+            for (int tagIndex = 0; tagIndex < tagList.size(); tagIndex++) {
+                String tag = tagList.getString(tagIndex).trim().toLowerCase(java.util.Locale.ROOT);
+                if (!tag.isBlank()) {
+                    tags.add(tag);
+                }
+            }
+            if (!tags.isEmpty()) {
+                result.put(id, List.copyOf(tags));
+            }
+        }
+        return result;
+    }
+
+    private static List<String> targetTags(Map<String, List<String>> targetTags, String questId, String fallback) {
+        List<String> tags = targetTags == null ? List.of() : targetTags.getOrDefault(questId, List.of());
+        if (!tags.isEmpty()) {
+            return tags;
+        }
+        return fallback == null || fallback.isBlank() ? List.of() : List.of(fallback);
+    }
+
+    private static String placeItem(Map<String, String> placeItems, String questId, String fallback) {
+        String value = placeItems == null ? "" : placeItems.getOrDefault(questId, "");
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static void putPlaceItemProgress(QuestStationState station, String questId, String placeItem, PlaceTargetPlan plan) {
+        if (placeItem == null || placeItem.isBlank()) {
+            return;
+        }
+        station.objective(questId).ifPresent(objective -> {
+            CompoundTag progress = objective.progress();
+            progress.putString("requiredItem", placeItem.trim().toLowerCase(java.util.Locale.ROOT));
+            if (plan != null && plan.present()) {
+                putTargetTriggerIds(progress, plan.targetTriggerIds());
+            }
+            QuestObjectiveState updated = objective.withProgress(progress);
+            if (plan != null && !plan.targetTriggerIds().isEmpty() && plan.targetTriggerIds().size() != objective.targetCount()) {
+                updated = updated.withDisplay(plan.targetTriggerIds().size(), objective.text());
+            }
+            station.put(updated);
+        });
     }
 
     private static void putTargetTriggerIds(CompoundTag progress, List<String> targetTriggerIds) {
@@ -620,30 +809,38 @@ public final class QuestTestScenario {
         return new EnergyPanelPlan(placed, placed ? target.get().id() : "");
     }
 
-    private static DoorSpawnPlan spawnBrokenRepairDoor(ServerLevel level, StationInstance station, List<PlacedTriggerZone> doorTriggers) {
+    private static DoorSpawnPlan spawnBrokenRepairDoor(ServerLevel level, StationInstance station, List<PlacedTriggerZone> doorTriggers, int requiredCount) {
+        int targetCount = Math.max(1, requiredCount);
         List<PlacedTriggerZone> zones = preferredDoorZones(doorTriggers, station.seed());
+        List<String> targetTriggerIds = new ArrayList<>();
         for (PlacedTriggerZone zone : zones) {
+            if (targetTriggerIds.size() >= targetCount) {
+                break;
+            }
             BlockPos masterPos = new BlockPos(
                     center(zone.min().getX(), zone.max().getX()),
                     zone.min().getY(),
                     center(zone.min().getZ(), zone.max().getZ())
             );
             if (breakExistingDoor(level, masterPos)) {
-                return new DoorSpawnPlan(true, zone.id());
+                targetTriggerIds.add(zone.id());
+                continue;
             }
 
-            for (net.minecraft.core.Direction direction : doorDirections(doorDirection(zone, station.stationDirection()))) {
-                if (!canPlaceDoor(level, masterPos, direction)) {
-                    continue;
-                }
-                level.setBlock(masterPos, ShipBlocks.STATION_PRESSURE_TIGHT_DOOR.get().defaultBlockState(), 3);
-                if (PressureTightDoorBlock.placeDoor(level, masterPos, direction, true, false, doorId(station.seed(), masterPos))) {
-                    return new DoorSpawnPlan(true, zone.id());
-                }
-                level.removeBlock(masterPos, false);
+            net.minecraft.core.Direction direction = doorDirection(zone, station.stationDirection());
+            if (!canPlaceDoor(level, masterPos, direction)) {
+                continue;
             }
+            level.setBlock(masterPos, ShipBlocks.STATION_PRESSURE_TIGHT_DOOR.get().defaultBlockState(), 3);
+            if (PressureTightDoorBlock.placeDoor(level, masterPos, direction, true, false, doorId(station.seed(), masterPos))) {
+                targetTriggerIds.add(zone.id());
+                continue;
+            }
+            level.removeBlock(masterPos, false);
         }
-        return new DoorSpawnPlan(false, "");
+        return targetTriggerIds.isEmpty()
+                ? new DoorSpawnPlan(false, "")
+                : new DoorSpawnPlan(true, primaryTarget(targetTriggerIds), targetTriggerIds);
     }
 
     private static boolean breakExistingDoor(ServerLevel level, BlockPos masterPos) {
@@ -678,19 +875,6 @@ public final class QuestTestScenario {
             Collections.shuffle(zones, new java.util.Random(seed ^ 0xD00F5EEDL));
         }
         return zones;
-    }
-
-    private static List<net.minecraft.core.Direction> doorDirections(net.minecraft.core.Direction preferred) {
-        List<net.minecraft.core.Direction> directions = new ArrayList<>();
-        if (preferred != null && preferred.getAxis().isHorizontal()) {
-            directions.add(preferred);
-        }
-        for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
-            if (!directions.contains(direction)) {
-                directions.add(direction);
-            }
-        }
-        return directions;
     }
 
     private static boolean canPlaceDoor(ServerLevel level, BlockPos masterPos, net.minecraft.core.Direction facing) {
@@ -797,10 +981,31 @@ public final class QuestTestScenario {
     private record QuestObjectZoneTarget(PlacedStationPiece piece, PlacedTriggerZone zone) {
     }
 
-    private record PlaceTargetPlan(boolean present, String targetTriggerId) {
+    private record QuestObjectTarget(PlacedStationPiece piece, PlacedTriggerZone zone) {
     }
 
-    private record DoorSpawnPlan(boolean placed, String targetTriggerId) {
+    private record PlaceTargetPlan(boolean present, String targetTriggerId, List<String> targetTriggerIds) {
+
+        private PlaceTargetPlan(boolean present, String targetTriggerId) {
+            this(present, targetTriggerId, targetTriggerId == null || targetTriggerId.isBlank() ? List.of() : List.of(targetTriggerId));
+        }
+
+        private PlaceTargetPlan {
+            targetTriggerIds = targetTriggerIds == null ? List.of() : List.copyOf(targetTriggerIds);
+            targetTriggerId = targetTriggerId == null || targetTriggerId.isBlank() ? primaryTarget(targetTriggerIds) : targetTriggerId;
+        }
+    }
+
+    private record DoorSpawnPlan(boolean placed, String targetTriggerId, List<String> targetTriggerIds) {
+
+        private DoorSpawnPlan(boolean placed, String targetTriggerId) {
+            this(placed, targetTriggerId, targetTriggerId == null || targetTriggerId.isBlank() ? List.of() : List.of(targetTriggerId));
+        }
+
+        private DoorSpawnPlan {
+            targetTriggerIds = targetTriggerIds == null ? List.of() : List.copyOf(targetTriggerIds);
+            targetTriggerId = targetTriggerId == null || targetTriggerId.isBlank() ? primaryTarget(targetTriggerIds) : targetTriggerId;
+        }
     }
 
     private record EnergyPanelPlan(boolean placed, String targetTriggerId) {

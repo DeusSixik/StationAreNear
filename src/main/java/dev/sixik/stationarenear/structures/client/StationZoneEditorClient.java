@@ -412,6 +412,30 @@ public final class StationZoneEditorClient {
             actions.addChild(create);
             actions.addChild(clear);
             inspector.addChild(actions);
+
+            section("Quest presets");
+            HBox questSources = new HBox();
+            questSources.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
+            Button electricSource = button("QOP Electric");
+            Button sinkSource = button("QOP Sink");
+            Button panelSource = button("QOP Panel");
+            electricSource.onClick(event -> createQuestObjectPlacerPreset("electric", TagsConstants.Quest.ELECTRIC + ",electrics," + TagsConstants.Quest.SOCKET));
+            sinkSource.onClick(event -> createQuestObjectPlacerPreset("sink", "kitchen_sink,sink,stationarenear:kitchen_sink,place_kitchen_sink,stationarenear:place_kitchen_sink"));
+            panelSource.onClick(event -> createQuestObjectPlacerPreset("electric_switch", TagsConstants.Quest.ELECTRIC_SWITCH + ",energy_panel,electric_panel"));
+            questSources.addChild(electricSource);
+            questSources.addChild(sinkSource);
+            questSources.addChild(panelSource);
+            inspector.addChild(questSources);
+
+            HBox questTargets = new HBox();
+            questTargets.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
+            Button socketTarget = button("PLACE Socket");
+            Button pipesTarget = button("PLACE Pipes");
+            socketTarget.onClick(event -> createTriggerFromDraft(StationEditorNodeType.QUEST_PLACE, "quest_place_socket_" + triggerCount(), defaultTriggerType(StationEditorNodeType.QUEST_PLACE), TagsConstants.Quest.SOCKET));
+            pipesTarget.onClick(event -> createTriggerFromDraft(StationEditorNodeType.QUEST_PLACE, "quest_place_pipes_" + triggerCount(), defaultTriggerType(StationEditorNodeType.QUEST_PLACE), TagsConstants.Quest.PIPES));
+            questTargets.addChild(socketTarget);
+            questTargets.addChild(pipesTarget);
+            inspector.addChild(questTargets);
         }
 
         private void inspectConnectionDraft() {
@@ -554,7 +578,16 @@ public final class StationZoneEditorClient {
         private void inspectTriggerData(int index, CompoundTag trigger) {
             StationEditorNodeType nodeType = parseEditorNodeType(trigger.getString("nodeType"));
             CompoundTag data = trigger.getCompound("data");
-            if (nodeType == StationEditorNodeType.OBJECT_PLACER || nodeType == StationEditorNodeType.LOOT) {
+            if (nodeType == StationEditorNodeType.QUEST_OBJECT_PLACER) {
+                inspector.addChild(label("QuestObjectPlacer: quest-spawned target point. Only pool and direction are configurable."));
+                ComboBox pool = combo(poolItems(data.getString("pool")), data.getString("pool"));
+                ComboBox objectDirection = combo(horizontalDirectionNames(), objectDirection(data));
+                row("Object Pool", pool);
+                row("Required Direction", objectDirection);
+                hint("Use Tags for quest matching: electric for fridge/microwave, kitchen_sink for sink, electric_switch for panel.");
+                pool.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putString("pool", comboSelectedItem(pool, event))); syncEditorStateAndSave(); });
+                objectDirection.onSelectionChanged(event -> { updateTriggerData(index, dataTag -> { dataTag.putString("objectDirection", comboSelectedItem(objectDirection, event)); dataTag.putBoolean("useObjectDirection", true); dataTag.putBoolean("randomRotation", false); }); syncEditorStateAndSave(); });
+            } else if (isObjectPlacerNode(nodeType)) {
                 inspector.addChild(label("ObjectPlacer: places one random object template from pool inside this zone."));
                 ToggleButton place = new ToggleButton("Place objects").silentChecked(!data.contains("place") || data.getBoolean("place"));
                 ToggleButton ignoreChance = new ToggleButton("IgnoreChancePlace").silentChecked(data.getBoolean("ignoreChancePlace"));
@@ -748,12 +781,25 @@ public final class StationZoneEditorClient {
             inspector.addChild(label);
         }
 
+
+        private boolean isObjectPlacerNode(StationEditorNodeType nodeType) {
+            return nodeType == StationEditorNodeType.OBJECT_PLACER
+                    || nodeType == StationEditorNodeType.LOOT;
+        }
+
+        private boolean isObjectPlacementDirectionNode(StationEditorNodeType nodeType) {
+            return isObjectPlacerNode(nodeType) || nodeType == StationEditorNodeType.QUEST_OBJECT_PLACER;
+        }
+
         private StationEditorNodeType parseEditorNodeType(String value) {
             if ("DOOR_SPAWNER".equalsIgnoreCase(value) || "door_spawner".equalsIgnoreCase(value)) {
                 return StationEditorNodeType.DOOR_TRIGGER;
             }
             if (TagsConstants.Trigger.OBJECT_ZONE_PLACER.equalsIgnoreCase(value) || TagsConstants.Trigger.ZONE_OBJECT_PLACER.equalsIgnoreCase(value)) {
                 return StationEditorNodeType.OBJECT_ZONE_PLACER;
+            }
+            if (TagsConstants.Trigger.QUEST_OBJECT_PLACER.equalsIgnoreCase(value) || TagsConstants.Trigger.QUEST_OBJECT_PLACE.equalsIgnoreCase(value) || TagsConstants.Trigger.QUEST_OBJECT_POOL.equalsIgnoreCase(value)) {
+                return StationEditorNodeType.QUEST_OBJECT_PLACER;
             }
             try {
                 return StationEditorNodeType.valueOf(value);
@@ -765,6 +811,7 @@ public final class StationZoneEditorClient {
         private String defaultTriggerType(StationEditorNodeType nodeType) {
             return switch (nodeType) {
                 case OBJECT_PLACER, LOOT -> "object_placer";
+                case QUEST_OBJECT_PLACER -> TagsConstants.Trigger.QUEST_OBJECT_PLACER;
                 case OBJECT_ZONE_PLACER -> TagsConstants.Trigger.OBJECT_ZONE_PLACER;
                 case MOB_SPAWN -> TagsConstants.Trigger.MOB_SPAWN;
                 case DOOR_TRIGGER -> TagsConstants.Trigger.DOOR_TRIGGER;
@@ -781,7 +828,18 @@ public final class StationZoneEditorClient {
         }
 
         private void mergeDefaultTriggerData(CompoundTag data, StationEditorNodeType nodeType) {
-            if (nodeType == StationEditorNodeType.OBJECT_PLACER || nodeType == StationEditorNodeType.LOOT) {
+            if (nodeType == StationEditorNodeType.QUEST_OBJECT_PLACER) {
+                if (!data.contains("pool") || data.getString("pool").isBlank()) {
+                    data.putString("pool", "stationarenear:objects/default");
+                }
+                data.putBoolean("place", true);
+                data.putBoolean("useObjectDirection", true);
+                data.putBoolean("randomRotation", false);
+                data.putBoolean("objectRotation", true);
+                if (!data.contains("objectDirection") || data.getString("objectDirection").isBlank()) {
+                    data.putString("objectDirection", "north");
+                }
+            } else if (isObjectPlacerNode(nodeType)) {
                 if (!data.contains("pool") || data.getString("pool").isBlank()) {
                     data.putString("pool", "stationarenear:objects/default");
                 }
@@ -914,6 +972,19 @@ public final class StationZoneEditorClient {
             status.text("Connection created from draft inside Root.");
         }
 
+        private int triggerCount() {
+            return tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND).size();
+        }
+
+        private void createQuestObjectPlacerPreset(String suffix, String tags) {
+            createTriggerFromDraft(
+                    StationEditorNodeType.QUEST_OBJECT_PLACER,
+                    "quest_object_" + suffix + "_" + triggerCount(),
+                    defaultTriggerType(StationEditorNodeType.QUEST_OBJECT_PLACER),
+                    tags
+            );
+        }
+
         private void addTrigger(StationEditorNodeType nodeType) {
             if (!hasTriggerDraft()) {
                 status.text("Use Trigger Manager Create mode to place draft POS_1/POS_2 first.");
@@ -943,9 +1014,13 @@ public final class StationZoneEditorClient {
                 Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
                 data.putString("direction", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());
             }
-            if (nodeType == StationEditorNodeType.OBJECT_PLACER || nodeType == StationEditorNodeType.LOOT) {
+            if (isObjectPlacementDirectionNode(nodeType)) {
                 Direction direction = autoDirectionFromRootFace(triggerMin, triggerMax);
                 data.putString("objectDirection", direction.getAxis().isHorizontal() ? direction.getSerializedName() : Direction.NORTH.getSerializedName());
+                if (nodeType == StationEditorNodeType.QUEST_OBJECT_PLACER) {
+                    data.putBoolean("useObjectDirection", true);
+                    data.putBoolean("randomRotation", false);
+                }
             }
             trigger.put("data", data);
             triggers.add(trigger);

@@ -4,6 +4,7 @@ import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.*;
 import dev.sixik.stationarenear.structures.trigger.StationStructureSpawnTriggerEvent;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -24,11 +25,14 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 import net.minecraftforge.common.MinecraftForge;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Set;
 
 public class StationGenerator {
@@ -86,7 +90,8 @@ public class StationGenerator {
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
         Optional<StationPoolDefinition> poolOptional = library.pool(settings.pool());
         if (poolOptional.isEmpty()) {
-            return StationGenerationResult.failure("Unknown station pool: " + settings.pool());
+            return StationGenerationResult.failure("Unknown station pool: " + settings.pool()
+                    + ". Available pools=" + library.pools().stream().map(pool -> pool.id().toString()).sorted().limit(12).toList());
         }
 
         StationPoolDefinition pool = poolOptional.get();
@@ -94,17 +99,22 @@ public class StationGenerator {
         float danger = settings.rollDanger(random);
         preloadTemplates(level, library, danger);
         StationBoundary boundary = new StationBoundary(shuttleDoorCenter, stationDirection);
-        StationLayout layout = planStationLayout(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary);
+        LayoutDiagnostics diagnostics = LayoutDiagnostics.create(library, pool, settings, danger, boundary, this);
+        StationLayout layout = planStationLayout(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary, diagnostics);
         if (layout == null) {
             int requiredMinRooms = settings.minRooms() > 0 ? settings.minRooms() : pool.minRooms();
-            return StationGenerationResult.failure("Could not plan station layout with at least " + requiredMinRooms + " pieces for pool: " + settings.pool());
+            return StationGenerationResult.failure("Could not plan station layout with at least " + requiredMinRooms + " pieces for pool: " + settings.pool() + ". " + diagnostics.summary());
         }
 
         List<PlacedStationPiece> placedPieces = new ObjectArrayList<>();
         for (PlacedStationPiece piece : layout.pieces()) {
             if (!placePiece(level, piece)) {
                 clearPieces(level, placedPieces);
-                return StationGenerationResult.failure("Failed to place station template: " + piece.template());
+                return StationGenerationResult.failure("Failed to place station template: " + piece.template()
+                        + " piece=" + piece.definitionId()
+                        + " origin=" + piece.origin()
+                        + " rotation=" + piece.rotation()
+                        + " bounds=" + piece.bounds());
             }
             placedPieces.add(piece);
         }
@@ -255,11 +265,12 @@ public class StationGenerator {
             Direction stationDirection,
             StationGenerationSettings settings,
             float danger,
-            StationBoundary boundary
+            StationBoundary boundary,
+            LayoutDiagnostics diagnostics
     ) {
         int attempts = layoutAttemptCount(settings.maxRooms());
         if (LAYOUT_THREAD_COUNT <= 1 || attempts <= 1) {
-            return planStationLayoutSync(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary, attempts);
+            return planStationLayoutSync(level, library, pool, shuttleDoorCenter, stationDirection, settings, danger, boundary, attempts, diagnostics);
         }
 
         List<java.util.concurrent.CompletableFuture<StationLayout>> futures = new ArrayList<>(attempts);
@@ -275,10 +286,14 @@ public class StationGenerator {
                             settings,
                             danger,
                             boundary,
-                            RandomSource.create(attemptSeed)
+                            RandomSource.create(attemptSeed),
+                            diagnostics
                     ),
                     LAYOUT_EXECUTOR
-            ).exceptionally(exception -> null));
+            ).exceptionally(exception -> {
+                diagnostics.recordFailure("layout attempt crashed: " + rootMessage(exception));
+                return null;
+            }));
         }
 
         StationLayout bestLayout = null;
@@ -300,7 +315,8 @@ public class StationGenerator {
             StationGenerationSettings settings,
             float danger,
             StationBoundary boundary,
-            int attempts
+            int attempts,
+            LayoutDiagnostics diagnostics
     ) {
         StationLayout bestLayout = null;
         for (int attempt = 0; attempt < attempts; attempt++) {
@@ -314,7 +330,8 @@ public class StationGenerator {
                     settings,
                     danger,
                     boundary,
-                    RandomSource.create(attemptSeed)
+                    RandomSource.create(attemptSeed),
+                    diagnostics
             );
             if (layout == null) {
                 continue;
@@ -350,7 +367,8 @@ public class StationGenerator {
             StationGenerationSettings settings,
             float danger,
             StationBoundary boundary,
-            RandomSource random
+            RandomSource random,
+            LayoutDiagnostics diagnostics
     ) {
         List<PlacedStationPiece> pieces = new ObjectArrayList<>();
         List<BoundingBox> occupied = new ObjectArrayList<>();
@@ -361,9 +379,11 @@ public class StationGenerator {
         Object2IntMap<ResourceLocation> pieceUsage = new Object2IntOpenHashMap<>();
         Object2IntMap<String> tagUsage = new Object2IntOpenHashMap<>();
         boolean allowVerticalConnections = allowVerticalConnections(settings.maxFloors());
+        diagnostics.recordAttemptStarted();
 
         PlacedStationPiece startPiece = chooseStartPiece(level, library, pool, shuttleDoorCenter, stationDirection, danger, random, boundary, settings.maxFloors());
         if (startPiece == null) {
+            diagnostics.recordFailure("no start piece can dock to ship: need connector facing " + stationDirection.getOpposite() + ", startPieces=" + pool.startPieces().size());
             return null;
         }
 
@@ -385,6 +405,10 @@ public class StationGenerator {
             boolean forceRequiredPiece = pieces.size() >= targetPieces && !requiredPiecesSatisfied(settings, pieceUsage, tagUsage);
             PlacementCandidate candidate = chooseNextPiece(level, library, pool, openConnectors, danger, random, pieces, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), needsExpandablePiece, pieceUsage, tagUsage, settings, forceRequiredPiece);
             if (candidate == null) {
+                diagnostics.recordFailure("main branch stalled: pieces=" + pieces.size()
+                        + "/" + targetPieces
+                        + ", openConnectors=" + openConnectors.size()
+                        + ", missing=" + missingRequirements(settings, pieceUsage, tagUsage));
                 break;
             }
 
@@ -403,19 +427,29 @@ public class StationGenerator {
         }
 
         if (pieces.size() < requiredMinRooms || !requiredPiecesSatisfied(settings, pieceUsage, tagUsage)) {
+            diagnostics.recordFailure("required layout not satisfied: pieces=" + pieces.size()
+                    + "/min" + requiredMinRooms
+                    + ", missing=" + missingRequirements(settings, pieceUsage, tagUsage)
+                    + ", openConnectors=" + openConnectors.size());
             return null;
         }
 
         if (!extendSidePassages(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), settings, pieces, parentIndexes, sourceConnectors, pieceUsage, tagUsage)) {
+            diagnostics.recordFailure("could not route required passage connections: pieces=" + pieces.size()
+                    + ", openConnectors=" + openConnectors.size()
+                    + ", requiredPassageOpen=" + requiredPassageConnectorCount(openConnectors));
             return null;
         }
 
         capRemainingOpenConnectors(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors, pieceUsage);
         repairDanglingSections(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), pieces, parentIndexes, sourceConnectors);
         if (!openConnectors.isEmpty()) {
+            diagnostics.recordFailure("unclosed connectors left after caps/repair: openConnectors=" + openConnectors.size()
+                    + ", examples=" + connectorExamples(openConnectors, 4));
             return null;
         }
         syncPieceOpenConnectors(pieces, openConnectors);
+        diagnostics.recordSuccess(pieces.size());
         return new StationLayout(new ObjectArrayList<>(pieces), new ObjectArrayList<>(openConnectors), scoreLayout(pieces, openConnectors, boundary, requiredMinRooms, targetPieces));
     }
 
@@ -1702,15 +1736,53 @@ public class StationGenerator {
         return Math.max(1, Math.min(CANDIDATE_SCORE_WEIGHT_CAP, score - minScore + 1));
     }
 
+    private Set<String> pieceCapabilityTags(StationPieceDefinition definition) {
+        return pieceCapabilityTagCounts(definition).keySet();
+    }
+
+    private Object2IntMap<String> pieceCapabilityTagCounts(StationPieceDefinition definition) {
+        Object2IntOpenHashMap<String> tags = new Object2IntOpenHashMap<>();
+        for (String tag : definition.tags()) {
+            addNormalizedTag(tags, tag, 1);
+        }
+        for (StationTriggerZone zone : definition.triggerZones()) {
+            addNormalizedTag(tags, zone.type(), 1);
+            if (zone.data().contains(TagsConstants.Keys.TAG)) {
+                addNormalizedTag(tags, zone.data().getString(TagsConstants.Keys.TAG), 1);
+            }
+            if (zone.data().contains(TagsConstants.Keys.TAGS)) {
+                addNormalizedTags(tags, zone.data().getString(TagsConstants.Keys.TAGS), 1);
+            }
+        }
+        return tags;
+    }
+
+    private void addNormalizedTags(Object2IntMap<String> tags, String value, int count) {
+        if (value == null) {
+            return;
+        }
+        for (String part : value.split("[,;]")) {
+            addNormalizedTag(tags, part, count);
+        }
+    }
+
+    private void addNormalizedTag(Object2IntMap<String> tags, String value, int count) {
+        if (value == null) {
+            return;
+        }
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.isBlank()) {
+            tags.mergeInt(normalized, Math.max(1, count), Integer::sum);
+        }
+    }
+
     private void incrementPieceUsage(Object2IntMap<ResourceLocation> pieceUsage, PlacedStationPiece piece) {
         pieceUsage.merge(piece.definitionId(), 1, Integer::sum);
     }
 
     private void incrementTagUsage(StationStructureLibraryData library, Object2IntMap<String> tagUsage, PlacedStationPiece piece) {
         library.piece(piece.definitionId()).ifPresent(definition -> {
-            for (String tag : definition.tags()) {
-                tagUsage.merge(tag, 1, Integer::sum);
-            }
+            pieceCapabilityTagCounts(definition).forEach((tag, count) -> tagUsage.merge(tag, Math.max(1, count), Integer::sum));
         });
     }
 
@@ -1733,6 +1805,54 @@ public class StationGenerator {
         return definitions(library, List.copyOf(ids), danger);
     }
 
+    private String requirementSummary(StationGenerationSettings settings) {
+        List<String> requirements = new ArrayList<>();
+        settings.requiredPieces().forEach((id, count) -> requirements.add("piece " + id + " x" + count));
+        settings.requiredPieceTags().forEach((tag, count) -> requirements.add("tag " + tag + " x" + count));
+        return requirements.isEmpty() ? "none" : String.join(", ", requirements);
+    }
+
+    private String missingRequirements(StationGenerationSettings settings, Map<ResourceLocation, Integer> pieceUsage, Map<String, Integer> tagUsage) {
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<ResourceLocation, Integer> entry : settings.requiredPieces().entrySet()) {
+            int have = pieceUsage.getOrDefault(entry.getKey(), 0);
+            if (have < entry.getValue()) {
+                missing.add("piece " + entry.getKey() + " " + have + "/" + entry.getValue());
+            }
+        }
+        for (Map.Entry<String, Integer> entry : settings.requiredPieceTags().entrySet()) {
+            int have = tagUsage.getOrDefault(entry.getKey(), 0);
+            if (have < entry.getValue()) {
+                missing.add("tag " + entry.getKey() + " " + have + "/" + entry.getValue());
+            }
+        }
+        return missing.isEmpty() ? "none" : String.join(", ", missing);
+    }
+
+    private int requiredPassageConnectorCount(List<StationConnector> connectors) {
+        int count = 0;
+        for (StationConnector connector : connectors) {
+            if (connector.requiresPassage()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private String connectorExamples(List<StationConnector> connectors, int limit) {
+        if (connectors.isEmpty()) {
+            return "none";
+        }
+        List<String> examples = new ArrayList<>();
+        for (StationConnector connector : connectors) {
+            if (examples.size() >= limit) {
+                break;
+            }
+            examples.add(connector.position() + " -> " + connector.direction() + (connector.requiresPassage() ? " requiresPassage" : ""));
+        }
+        return String.join("; ", examples);
+    }
+
     private boolean requiredPiecesSatisfied(StationGenerationSettings settings, Map<ResourceLocation, Integer> pieceUsage, Map<String, Integer> tagUsage) {
         for (Map.Entry<ResourceLocation, Integer> entry : settings.requiredPieces().entrySet()) {
             if (pieceUsage.getOrDefault(entry.getKey(), 0) < entry.getValue()) {
@@ -1749,14 +1869,14 @@ public class StationGenerator {
 
     private int requiredPieceRemaining(StationGenerationSettings settings, Map<ResourceLocation, Integer> pieceUsage, Map<String, Integer> tagUsage, StationPieceDefinition definition) {
         int remaining = Math.max(0, settings.requiredPieceCount(definition.id()) - pieceUsage.getOrDefault(definition.id(), 0));
-        for (String tag : definition.tags()) {
+        for (String tag : pieceCapabilityTags(definition)) {
             remaining = Math.max(remaining, Math.max(0, settings.requiredPieceTagCount(tag) - tagUsage.getOrDefault(tag, 0)));
         }
         return remaining;
     }
 
     private boolean matchesRequiredTag(StationGenerationSettings settings, StationPieceDefinition definition) {
-        for (String tag : definition.tags()) {
+        for (String tag : pieceCapabilityTags(definition)) {
             if (settings.requiredPieceTagCount(tag) > 0) {
                 return true;
             }
@@ -1808,7 +1928,7 @@ public class StationGenerator {
         if (remainingById > 0) {
             return "piece:" + definition.id();
         }
-        for (String tag : definition.tags()) {
+        for (String tag : pieceCapabilityTags(definition)) {
             int remainingByTag = Math.max(0, settings.requiredPieceTagCount(tag) - tagUsage.getOrDefault(tag, 0));
             if (remainingByTag > 0) {
                 return "tag:" + tag;
@@ -1821,7 +1941,7 @@ public class StationGenerator {
         if (settings.requiredPieceCount(definition.id()) > 0) {
             return "piece:" + definition.id();
         }
-        for (String tag : definition.tags()) {
+        for (String tag : pieceCapabilityTags(definition)) {
             if (settings.requiredPieceTagCount(tag) > 0) {
                 return "tag:" + tag;
             }
@@ -1941,6 +2061,113 @@ public class StationGenerator {
         return false;
     }
 
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return current.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
+    }
+
+    private static final class LayoutDiagnostics {
+        private final String preflight;
+        private final AtomicInteger attemptsStarted = new AtomicInteger();
+        private final AtomicInteger successfulAttempts = new AtomicInteger();
+        private final AtomicInteger bestPieceCount = new AtomicInteger();
+        private final ConcurrentHashMap<String, AtomicInteger> failures = new ConcurrentHashMap<>();
+
+        private LayoutDiagnostics(String preflight) {
+            this.preflight = preflight;
+        }
+
+        static LayoutDiagnostics create(
+                StationStructureLibraryData library,
+                StationPoolDefinition pool,
+                StationGenerationSettings settings,
+                float danger,
+                StationBoundary boundary,
+                StationGenerator generator
+        ) {
+            int maxFloors = settings.maxFloors();
+            List<StationPieceDefinition> startByDanger = generator.definitions(library, pool.startPieces(), danger);
+            List<StationPieceDefinition> roomByDanger = generator.definitions(library, pool.roomPieces(), danger);
+            long startAllowedFloors = startByDanger.stream().filter(definition -> generator.pieceAllowedForFloors(definition, maxFloors)).count();
+            long roomAllowedFloors = roomByDanger.stream().filter(definition -> generator.pieceAllowedForFloors(definition, maxFloors)).count();
+            long expandableRooms = roomByDanger.stream()
+                    .filter(definition -> generator.pieceAllowedForFloors(definition, maxFloors))
+                    .filter(definition -> generator.roomLinkConnectorCount(definition.connectors()) > 1)
+                    .count();
+            long capRooms = roomByDanger.stream()
+                    .filter(definition -> generator.pieceAllowedForFloors(definition, maxFloors))
+                    .filter(definition -> generator.roomLinkConnectorCount(definition.connectors()) == 1)
+                    .count();
+
+            List<String> missing = new ArrayList<>();
+            for (Map.Entry<ResourceLocation, Integer> entry : settings.requiredPieces().entrySet()) {
+                Optional<StationPieceDefinition> piece = library.piece(entry.getKey());
+                if (piece.isEmpty()) {
+                    missing.add("required piece " + entry.getKey() + " not found in library");
+                } else if (!piece.get().canSpawnAtDanger(danger)) {
+                    missing.add("required piece " + entry.getKey() + " blocked by danger " + danger + " allowed=" + piece.get().minDanger() + "-" + piece.get().maxDanger());
+                } else if (!generator.pieceAllowedForFloors(piece.get(), maxFloors)) {
+                    missing.add("required piece " + entry.getKey() + " floorSpan=" + piece.get().floorSpan() + " > maxFloors=" + maxFloors);
+                }
+            }
+            for (Map.Entry<String, Integer> entry : settings.requiredPieceTags().entrySet()) {
+                long available = roomByDanger.stream()
+                        .filter(definition -> generator.pieceCapabilityTags(definition).contains(entry.getKey()))
+                        .filter(definition -> generator.pieceAllowedForFloors(definition, maxFloors))
+                        .count();
+                if (available <= 0) {
+                    missing.add("required tag " + entry.getKey() + " has no room pieces at danger=" + danger + " maxFloors=" + maxFloors);
+                }
+            }
+
+            String preflight = "diagnostics{"
+                    + "seed=" + settings.seed()
+                    + ", danger=" + danger
+                    + ", rooms=" + settings.minRooms() + "-" + settings.maxRooms()
+                    + ", poolLimits=" + pool.minRooms() + "-" + pool.maxRooms()
+                    + ", maxFloors=" + maxFloors
+                    + ", startPieces=" + pool.startPieces().size() + "/danger=" + startByDanger.size() + "/floors=" + startAllowedFloors
+                    + ", roomPieces=" + pool.roomPieces().size() + "/danger=" + roomByDanger.size() + "/floors=" + roomAllowedFloors
+                    + ", expandableRooms=" + expandableRooms
+                    + ", capRooms=" + capRooms
+                    + ", required=" + generator.requirementSummary(settings)
+                    + ", preflightIssues=" + (missing.isEmpty() ? "none" : String.join(" | ", missing))
+                    + "}";
+            return new LayoutDiagnostics(preflight);
+        }
+
+        void recordAttemptStarted() {
+            attemptsStarted.incrementAndGet();
+        }
+
+        void recordSuccess(int pieceCount) {
+            successfulAttempts.incrementAndGet();
+            bestPieceCount.accumulateAndGet(pieceCount, Math::max);
+        }
+
+        void recordFailure(String reason) {
+            failures.computeIfAbsent(reason, key -> new AtomicInteger()).incrementAndGet();
+        }
+
+        String summary() {
+            String topFailures = failures.entrySet().stream()
+                    .sorted(Comparator.<Map.Entry<String, AtomicInteger>>comparingInt(entry -> entry.getValue().get()).reversed())
+                    .limit(5)
+                    .map(entry -> entry.getKey() + " x" + entry.getValue().get())
+                    .reduce((left, right) -> left + " | " + right)
+                    .orElse("none");
+            return preflight
+                    + " attempts=" + attemptsStarted.get()
+                    + ", successfulAttempts=" + successfulAttempts.get()
+                    + ", bestPieceCount=" + bestPieceCount.get()
+                    + ", failures=" + topFailures;
+        }
+    }
 
     private record PlacementCandidate(StationConnector sourceConnector, PlacedStationPiece piece, int score) {
     }

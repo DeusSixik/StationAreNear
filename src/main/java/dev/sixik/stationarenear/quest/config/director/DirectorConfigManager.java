@@ -245,8 +245,11 @@ public final class DirectorConfigManager {
         if (id.isBlank()) return Optional.empty();
         int[] count = countRange(object.get("count"));
         Map<ResourceLocation, Integer> pieces = resourceCountMap(object(object, TagsConstants.Keys.REQUIRED_PIECES));
-        Map<String, Integer> tags = stringCountMap(object(object, TagsConstants.Keys.REQUIRED_PIECE_TAGS));
-        return Optional.of(new QuestOfferConfig(id, questKind(string(object, "kind", "CUSTOM")), integer(object, "cost", 0), integer(object, "weight", 1), count[0], count[1], normalizeIds(stringList(object.get("required_quests"))), string(object, "text", id), string(object, "sam_text", ""), pieces, tags, stringCountMap(object(object, TagsConstants.Keys.QUEST_ELEMENT_SPAWN_SKIPS)), stringList(object.get(TagsConstants.Keys.TARGET_TAGS)), string(object, "place_item", ""), string(object, "exclusive_group", ""), integer(object, "max_per_mission", 1)));
+        List<String> targetTags = stringList(object.get(TagsConstants.Keys.TARGET_TAGS));
+        String placeItem = string(object, "place_item", "");
+        QuestObjectiveKind kind = questKind(string(object, "kind", "CUSTOM"));
+        Map<String, Integer> tags = defaultRequiredPieceTags(stringCountMap(object(object, TagsConstants.Keys.REQUIRED_PIECE_TAGS)), targetTags, !placeItem.isBlank(), kind);
+        return Optional.of(new QuestOfferConfig(id, kind, integer(object, "cost", 0), integer(object, "weight", 1), count[0], count[1], normalizeIds(stringList(object.get("required_quests"))), string(object, "text", id), string(object, "sam_text", ""), pieces, tags, stringCountMap(object(object, TagsConstants.Keys.QUEST_ELEMENT_SPAWN_SKIPS)), targetTags, placeItem, string(object, "exclusive_group", ""), integer(object, "max_per_mission", 1)));
     }
 
     private static Map<String, List<StationOfferConfig>> readStationPools() {
@@ -262,6 +265,35 @@ public final class DirectorConfigManager {
             StationAreNear.LOGGER.warn("Failed to load Director station offers from {}", STATION, exception);
         }
         return result;
+    }
+
+    private static Map<String, Integer> defaultRequiredPieceTags(Map<String, Integer> configuredTags, List<String> targetTags, boolean requiresQuestObjectPlacer, QuestObjectiveKind kind) {
+        boolean useTargetTags = configuredTags.isEmpty()
+                || configuredTags.size() == 1 && configuredTags.containsKey(TagsConstants.Quest.QUEST_ROOM);
+        if (!useTargetTags) {
+            return configuredTags;
+        }
+        Map<String, Integer> result = new LinkedHashMap<>();
+        if (kind == QuestObjectiveKind.CLEAR_TRASH) {
+            result.merge(TagsConstants.Trigger.OBJECT_ZONE_PLACER, 1, Integer::sum);
+            return Map.copyOf(result);
+        }
+        if (kind == QuestObjectiveKind.REPAIR_ELECTRIC_PANEL) {
+            result.merge(TagsConstants.Trigger.QUEST_OBJECT_PLACER, 1, Integer::sum);
+            return Map.copyOf(result);
+        }
+        if (targetTags != null) {
+            for (String tag : targetTags) {
+                String normalized = tag == null ? "" : tag.trim().toLowerCase(Locale.ROOT);
+                if (!normalized.isBlank()) {
+                    result.merge(normalized, 1, Integer::sum);
+                }
+            }
+        }
+        if (requiresQuestObjectPlacer) {
+            result.merge(TagsConstants.Trigger.QUEST_OBJECT_PLACER, 1, Integer::sum);
+        }
+        return result.isEmpty() ? configuredTags : Map.copyOf(result);
     }
 
     private static Optional<StationOfferConfig> parseStationOffer(JsonObject object) {
@@ -389,7 +421,6 @@ public final class DirectorConfigManager {
                     "cost": 80,
                     "weight": 10,
                     "count": { "min": 12, "max": 24 },
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "text": "Убрать мусор в отмеченных секциях станции",
                     "sam_text": "Clean up trash in the marked station sections."
@@ -400,7 +431,6 @@ public final class DirectorConfigManager {
                     "cost": 40,
                     "weight": 6,
                     "count": { "min": 1, "max": 2 },
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "text": "Починить сломанные гермодвери",
                     "sam_text": "Repair the broken pressure doors."
@@ -411,7 +441,6 @@ public final class DirectorConfigManager {
                     "cost": 60,
                     "weight": 5,
                     "count": 1,
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "place_item": "stationarenear:fridge",
                     "text": "Установить холодильник рядом с розеткой",
@@ -423,7 +452,6 @@ public final class DirectorConfigManager {
                     "cost": 50,
                     "weight": 5,
                     "count": 1,
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "place_item": "stationarenear:microwave",
                     "text": "Установить микроволновку рядом с розеткой",
@@ -435,7 +463,6 @@ public final class DirectorConfigManager {
                     "cost": 50,
                     "weight": 5,
                     "count": 1,
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "place_item": "stationarenear:kitchen_sink",
                     "text": "Установить раковину рядом с трубами",
@@ -447,7 +474,6 @@ public final class DirectorConfigManager {
                     "cost": 70,
                     "weight": 3,
                     "count": 1,
-                    "%s": { "%s": 1 },
                     "%s": ["%s"],
                     "text": "Починить электрический щиток",
                     "sam_text": "Repair the station electrical panel."
@@ -456,17 +482,11 @@ public final class DirectorConfigManager {
               }
             }
             """.formatted(
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.TRASH,
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Trigger.DOOR_TRIGGER,
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
-            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.SOCKET,
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
-            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.SOCKET,
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
-            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.PIPES,
-            TagsConstants.Keys.REQUIRED_PIECE_TAGS, TagsConstants.Quest.QUEST_ROOM,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC,
+            TagsConstants.Keys.TARGET_TAGS, "kitchen_sink",
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC_SWITCH
     );
     private static final String DEFAULT_STATION_OFFERS_JSON = """

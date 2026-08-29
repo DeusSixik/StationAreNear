@@ -11,10 +11,12 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.sixik.stationarenear.structures.config.StationStructureConfig;
 import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
 import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
+import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
 import dev.sixik.stationarenear.structures.generation.StationGenerationSettings;
 import dev.sixik.stationarenear.structures.generation.StationGenerator;
+import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
@@ -38,9 +40,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 
@@ -49,6 +56,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -144,6 +152,7 @@ public final class StationStructureCommands {
                                                                                 parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                                                         ))))))))
                         .then(generateAtCommand())
+                        .then(spawnPoolCommand())
                         .then(Commands.literal("list_generated")
                                 .executes(context -> listGenerated(context.getSource())))
                         .then(Commands.literal("clear_generated")
@@ -279,6 +288,191 @@ public final class StationStructureCommands {
                                                 .then(maxRoomsArgument)))));
     }
 
+
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> spawnPoolCommand() {
+        var rotationArgument = Commands.argument("rotation", StringArgumentType.word())
+                .suggests(StationStructureCommands::suggestRotations)
+                .executes(context -> spawnPoolAtPlayer(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "pool"),
+                        StringArgumentType.getString(context, "rotation"),
+                        0.5F
+                ))
+                .then(Commands.argument("danger", FloatArgumentType.floatArg(0.0F, 1.0F))
+                        .executes(context -> spawnPoolAtPlayer(
+                                context.getSource(),
+                                StringArgumentType.getString(context, "pool"),
+                                StringArgumentType.getString(context, "rotation"),
+                                FloatArgumentType.getFloat(context, "danger")
+                        )));
+
+        var positionArgument = Commands.argument("pos", BlockPosArgument.blockPos())
+                .then(Commands.argument("rotation", StringArgumentType.word())
+                        .suggests(StationStructureCommands::suggestRotations)
+                        .executes(context -> spawnPool(
+                                context.getSource(),
+                                StringArgumentType.getString(context, "pool"),
+                                BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                StringArgumentType.getString(context, "rotation"),
+                                0.5F
+                        ))
+                        .then(Commands.argument("danger", FloatArgumentType.floatArg(0.0F, 1.0F))
+                                .executes(context -> spawnPool(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "pool"),
+                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
+                                        StringArgumentType.getString(context, "rotation"),
+                                        FloatArgumentType.getFloat(context, "danger")
+                                ))));
+
+        return Commands.literal("spawn_pool")
+                .then(Commands.argument("pool", StringArgumentType.word())
+                        .suggests(StationStructureCommands::suggestPools)
+                        .then(rotationArgument)
+                        .then(Commands.literal("at").then(positionArgument)));
+    }
+
+    private static CompletableFuture<Suggestions> suggestRotations(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        return SharedSuggestionProvider.suggest(List.of(
+                "none", "clockwise_90", "clockwise_180", "counterclockwise_90",
+                "0", "90", "180", "270",
+                "north", "east", "south", "west"
+        ), builder);
+    }
+
+    private static int spawnPoolAtPlayer(CommandSourceStack source, String poolText, String rotationText, float danger) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        return spawnPool(source, poolText, source.getPlayerOrException().blockPosition(), rotationText, danger);
+    }
+
+    private static int spawnPool(CommandSourceStack source, String poolText, BlockPos origin, String rotationText, float danger) {
+        Optional<Rotation> rotation = parseRotation(rotationText);
+        if (rotation.isEmpty()) {
+            source.sendFailure(Component.literal("Rotation must be one of: none, 90, 180, 270, north, east, south, west"));
+            return 0;
+        }
+
+        ServerLevel level = source.getLevel();
+        int loadedExternalStructures = StationStructureFileStorage.loadExternalStructures(level);
+        StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        ResourceLocation poolId = StationStructureIds.pool(poolText);
+        Optional<StationPoolDefinition> pool = library.pool(poolId);
+        if (pool.isEmpty()) {
+            source.sendFailure(Component.literal("Pool not found: " + poolId));
+            return 0;
+        }
+
+        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates = spawnPoolCandidates(library, pool.get(), danger);
+        if (candidates.isEmpty()) {
+            source.sendFailure(Component.literal("Pool has no pieces for danger=" + danger + ": " + poolId));
+            return 0;
+        }
+
+        LoadableSpawnPoolCandidates loadableCandidates = loadableSpawnPoolCandidates(level, candidates);
+        if (loadableCandidates.pieces().isEmpty()) {
+            source.sendFailure(Component.literal("Pool has no loadable templates for danger=" + danger
+                    + ": " + poolId
+                    + ". loaded_external_structures=" + loadedExternalStructures
+                    + ", missing=" + formatMissingTemplates(loadableCandidates.missingTemplates())));
+            return 0;
+        }
+
+        dev.sixik.stationarenear.structures.data.StationPieceDefinition piece = selectWeightedSpawnPiece(loadableCandidates.pieces(), level.getRandom());
+        Optional<StructureTemplate> template = level.getStructureManager().get(piece.template());
+        if (template.isEmpty()) {
+            source.sendFailure(Component.literal("Template not found after reload for piece " + piece.id() + ": " + piece.template()));
+            return 0;
+        }
+
+        StructurePlaceSettings settings = new StructurePlaceSettings()
+                .setRotation(rotation.get())
+                .addProcessor(BlockIgnoreProcessor.AIR);
+        template.get().placeInWorld(level, origin, origin, settings, level.getRandom(), 2);
+        BoundingBox bounds = StationPlacementUtil.transformBounds(origin, template.get().getSize(), rotation.get());
+        source.sendSuccess(() -> Component.literal(
+                "Spawned pool " + poolId
+                        + " piece=" + piece.id()
+                        + " template=" + piece.template()
+                        + " rotation=" + rotationName(rotation.get())
+                        + " danger=" + danger
+                        + " bounds=" + formatBounds(bounds)
+        ), false);
+        return 1;
+    }
+
+    private static List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> spawnPoolCandidates(StationStructureLibraryData library, StationPoolDefinition pool, float danger) {
+        java.util.Set<ResourceLocation> ids = new java.util.LinkedHashSet<>();
+        ids.addAll(pool.roomPieces());
+        ids.addAll(pool.startPieces());
+        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates = new ArrayList<>();
+        for (ResourceLocation id : ids) {
+            library.piece(id)
+                    .filter(piece -> piece.canSpawnAtDanger(danger))
+                    .ifPresent(candidates::add);
+        }
+        return candidates;
+    }
+    private static LoadableSpawnPoolCandidates loadableSpawnPoolCandidates(ServerLevel level, List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates) {
+        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> loadable = new ArrayList<>();
+        Set<ResourceLocation> missingTemplates = new java.util.LinkedHashSet<>();
+        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
+            if (level.getStructureManager().get(candidate.template()).isPresent()) {
+                loadable.add(candidate);
+            } else {
+                missingTemplates.add(candidate.template());
+            }
+        }
+        return new LoadableSpawnPoolCandidates(loadable, missingTemplates);
+    }
+
+    private static String formatMissingTemplates(Set<ResourceLocation> missingTemplates) {
+        if (missingTemplates.isEmpty()) {
+            return "none";
+        }
+        List<String> values = missingTemplates.stream()
+                .map(ResourceLocation::toString)
+                .sorted()
+                .limit(12)
+                .toList();
+        String suffix = missingTemplates.size() > values.size() ? " ... +" + (missingTemplates.size() - values.size()) : "";
+        return String.join(", ", values) + suffix;
+    }
+
+
+    private static dev.sixik.stationarenear.structures.data.StationPieceDefinition selectWeightedSpawnPiece(List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates, RandomSource random) {
+        int totalWeight = 0;
+        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
+            totalWeight += Math.max(1, candidate.weight());
+        }
+        int roll = random.nextInt(Math.max(1, totalWeight));
+        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
+            roll -= Math.max(1, candidate.weight());
+            if (roll < 0) {
+                return candidate;
+            }
+        }
+        return candidates.get(0);
+    }
+
+    private static Optional<Rotation> parseRotation(String rotationText) {
+        String normalized = rotationText == null ? "" : rotationText.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (normalized) {
+            case "none", "0", "north", "n" -> Optional.of(Rotation.NONE);
+            case "90", "cw90", "clockwise_90", "east", "e" -> Optional.of(Rotation.CLOCKWISE_90);
+            case "180", "cw180", "clockwise_180", "south", "s" -> Optional.of(Rotation.CLOCKWISE_180);
+            case "270", "ccw90", "counterclockwise_90", "west", "w" -> Optional.of(Rotation.COUNTERCLOCKWISE_90);
+            default -> Optional.empty();
+        };
+    }
+
+    private static String rotationName(Rotation rotation) {
+        return switch (rotation) {
+            case CLOCKWISE_90 -> "clockwise_90";
+            case CLOCKWISE_180 -> "clockwise_180";
+            case COUNTERCLOCKWISE_90 -> "counterclockwise_90";
+            default -> "none";
+        };
+    }
 
     private static CompletableFuture<Suggestions> suggestStructureConfigs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         List<String> suggestions = new ArrayList<>();
@@ -621,6 +815,11 @@ public final class StationStructureCommands {
         return String.join(",", values);
     }
 
+    private record LoadableSpawnPoolCandidates(
+            List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> pieces,
+            Set<ResourceLocation> missingTemplates
+    ) {
+    }
     private record RequiredPieceSpec(Map<ResourceLocation, Integer> pieces, Map<String, Integer> tags) {
         static RequiredPieceSpec empty() {
             return new RequiredPieceSpec(Map.of(), Map.of());
@@ -745,3 +944,4 @@ public final class StationStructureCommands {
         return stack;
     }
 }
+

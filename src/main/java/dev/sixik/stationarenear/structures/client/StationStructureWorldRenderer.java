@@ -158,14 +158,19 @@ public final class StationStructureWorldRenderer {
         }
 
         String nodeType = trigger.getString("nodeType");
-        if ("OBJECT_PLACER".equals(nodeType) || "LOOT".equals(nodeType)) {
+        if (isObjectPlacerNode(nodeType)) {
             renderDirectionArrow(poseStack, buffers, box, direction, emphasized);
         }
     }
 
+
+    private static boolean isObjectPlacerNode(String nodeType) {
+        return "OBJECT_PLACER".equals(nodeType) || "QUEST_OBJECT_PLACER".equals(nodeType) || "LOOT".equals(nodeType);
+    }
+
     private static Direction triggerDirection(CompoundTag trigger, CompoundTag data) {
         String nodeType = trigger.getString("nodeType");
-        String key = "OBJECT_PLACER".equals(nodeType) || "LOOT".equals(nodeType) ? "objectDirection" : "direction";
+        String key = isObjectPlacerNode(nodeType) ? "objectDirection" : "direction";
         Direction direction = Direction.byName(data.getString(key).toLowerCase(Locale.ROOT));
         if (direction == null && !"direction".equals(key)) {
             direction = Direction.byName(data.getString("direction").toLowerCase(Locale.ROOT));

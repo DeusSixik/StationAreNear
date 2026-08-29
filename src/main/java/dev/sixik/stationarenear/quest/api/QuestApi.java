@@ -228,7 +228,8 @@ public final class QuestApi {
 
         QuestObjectiveState objective = objectiveOptional.get();
         Object completedValue = QuestValueCodec.completedValue(definition.progressType(), objective.progress());
-        CompoundTag progress = QuestValueCodec.encode(definition.progressType(), completedValue);
+        CompoundTag progress = objective.progress();
+        mergeProgressValue(progress, QuestValueCodec.encode(definition.progressType(), completedValue));
         stationState.put(objective.complete(progress));
         data.station(stationState);
         data.markQuestCompleted(definition.id());
@@ -282,7 +283,8 @@ public final class QuestApi {
 
         QuestObjectiveState objective = objectiveOptional.get();
         Object oldProgress = QuestValueCodec.decode(definition.progressType(), objective.progress());
-        CompoundTag progress = QuestValueCodec.encode(definition.progressType(), value);
+        CompoundTag progress = objective.progress();
+        mergeProgressValue(progress, QuestValueCodec.encode(definition.progressType(), value));
         stationState.put(objective.withProgress(progress));
         data.station(stationState);
 
@@ -659,6 +661,19 @@ public final class QuestApi {
      */
     public static String[] getActive(UUID stationId) {
         return getActive(requireLevel(stationId), stationId);
+    }
+
+    private static void mergeProgressValue(CompoundTag target, CompoundTag encoded) {
+        target.putString("type", encoded.getString("type"));
+        target.remove("null");
+        if (encoded.getBoolean("null")) {
+            target.putBoolean("null", true);
+        }
+        target.remove("value");
+        net.minecraft.nbt.Tag value = encoded.get("value");
+        if (value != null) {
+            target.put("value", value.copy());
+        }
     }
 
     private static Object initialProgressValue(Class<?> type) {

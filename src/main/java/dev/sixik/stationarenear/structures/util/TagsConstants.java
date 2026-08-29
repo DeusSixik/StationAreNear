@@ -31,6 +31,9 @@ public final class TagsConstants {
         public static final String TRASH = "trash";
 
         /** Цель рядом с розеткой для установки холодильника или микроволновки. */
+        /** ????? ????????? ????????????? ????? ??? ????????????, ????????????? ? ??????? ????????. */
+        public static final String ELECTRIC = "electric";
+
         public static final String SOCKET = "socket";
 
         /** Цель рядом с трубами для установки раковины. */
@@ -59,6 +62,15 @@ public final class TagsConstants {
 
         /** Trigger, который ставит один объект из object-pool. */
         public static final String OBJECT_PLACER = "object_placer";
+
+        /** Quest-only версия object placer-а: срабатывает только когда квесту нужно разложить нужный объект. */
+        public static final String QUEST_OBJECT_PLACER = "quest_object_placer";
+
+        /** Alias для {@link #QUEST_OBJECT_PLACER}. */
+        public static final String QUEST_OBJECT_PLACE = "quest_object_place";
+
+        /** Alias для {@link #QUEST_OBJECT_PLACER}, когда metadata явно называет pool объектов для квеста. */
+        public static final String QUEST_OBJECT_POOL = "quest_object_pool";
 
         /** Старый alias object placer-а для loot-триггеров. */
         public static final String LOOT = "loot";

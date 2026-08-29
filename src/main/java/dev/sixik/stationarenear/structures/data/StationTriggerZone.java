@@ -27,12 +27,22 @@ public record StationTriggerZone(
     }
 
     public static StationTriggerZone load(CompoundTag tag) {
+        CompoundTag data = tag.getCompound("data").copy();
+        copyStringIfMissing(tag, data, "direction");
+        copyStringIfMissing(tag, data, "shapeDirection");
+        copyStringIfMissing(tag, data, "objectDirection");
         return new StationTriggerZone(
                 tag.getString("id"),
                 tag.getString("type"),
                 NbtPos.load(tag.getCompound("min")),
                 NbtPos.load(tag.getCompound("max")),
-                tag.getCompound("data")
+                data
         );
+    }
+
+    private static void copyStringIfMissing(CompoundTag source, CompoundTag target, String key) {
+        if (!target.contains(key) && source.contains(key) && !source.getString(key).isBlank()) {
+            target.putString(key, source.getString(key));
+        }
     }
 }

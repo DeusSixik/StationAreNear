@@ -94,7 +94,7 @@ public final class StationTriggerHandlers {
         int placed = 0;
         int attempts = Math.max(8, count * 8);
         while (placed < count && attempts-- > 0) {
-            if (placeObject(event, true, requiredObject)) {
+            if (placeObject(event, true, "")) {
                 placed++;
             }
         }
@@ -333,7 +333,7 @@ public final class StationTriggerHandlers {
             return false;
         }
 
-        Optional<ObjectPlacement> placement = selectObjectPlacement(event, candidates, random);
+        Optional<ObjectPlacement> placement = selectObjectPlacement(event, candidates, random, questInvocation);
         if (placement.isEmpty()) {
             return false;
         }
@@ -341,8 +341,8 @@ public final class StationTriggerHandlers {
         StructurePlaceSettings settings = new StructurePlaceSettings()
                 .setRotation(placement.get().rotation())
                 .addProcessor(BlockIgnoreProcessor.AIR);
-        placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
-        return true;
+        boolean placed = placement.get().template().placeInWorld(event.getLevel(), placement.get().origin(), placement.get().origin(), settings, random, 2);
+        return placed;
     }
 
     private static int placeObjectZone(StationStructureSpawnTriggerEvent event, boolean questInvocation, int forcedCount) {
@@ -395,7 +395,7 @@ public final class StationTriggerHandlers {
         return placed;
     }
 
-    private static Optional<ObjectPlacement> selectObjectPlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random) {
+    private static Optional<ObjectPlacement> selectObjectPlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random, boolean allowUpwardOverflow) {
         List<StationPieceDefinition> remaining = new java.util.ArrayList<>(candidates);
         while (!remaining.isEmpty()) {
             StationPieceDefinition definition = selectWeighted(remaining, random);
@@ -406,7 +406,7 @@ public final class StationTriggerHandlers {
             }
 
             for (Rotation rotation : objectRotations(event.getZone().data(), template.get(), random)) {
-                Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random);
+                Optional<BlockPos> origin = randomOriginInside(event.getZone(), template.get(), rotation, random, allowUpwardOverflow);
                 if (origin.isPresent()) {
                     BlockPos adjustedOrigin = adjustSurfaceObjectOrigin(event, template.get(), origin.get());
                     return Optional.of(new ObjectPlacement(template.get(), adjustedOrigin, rotation));
@@ -723,6 +723,10 @@ public final class StationTriggerHandlers {
     }
 
     private static Optional<BlockPos> randomOriginInside(PlacedTriggerZone zone, StructureTemplate template, Rotation rotation, RandomSource random) {
+        return randomOriginInside(zone, template, rotation, random, false);
+    }
+
+    private static Optional<BlockPos> randomOriginInside(PlacedTriggerZone zone, StructureTemplate template, Rotation rotation, RandomSource random, boolean allowUpwardOverflow) {
         BoundingBox localBounds = StationPlacementUtil.transformBounds(BlockPos.ZERO, template.getSize(), rotation);
         Vec3i size = new Vec3i(
                 localBounds.maxX() - localBounds.minX() + 1,
@@ -732,7 +736,7 @@ public final class StationTriggerHandlers {
         int availableX = zone.max().getX() - zone.min().getX() - size.getX() + 1;
         int availableY = zone.max().getY() - zone.min().getY() - size.getY() + 1;
         int availableZ = zone.max().getZ() - zone.min().getZ() - size.getZ() + 1;
-        if (availableX < 0 || availableY < 0 || availableZ < 0) {
+        if (availableX < 0 || availableZ < 0 || (!allowUpwardOverflow && availableY < 0)) {
             return Optional.empty();
         }
 
@@ -751,7 +755,9 @@ public final class StationTriggerHandlers {
         for (int x = 0; x <= availableX; x++) {
             for (int z = 0; z <= availableZ; z++) {
                 BlockPos targetMin = new BlockPos(zone.min().getX() + x, targetY, zone.min().getZ() + z);
-                BlockPos targetMax = targetMin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
+                BlockPos targetMax = allowUpwardOverflow
+                        ? targetMin.offset(size.getX() - 1, 0, size.getZ() - 1)
+                        : targetMin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
                 if (StationTriggerZoneShape.containsBox(zone.data(), zone.min(), zone.max(), targetMin, targetMax) && random.nextInt(++matches) == 0) {
                     selected = targetMin.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
                 }

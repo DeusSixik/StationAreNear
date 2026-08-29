@@ -16,19 +16,29 @@ import dev.sixik.stationarenear.quest.director.DirectorContext;
 import dev.sixik.stationarenear.quest.director.DirectorDebugReport;
 import dev.sixik.stationarenear.quest.director.DirectorPlan;
 import dev.sixik.stationarenear.quest.director.QuestDirector;
+import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
+import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
+import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
+import dev.sixik.stationarenear.structures.data.StationInstance;
+import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +89,13 @@ public final class QuestCommands {
                                 .then(Commands.argument("station", StringArgumentType.word())
                                         .suggests(QuestCommands::suggestStationIds)
                                         .executes(context -> completeAll(context.getSource(), StringArgumentType.getString(context, "station")))))
+                        .then(Commands.literal("tp_objective")
+                                .executes(context -> teleportToObjective(context.getSource(), "", 1))
+                                .then(Commands.argument("quest", ResourceLocationArgument.id())
+                                        .suggests(QuestCommands::suggestCurrentObjectiveIds)
+                                        .executes(context -> teleportToObjective(context.getSource(), getIdArgument(context, "quest"), 1))
+                                        .then(Commands.argument("index", IntegerArgumentType.integer(1))
+                                                .executes(context -> teleportToObjective(context.getSource(), getIdArgument(context, "quest"), IntegerArgumentType.getInteger(context, "index"))))))
                         .then(Commands.literal("test")
                                 .then(Commands.literal("start")
                                         .executes(context -> startTestQuest(context.getSource(), "", 0))
@@ -269,6 +286,138 @@ public final class QuestCommands {
         return completed;
     }
 
+    private static int teleportToObjective(CommandSourceStack source, String questId, int index) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerLevel level = source.getLevel();
+        ServerPlayer player = source.getPlayerOrException();
+        Optional<UUID> stationId = QuestApi.currentStationId(level);
+        if (stationId.isEmpty()) {
+            source.sendFailure(Component.literal("No current quest station. Dock with a quest station first."));
+            return 0;
+        }
+
+        Optional<QuestStationState> questState = QuestSavedData.get(level).stationIfPresent(stationId.get());
+        if (questState.isEmpty()) {
+            source.sendFailure(Component.literal("No quest data for current station " + stationId.get() + "."));
+            return 0;
+        }
+
+        Optional<StationInstance> station = StationSavedData.get(level).station(stationId.get());
+        if (station.isEmpty()) {
+            source.sendFailure(Component.literal("Generated station not found for current quest station " + stationId.get() + "."));
+            return 0;
+        }
+
+        Optional<TargetTriggerRef> target = targetTriggerRef(questState.get(), questId, index);
+        if (target.isEmpty()) {
+            source.sendFailure(Component.literal("No active objective target found. Try /stationarenear quests tp_objective <quest> <index>."));
+            return 0;
+        }
+
+        Optional<TargetZoneRef> zoneRef = findTargetZone(station.get(), target.get().triggerId());
+        if (zoneRef.isEmpty()) {
+            source.sendFailure(Component.literal("Target trigger not found on generated station: " + target.get().triggerId()));
+            return 0;
+        }
+
+        BlockPos teleportPos = safeTeleportPos(level, zoneRef.get().piece(), zoneRef.get().zone());
+        player.teleportTo(level, teleportPos.getX() + 0.5D, teleportPos.getY(), teleportPos.getZ() + 0.5D, player.getYRot(), player.getXRot());
+        source.sendSuccess(() -> Component.literal("Teleported to objective " + target.get().questId()
+                + " target=" + target.get().triggerId()
+                + " pos=" + teleportPos.toShortString()), false);
+        return 1;
+    }
+
+    private static Optional<TargetTriggerRef> targetTriggerRef(QuestStationState state, String questId, int index) {
+        String normalizedQuestId = questId == null ? "" : questId.trim().toLowerCase(java.util.Locale.ROOT);
+        for (QuestObjectiveState objective : state.objectives()) {
+            if (objective.completed()) {
+                continue;
+            }
+            if (!normalizedQuestId.isBlank() && !objective.id().equalsIgnoreCase(normalizedQuestId)) {
+                continue;
+            }
+            List<String> targetIds = targetTriggerIds(objective);
+            if (targetIds.isEmpty()) {
+                continue;
+            }
+            int selectedIndex = Math.max(1, index) - 1;
+            if (selectedIndex >= targetIds.size()) {
+                continue;
+            }
+            return Optional.of(new TargetTriggerRef(objective.id(), targetIds.get(selectedIndex)));
+        }
+        return Optional.empty();
+    }
+
+    private static List<String> targetTriggerIds(QuestObjectiveState objective) {
+        List<String> ids = new ArrayList<>();
+        ListTag list = objective.progress().getList("targetTriggerIds", Tag.TAG_STRING);
+        for (int i = 0; i < list.size(); i++) {
+            String id = list.getString(i);
+            if (!id.isBlank() && !ids.contains(id)) {
+                ids.add(id);
+            }
+        }
+        if (ids.isEmpty() && !objective.targetTriggerId().isBlank()) {
+            ids.add(objective.targetTriggerId());
+        }
+        return ids;
+    }
+
+    private static Optional<TargetZoneRef> findTargetZone(StationInstance station, String triggerId) {
+        for (PlacedStationPiece piece : station.pieces()) {
+            for (PlacedTriggerZone zone : piece.triggerZones()) {
+                if (zone.id().equals(triggerId)) {
+                    return Optional.of(new TargetZoneRef(piece, zone));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static BlockPos safeTeleportPos(ServerLevel level, PlacedStationPiece piece, PlacedTriggerZone zone) {
+        BoundingBox bounds = piece.selectionBounds();
+        BlockPos desired = center(zone.min(), zone.max());
+        BlockPos fallback = new BlockPos(
+                Mth.clamp(desired.getX(), bounds.minX(), bounds.maxX()),
+                Math.max(bounds.minY() + 1, desired.getY() + 1),
+                Mth.clamp(desired.getZ(), bounds.minZ(), bounds.maxZ())
+        );
+        BlockPos best = null;
+        double bestDistance = Double.MAX_VALUE;
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int y = bounds.minY() + 1; y <= bounds.maxY() + 2; y++) {
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    cursor.set(x, y, z);
+                    if (!isSafeTeleportBlock(level, cursor)) {
+                        continue;
+                    }
+                    double distance = cursor.distSqr(desired);
+                    if (distance < bestDistance) {
+                        best = cursor.immutable();
+                        bestDistance = distance;
+                    }
+                }
+            }
+        }
+        return best == null ? fallback : best;
+    }
+
+    private static BlockPos center(BlockPos min, BlockPos max) {
+        return new BlockPos(
+                Math.floorDiv(min.getX() + max.getX(), 2),
+                Math.floorDiv(min.getY() + max.getY(), 2),
+                Math.floorDiv(min.getZ() + max.getZ(), 2)
+        );
+    }
+
+    private static boolean isSafeTeleportBlock(ServerLevel level, BlockPos pos) {
+        return level.getBlockState(pos).isAir()
+                && level.getBlockState(pos.above()).isAir()
+                && !level.getBlockState(pos.below()).isAir();
+    }
+
     private static CompletableFuture<Suggestions> suggestDirectorProfiles(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         List<String> suggestions = new ArrayList<>();
         for (DirectorProfileConfig profile : DirectorConfigManager.profiles()) {
@@ -314,6 +463,12 @@ public final class QuestCommands {
         } catch (IllegalArgumentException exception) {
             return Optional.empty();
         }
+    }
+
+    private record TargetTriggerRef(String questId, String triggerId) {
+    }
+
+    private record TargetZoneRef(PlacedStationPiece piece, PlacedTriggerZone zone) {
     }
 
     private static ServerPlayer sourcePlayer(CommandSourceStack source) {

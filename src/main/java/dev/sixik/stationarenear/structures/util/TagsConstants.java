@@ -129,6 +129,15 @@ public final class TagsConstants {
         /** Alias для {@link #QUEST_PLACE}. */
         public static final String PLACE_TRIGGER = "place_trigger";
 
+        /** Trigger переключения аварийных и штатных ламп станции. */
+        public static final String LAMP_SWITCH = "lamp_switch";
+
+        /** Alias для {@link #LAMP_SWITCH}. */
+        public static final String LAMP = "lamp";
+
+        /** Alias для {@link #LAMP_SWITCH}. */
+        public static final String LAMP_TRIGGER = "lamp_trigger";
+
         /** Универсальный fallback-trigger, если специализированный тип не указан. */
         public static final String TRIGGER = "trigger";
 

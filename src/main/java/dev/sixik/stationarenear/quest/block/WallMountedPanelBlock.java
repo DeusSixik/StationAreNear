@@ -66,9 +66,22 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (state.getValue(BROKEN)) {
             ItemStack heldItem = player.getItemInHand(hand);
-            if (!heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+            boolean isOxygen = state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.OXYGEN_PANEL.get());
+            boolean isGravitation = state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.GRAVITATION_PANEL.get());
+
+            boolean hasValidTool = (isOxygen && heldItem.is(QuestItems.OXYGEN_REPAIR_KIT.get()))
+                    || (isGravitation && heldItem.is(QuestItems.GRAVITATION_REPAIR_KIT.get()))
+                    || heldItem.is(QuestItems.ENGINEERING_GEAR.get());
+
+            if (!hasValidTool) {
                 if (!level.isClientSide) {
-                    player.displayClientMessage(Component.literal("Нужен инженерный инструмент (Engineering Gear) для починки панели."), true);
+                    if (isOxygen) {
+                        player.displayClientMessage(Component.literal("Нужен набор для ремонта кислородной панели (Oxygen Repair Kit)."), true);
+                    } else if (isGravitation) {
+                        player.displayClientMessage(Component.literal("Нужен набор для ремонта гравитационной панели (Gravitation Repair Kit)."), true);
+                    } else {
+                        player.displayClientMessage(Component.literal("Нужен ремонтный набор для починки панели."), true);
+                    }
                 }
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }

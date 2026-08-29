@@ -72,6 +72,10 @@ public final class QuestNetwork {
     }
 
     public static void syncFurniturePickupProgress(ServerPlayer player, float progress, boolean visible) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new QuestFurniturePickupProgressPacket(progress, visible));
+        syncFurniturePickupProgress(player, progress, visible, "");
+    }
+
+    public static void syncFurniturePickupProgress(ServerPlayer player, float progress, boolean visible, String title) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new QuestFurniturePickupProgressPacket(progress, visible, title));
     }
 }

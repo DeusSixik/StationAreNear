@@ -1,15 +1,18 @@
 package dev.sixik.stationarenear.quest.runtime;
 
 import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.block.QuestPickupBlock;
 import dev.sixik.stationarenear.quest.data.QuestDefinition;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveKind;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.network.QuestNetwork;
+import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.StationInstance;
+import dev.sixik.stationarenear.structures.lamps.StationLampManager;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.LongTag;
@@ -19,14 +22,16 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -36,11 +41,25 @@ import java.util.UUID;
 
 public final class QuestFurniturePickupManager {
 
-    private static final int REQUIRED_HOLD_TICKS = 35;
     private static final int HOLD_TIMEOUT_TICKS = 3;
     private static final double MAX_DISTANCE_SQR = 36.0D;
     private static final String KEY_DONE_POSITIONS = "donePositions";
     private static final Map<UUID, PickupProgress> PICKUPS = new HashMap<>();
+
+    public enum HoldTargetType {
+        FURNITURE(35),
+        ENERGY_PANEL(30);
+
+        private final int requiredTicks;
+
+        HoldTargetType(int requiredTicks) {
+            this.requiredTicks = requiredTicks;
+        }
+
+        public int requiredTicks() {
+            return requiredTicks;
+        }
+    }
 
     private QuestFurniturePickupManager() {
     }
@@ -51,12 +70,12 @@ public final class QuestFurniturePickupManager {
             return;
         }
         ServerLevel level = player.serverLevel();
-        Optional<PickupTarget> target = targetAt(level, hitPos);
+        Optional<HoldTarget> target = targetAt(level, hitPos);
         if (target.isEmpty()) {
             stop(player);
             return;
         }
-        if (isQuestLocked(level, target.get().masterPos())) {
+        if (target.get().type() == HoldTargetType.FURNITURE && isQuestLocked(level, target.get().masterPos())) {
             player.displayClientMessage(Component.literal("Предмет закреплён заданием"), true);
             stop(player);
             return;
@@ -71,7 +90,7 @@ public final class QuestFurniturePickupManager {
         if (current != null && current.sameTarget(level.dimension(), target.get().masterPos())) {
             PICKUPS.put(player.getUUID(), current.withLastHoldTick(now));
         } else {
-            PICKUPS.put(player.getUUID(), new PickupProgress(level.dimension(), target.get().masterPos(), now, now));
+            PICKUPS.put(player.getUUID(), new PickupProgress(level.dimension(), target.get().masterPos(), target.get().type(), now, now));
         }
     }
 
@@ -113,8 +132,8 @@ public final class QuestFurniturePickupManager {
                 hideProgress(player);
                 continue;
             }
-            Optional<PickupTarget> target = targetAt(level, progress.masterPos());
-            if (target.isEmpty() || isQuestLocked(level, target.get().masterPos())
+            Optional<HoldTarget> target = targetAt(level, progress.masterPos());
+            if (target.isEmpty() || (target.get().type() == HoldTargetType.FURNITURE && isQuestLocked(level, target.get().masterPos()))
                     || player.distanceToSqr(Vec3.atCenterOf(target.get().masterPos())) > MAX_DISTANCE_SQR) {
                 iterator.remove();
                 hideProgress(player);
@@ -122,12 +141,25 @@ public final class QuestFurniturePickupManager {
             }
 
             long heldTicks = now - progress.startedTick();
-            if (heldTicks >= REQUIRED_HOLD_TICKS) {
-                finishPickup(player, level, target.get());
+            int requiredTicks = progress.type().requiredTicks();
+            float ratio = Math.max(0.0F, Math.min(1.0F, heldTicks / (float) requiredTicks));
+            if (heldTicks >= requiredTicks) {
+                if (progress.type() == HoldTargetType.FURNITURE) {
+                    finishPickup(player, level, target.get());
+                } else if (progress.type() == HoldTargetType.ENERGY_PANEL) {
+                    finishEnergyPanelToggle(player, level, target.get().masterPos());
+                }
                 iterator.remove();
                 hideProgress(player);
             } else {
-                syncProgress(player, heldTicks / (float) REQUIRED_HOLD_TICKS);
+                String title;
+                if (progress.type() == HoldTargetType.FURNITURE) {
+                    title = "Подбор " + Math.round(ratio * 100.0F) + "%";
+                } else {
+                    boolean currentPowered = target.get().masterState().getValue(EnergyPanelBlock.POWERED);
+                    title = (currentPowered ? "Выключение щитка " : "Включение щитка ") + Math.round(ratio * 100.0F) + "%";
+                }
+                syncProgress(player, ratio, title);
             }
         }
     }
@@ -136,8 +168,8 @@ public final class QuestFurniturePickupManager {
         PICKUPS.clear();
     }
 
-    private static void finishPickup(ServerPlayer player, ServerLevel level, PickupTarget target) {
-        if (isQuestLocked(level, target.masterPos())) {
+    private static void finishPickup(ServerPlayer player, ServerLevel level, HoldTarget target) {
+        if (target.pickup() == null || isQuestLocked(level, target.masterPos())) {
             player.displayClientMessage(Component.literal("Предмет закреплён заданием"), true);
             return;
         }
@@ -150,25 +182,42 @@ public final class QuestFurniturePickupManager {
         player.displayClientMessage(Component.literal("Поднято"), true);
     }
 
-    private static void syncProgress(ServerPlayer player, float progress) {
-        QuestNetwork.syncFurniturePickupProgress(player, Math.max(0.0F, Math.min(1.0F, progress)), true);
+    private static void finishEnergyPanelToggle(ServerPlayer player, ServerLevel level, BlockPos pos) {
+        BlockState currentState = level.getBlockState(pos);
+        if (!currentState.is(QuestBlocks.ENERGY_PANEL.get()) || currentState.getValue(EnergyPanelBlock.BROKEN)) {
+            return;
+        }
+        boolean nextPowered = !currentState.getValue(EnergyPanelBlock.POWERED);
+        level.setBlock(pos, currentState.setValue(EnergyPanelBlock.POWERED, nextPowered), 3);
+        float pitch = nextPowered ? 0.6F : 0.5F;
+        level.playSound(null, pos, SoundEvents.LEVER_CLICK, SoundSource.BLOCKS, 0.3F, pitch);
+        StationLampManager.onPanelToggled(level, pos, nextPowered);
+    }
+
+    private static void syncProgress(ServerPlayer player, float progress, String title) {
+        QuestNetwork.syncFurniturePickupProgress(player, Math.max(0.0F, Math.min(1.0F, progress)), true, title);
     }
 
     private static void hideProgress(ServerPlayer player) {
-        QuestNetwork.syncFurniturePickupProgress(player, 0.0F, false);
+        QuestNetwork.syncFurniturePickupProgress(player, 0.0F, false, "");
     }
 
-    private static Optional<PickupTarget> targetAt(ServerLevel level, BlockPos hitPos) {
+    private static Optional<HoldTarget> targetAt(ServerLevel level, BlockPos hitPos) {
         BlockState state = level.getBlockState(hitPos);
-        if (!(state.getBlock() instanceof QuestPickupBlock pickup)) {
-            return Optional.empty();
+        if (state.getBlock() instanceof QuestPickupBlock pickup) {
+            BlockPos masterPos = pickup.pickupMasterPos(hitPos, state);
+            BlockState masterState = level.getBlockState(masterPos);
+            if (!(masterState.getBlock() instanceof QuestPickupBlock masterPickup)) {
+                return Optional.empty();
+            }
+            return Optional.of(new HoldTarget(HoldTargetType.FURNITURE, masterPos, masterState, masterPickup));
         }
-        BlockPos masterPos = pickup.pickupMasterPos(hitPos, state);
-        BlockState masterState = level.getBlockState(masterPos);
-        if (!(masterState.getBlock() instanceof QuestPickupBlock masterPickup)) {
-            return Optional.empty();
+
+        if (state.is(QuestBlocks.ENERGY_PANEL.get()) && !state.getValue(EnergyPanelBlock.BROKEN)) {
+            return Optional.of(new HoldTarget(HoldTargetType.ENERGY_PANEL, hitPos, state, null));
         }
-        return Optional.of(new PickupTarget(masterPos, masterState, masterPickup));
+
+        return Optional.empty();
     }
 
     private static boolean isQuestLocked(ServerLevel level, BlockPos pos) {
@@ -211,17 +260,17 @@ public final class QuestFurniturePickupManager {
                 && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ();
     }
 
-    private record PickupTarget(BlockPos masterPos, BlockState masterState, QuestPickupBlock pickup) {
+    private record HoldTarget(HoldTargetType type, BlockPos masterPos, BlockState masterState, @Nullable QuestPickupBlock pickup) {
     }
 
-    private record PickupProgress(ResourceKey<Level> dimension, BlockPos masterPos, long startedTick, long lastHoldTick) {
+    private record PickupProgress(ResourceKey<Level> dimension, BlockPos masterPos, HoldTargetType type, long startedTick, long lastHoldTick) {
 
         private boolean sameTarget(ResourceKey<Level> dimension, BlockPos masterPos) {
             return this.dimension.equals(dimension) && this.masterPos.equals(masterPos);
         }
 
         private PickupProgress withLastHoldTick(long lastHoldTick) {
-            return new PickupProgress(dimension, masterPos, startedTick, lastHoldTick);
+            return new PickupProgress(dimension, masterPos, type, startedTick, lastHoldTick);
         }
     }
 }

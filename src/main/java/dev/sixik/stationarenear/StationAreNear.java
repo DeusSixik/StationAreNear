@@ -31,6 +31,8 @@ public class StationAreNear {
         SolarNavigationModule.register(modEventBus);
         TerminalModule.register(modEventBus);
         SamModule.register(modEventBus);
+
+        
     }
 
     @NotNull

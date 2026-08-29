@@ -140,6 +140,7 @@ public class StationGenerator {
         );
         StationSavedData.get(level).addStation(station);
         postStructureSpawnTriggers(level, station);
+        dev.sixik.stationarenear.structures.lamps.StationLampManager.onStationGenerated(level, station);
         dev.sixik.stationarenear.structures.network.StationStructureNetwork.syncTemplateSelections(level);
         return StationGenerationResult.success(station);
     }

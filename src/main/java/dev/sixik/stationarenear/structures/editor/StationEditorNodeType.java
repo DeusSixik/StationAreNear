@@ -12,5 +12,6 @@ public enum StationEditorNodeType {
     QUEST_OBJECT_PLACER,
     OBJECT_ZONE_PLACER,
     LOOT,
-    MOB_SPAWN
+    MOB_SPAWN,
+    LAMP_SWITCH
 }

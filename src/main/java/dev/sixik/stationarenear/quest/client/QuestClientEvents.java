@@ -55,7 +55,12 @@ public final class QuestClientEvents {
 
         BlockHitResult hit = (BlockHitResult) minecraft.hitResult;
         BlockState state = minecraft.level.getBlockState(hit.getBlockPos());
-        if (!(state.getBlock() instanceof QuestPickupBlock)) {
+        boolean isPickup = state.getBlock() instanceof QuestPickupBlock;
+        boolean isEnergyPanel = state.is(QuestBlocks.ENERGY_PANEL.get())
+                && state.hasProperty(dev.sixik.stationarenear.quest.block.EnergyPanelBlock.BROKEN)
+                && !state.getValue(dev.sixik.stationarenear.quest.block.EnergyPanelBlock.BROKEN);
+
+        if (!isPickup && !isEnergyPanel) {
             stopHolding();
             return;
         }

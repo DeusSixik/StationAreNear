@@ -285,6 +285,7 @@ public final class QuestTestScenario {
         data.remove(PENDING_STATION_ID);
         data.station(moved);
         data.currentStationId(station.id());
+        dev.sixik.stationarenear.structures.lamps.StationLampManager.onQuestStarted(level, station);
     }
 
     private static QuestStationState createPendingState(ServerLevel level, StationInstance station) {

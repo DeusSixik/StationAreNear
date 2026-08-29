@@ -32,6 +32,26 @@ public final class QuestItems {
             () -> new Item(new Item.Properties().durability(3))
     );
 
+    public static final RegistryObject<Item> REPAIR_KIT = ITEMS.register(
+            "repair_kit",
+            () -> new Item(new Item.Properties().durability(3))
+    );
+
+    public static final RegistryObject<Item> OXYGEN_REPAIR_KIT = ITEMS.register(
+            "oxygen_repair_kit",
+            () -> new Item(new Item.Properties().durability(3))
+    );
+
+    public static final RegistryObject<Item> GRAVITATION_REPAIR_KIT = ITEMS.register(
+            "gravitation_repair_kit",
+            () -> new Item(new Item.Properties().durability(3))
+    );
+
+    public static final RegistryObject<Item> ELECTRICITY_REPAIR_KIT = ITEMS.register(
+            "electricity_repair_kit",
+            () -> new Item(new Item.Properties().durability(3))
+    );
+
     public static final RegistryObject<Item> MOP = ITEMS.register(
             "mop",
             () -> new MopItem(new Item.Properties().stacksTo(1))
@@ -51,10 +71,14 @@ public final class QuestItems {
             "station_are_near",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.stationarenear.station_are_near"))
-                    .icon(() -> new ItemStack(ENGINEERING_GEAR.get()))
+                    .icon(() -> new ItemStack(REPAIR_KIT.get()))
                     .displayItems((parameters, output) -> {
                         output.accept(BUCKET.get());
                         output.accept(CUTTERS.get());
+                        output.accept(REPAIR_KIT.get());
+                        output.accept(OXYGEN_REPAIR_KIT.get());
+                        output.accept(GRAVITATION_REPAIR_KIT.get());
+                        output.accept(ELECTRICITY_REPAIR_KIT.get());
                         output.accept(ENGINEERING_GEAR.get());
                         output.accept(MOP.get());
                         output.accept(PUTTY_BUCKET.get());

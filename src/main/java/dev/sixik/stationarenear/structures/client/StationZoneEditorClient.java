@@ -801,6 +801,9 @@ public final class StationZoneEditorClient {
             if (TagsConstants.Trigger.QUEST_OBJECT_PLACER.equalsIgnoreCase(value) || TagsConstants.Trigger.QUEST_OBJECT_PLACE.equalsIgnoreCase(value) || TagsConstants.Trigger.QUEST_OBJECT_POOL.equalsIgnoreCase(value)) {
                 return StationEditorNodeType.QUEST_OBJECT_PLACER;
             }
+            if (TagsConstants.Trigger.LAMP_SWITCH.equalsIgnoreCase(value) || TagsConstants.Trigger.LAMP.equalsIgnoreCase(value) || TagsConstants.Trigger.LAMP_TRIGGER.equalsIgnoreCase(value)) {
+                return StationEditorNodeType.LAMP_SWITCH;
+            }
             try {
                 return StationEditorNodeType.valueOf(value);
             } catch (IllegalArgumentException exception) {
@@ -817,6 +820,7 @@ public final class StationZoneEditorClient {
                 case DOOR_TRIGGER -> TagsConstants.Trigger.DOOR_TRIGGER;
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
                 case QUEST_PLACE -> "quest_place";
+                case LAMP_SWITCH -> TagsConstants.Trigger.LAMP_SWITCH;
                 default -> nodeType.name().toLowerCase(Locale.ROOT);
             };
         }

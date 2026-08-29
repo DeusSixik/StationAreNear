@@ -11,6 +11,7 @@ public enum StationStructureTriggerType {
     DOOR_TRIGGER,
     QUEST,
     QUEST_PLACE,
+    LAMP_SWITCH,
     OTHER;
 
     public static StationStructureTriggerType from(String value) {
@@ -23,6 +24,7 @@ public enum StationStructureTriggerType {
             case TagsConstants.Trigger.DOOR_TRIGGER, TagsConstants.Trigger.DOOR_SPAWNER, TagsConstants.Trigger.DOOR, TagsConstants.Trigger.PRESSURE_DOOR, TagsConstants.Trigger.PRESSURE_TIGHT_DOOR -> DOOR_TRIGGER;
             case TagsConstants.Trigger.QUEST, TagsConstants.Trigger.QUEST_TRIGGER, TagsConstants.Trigger.TRIGGER_QUEST -> QUEST;
             case TagsConstants.Trigger.QUEST_PLACE, TagsConstants.Trigger.PLACE_QUEST, TagsConstants.Trigger.QUEST_PLACE_TRIGGER, TagsConstants.Trigger.PLACE_TRIGGER -> QUEST_PLACE;
+            case TagsConstants.Trigger.LAMP_SWITCH, TagsConstants.Trigger.LAMP, TagsConstants.Trigger.LAMP_TRIGGER -> LAMP_SWITCH;
             default -> OTHER;
         };
     }

@@ -68,9 +68,9 @@ public class EnergyPanelBlock extends HorizontalDirectionalBlock {
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (state.getValue(BROKEN)) {
             ItemStack heldItem = player.getItemInHand(hand);
-            if (!heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+            if (!heldItem.is(QuestItems.ELECTRICITY_REPAIR_KIT.get()) && !heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
                 if (!level.isClientSide) {
-                    player.displayClientMessage(Component.literal("Нужен инженерный инструмент (Engineering Gear) для починки щитка."), true);
+                    player.displayClientMessage(Component.literal("Нужен набор электрика (Electricity Repair Kit) для починки щитка."), true);
                 }
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
@@ -83,12 +83,8 @@ public class EnergyPanelBlock extends HorizontalDirectionalBlock {
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
 
-        if (!level.isClientSide) {
-            boolean nextPowered = !state.getValue(POWERED);
-            level.setBlock(pos, state.setValue(POWERED, nextPowered), 3);
-            float pitch = nextPowered ? 0.6F : 0.5F;
-            level.playSound(null, pos, SoundEvents.LEVER_CLICK, SoundSource.BLOCKS, 0.3F, pitch);
-            player.displayClientMessage(Component.literal(nextPowered ? "Электрический щиток включен." : "Электрический щиток выключен."), true);
+        if (!level.isClientSide && player instanceof ServerPlayer serverPlayer) {
+            dev.sixik.stationarenear.quest.runtime.QuestFurniturePickupManager.hold(serverPlayer, pos);
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
     }

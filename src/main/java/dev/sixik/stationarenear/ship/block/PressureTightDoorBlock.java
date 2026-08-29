@@ -107,11 +107,17 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         BlockState masterState = level.getBlockState(master);
         ItemStack heldItem = player.getItemInHand(hand);
 
-        if (isBroken(masterState) && heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
-            if (level.isClientSide) {
-                SpannerRhythmMinigameScreen.open(() -> {
-                    QuestNetwork.sendRepairDoor(master);
-                });
+        if (isBroken(masterState)) {
+            if (heldItem.is(QuestItems.REPAIR_KIT.get()) || heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+                if (level.isClientSide) {
+                    SpannerRhythmMinigameScreen.open(() -> {
+                        QuestNetwork.sendRepairDoor(master);
+                    });
+                }
+                return InteractionResult.sidedSuccess(level.isClientSide);
+            }
+            if (!level.isClientSide) {
+                player.displayClientMessage(Component.literal("Нужен ремонтный набор (Repair Kit) для починки гермодвери."), true);
             }
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
@@ -119,11 +125,9 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         if (!level.isClientSide) {
             BlockEntity blockEntity = level.getBlockEntity(master);
             if (blockEntity instanceof PressureTightDoorBlockEntity door && !door.doorId().isBlank()) {
-                String repairHint = isBroken(masterState) ? " | Repair: Engineering Gear" : "";
-                player.displayClientMessage(Component.literal("Door ID: " + door.doorId() + " | Use terminal: door open " + door.doorId() + repairHint), true);
+                player.displayClientMessage(Component.literal("Door ID: " + door.doorId() + " | Use terminal: door open " + door.doorId()), true);
             } else {
-                String repairHint = isBroken(masterState) ? " Repair with Engineering Gear." : "";
-                player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close." + repairHint), true);
+                player.displayClientMessage(Component.literal("Pressure door is terminal-controlled. Use: door open / door close."), true);
             }
         }
         return InteractionResult.sidedSuccess(level.isClientSide);

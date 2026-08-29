@@ -39,5 +39,9 @@
   "item.stationarenear.console_no_angle": "No-Angle Console",
   "block.stationarenear.workbench": "Workbench",
   "item.stationarenear.workbench": "Workbench",
-  "item.stationarenear.hand_terminal": "Hand Terminal"
+  "item.stationarenear.hand_terminal": "Hand Terminal",
+  "item.stationarenear.repair_kit": "Repair Kit",
+  "item.stationarenear.oxygen_repair_kit": "Oxygen Repair Kit",
+  "item.stationarenear.gravitation_repair_kit": "Gravitation Repair Kit",
+  "item.stationarenear.electricity_repair_kit": "Electricity Repair Kit"
 }

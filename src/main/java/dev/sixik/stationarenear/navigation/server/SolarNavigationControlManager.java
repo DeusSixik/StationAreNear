@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.ship.runtime.ShipManager;
+import dev.sixik.stationarenear.ship.world.ShipControlLockSavedData;
 import io.netty.util.collection.LongObjectHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.core.BlockPos;
@@ -61,7 +62,7 @@ public final class SolarNavigationControlManager {
     }
 
     public static void updateInput(ServerPlayer player, BlockPos terminalPos, int inputMask) {
-        if (!isValidTerminal(player, terminalPos)) {
+        if (!isValidTerminal(player, terminalPos) || ShipControlLockSavedData.get(player.serverLevel()).isLocked(terminalPos)) {
             return;
         }
         TerminalKey key = new TerminalKey(player.level().dimension(), terminalPos.asLong());
@@ -176,6 +177,14 @@ public final class SolarNavigationControlManager {
         }
 
         private void tick() {
+            if (ShipControlLockSavedData.get(level).isLocked(terminalPos)) {
+                inputs.clear();
+                turnVelocity = 0.0F;
+                state = new SolarNavigationShipState(state.shipX(), state.shipY(), 0.0F, 0.0F, state.angle());
+                SolarNavigationSavedData.get(level).shipState(terminalPos, state);
+                sync();
+                return;
+            }
             int thrustAxis = axis(UpdateMasks.FORWARD, UpdateMasks.BACKWARD, inputs.values());
             int turnAxis = axis(UpdateMasks.RIGHT, UpdateMasks.LEFT, inputs.values());
             simulate(thrustAxis, turnAxis);

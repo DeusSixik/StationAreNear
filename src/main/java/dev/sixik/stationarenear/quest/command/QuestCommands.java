@@ -1,6 +1,7 @@
 package dev.sixik.stationarenear.quest.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -19,6 +20,7 @@ import dev.sixik.stationarenear.quest.director.QuestDirector;
 import dev.sixik.stationarenear.quest.data.QuestObjectiveState;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.runtime.QuestTestScenario;
+import dev.sixik.stationarenear.quest.world.BalanceSavedData;
 import dev.sixik.stationarenear.quest.world.QuestSavedData;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
@@ -42,6 +44,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -67,6 +70,14 @@ public final class QuestCommands {
                                 .then(Commands.argument("director", ResourceLocationArgument.id())
                                         .suggests(QuestCommands::suggestDirectorProfiles)
                                         .executes(context -> simulateDirector(context.getSource(), getIdArgument(context, "director"))))))
+                .then(Commands.literal("balance")
+                        .executes(context -> showBalance(context.getSource()))
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("amount", DoubleArgumentType.doubleArg())
+                                        .executes(context -> addBalance(context.getSource(), DoubleArgumentType.getDouble(context, "amount")))))
+                        .then(Commands.literal("set")
+                                .then(Commands.argument("amount", DoubleArgumentType.doubleArg())
+                                        .executes(context -> setBalance(context.getSource(), DoubleArgumentType.getDouble(context, "amount"))))))
                 .then(Commands.literal("quests")
                         .then(Commands.literal("reload").executes(context -> reloadDirector(context.getSource())))
                         .then(Commands.literal("start")
@@ -109,6 +120,24 @@ public final class QuestCommands {
                                                         .then(Commands.argument("count", IntegerArgumentType.integer(0))
                                                                 .executes(context -> startTestQuest(context.getSource(), getIdArgument(context, "director"), IntegerArgumentType.getInteger(context, "count")))))))
                                 .then(Commands.literal("stop").executes(context -> stopTestQuest(context.getSource()))))));
+    }
+
+    private static int showBalance(CommandSourceStack source) {
+        double balance = BalanceSavedData.get(source.getLevel()).balance();
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Balance: %.2f", balance)), false);
+        return 1;
+    }
+
+    private static int addBalance(CommandSourceStack source, double amount) {
+        double balance = BalanceSavedData.get(source.getLevel()).add(amount);
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Balance changed by %.2f. Balance: %.2f", amount, balance)), false);
+        return 1;
+    }
+
+    private static int setBalance(CommandSourceStack source, double amount) {
+        double balance = BalanceSavedData.get(source.getLevel()).set(amount);
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "Balance set to %.2f", balance)), false);
+        return 1;
     }
 
     private static int reloadDirector(CommandSourceStack source) {

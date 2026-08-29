@@ -282,9 +282,6 @@ public final class QuestTestScenario {
         if (!code.isBlank()) {
             moved.displayStationCode(code);
         }
-        if (!moved.hasActiveObjectives() && !moved.missionId().isBlank()) {
-            data.markQuestCompleted(moved.missionId());
-        }
         data.remove(PENDING_STATION_ID);
         data.station(moved);
         data.currentStationId(station.id());

@@ -11,8 +11,6 @@ import dev.sixik.stationarenear.quest.data.QuestTask;
 import dev.sixik.stationarenear.quest.data.QuestValueCodec;
 import dev.sixik.stationarenear.quest.event.QuestAssignedEvent;
 import dev.sixik.stationarenear.quest.event.QuestCompletedEvent;
-import dev.sixik.stationarenear.quest.event.QuestMissionCompletedEvent;
-import dev.sixik.stationarenear.quest.event.PlayerQuestMissionCompletedEvent;
 import dev.sixik.stationarenear.quest.event.QuestMissionFailedEvent;
 import dev.sixik.stationarenear.quest.event.QuestProgressChangedEvent;
 import dev.sixik.stationarenear.quest.event.QuestStartedEvent;
@@ -237,14 +235,6 @@ public final class QuestApi {
         MinecraftForge.EVENT_BUS.post(new QuestTaskCompletedEvent(level, stationId, definition, completedValue));
         MinecraftForge.EVENT_BUS.post(new QuestCompletedEvent(level, stationId, definition, completedValue));
         if (!stationState.hasActiveObjectives()) {
-            if (!stationState.missionId().isBlank()) {
-                data.markQuestCompleted(stationState.missionId());
-            }
-            data.incrementCompletedMissionCount();
-            MinecraftForge.EVENT_BUS.post(new QuestMissionCompletedEvent(level, stationId, stationState.moneyReward()));
-            if (player != null) {
-                MinecraftForge.EVENT_BUS.post(new PlayerQuestMissionCompletedEvent(level, player, stationId, stationState.missionId(), stationState));
-            }
             MinecraftForge.EVENT_BUS.post(new StationQuestsCompletedEvent(level, stationId));
         }
         return true;
@@ -253,7 +243,7 @@ public final class QuestApi {
     public static boolean fail(ServerLevel level, UUID stationId, String reason) {
         QuestSavedData data = QuestSavedData.get(level);
         Optional<QuestStationState> stationOptional = data.stationIfPresent(stationId);
-        if (stationOptional.isEmpty() || !stationOptional.get().hasActiveObjectives()) {
+        if (stationOptional.isEmpty()) {
             return false;
         }
         MinecraftForge.EVENT_BUS.post(new QuestMissionFailedEvent(level, stationId, stationOptional.get(), reason));

@@ -63,6 +63,11 @@ public final class ShipDecompressionEffects {
         anchor.ifPresent(value -> ejectPlayersInShip(event.level(), value));
     }
 
+    public static void forceEjectPlayers(ServerLevel level, BlockPos terminalPos) {
+        ShipDoorController.setOpen(level, terminalPos, true);
+        shipAnchor(level, terminalPos).ifPresent(anchor -> ejectPlayersInShip(level, anchor));
+    }
+
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) {
             return;

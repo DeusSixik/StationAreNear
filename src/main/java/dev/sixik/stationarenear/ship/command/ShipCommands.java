@@ -12,6 +12,7 @@ import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
 import dev.sixik.stationarenear.ship.runtime.ShipDecompressionEffects;
+import dev.sixik.stationarenear.ship.world.ShipControlLockSavedData;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
@@ -68,6 +69,7 @@ public final class ShipCommands {
                 .then(Commands.literal("ship")
                         .then(spawnSpaceShipCommand())
                         .then(decompressionCommand())
+                        .then(controlCommand())
                         .then(shipAnchorCommand())
                         .then(televisionCommand())));
     }
@@ -153,6 +155,53 @@ public final class ShipCommands {
                                         BlockPosArgument.getLoadedBlockPos(context, "pos"),
                                         StringArgumentType.getString(context, "template")
                                 ))));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> controlCommand() {
+        return Commands.literal("controls")
+                .then(Commands.literal("status")
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> showControlLock(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "terminal_pos")
+                                ))))
+                .then(Commands.literal("lock")
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> setControlLock(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "terminal_pos"),
+                                        true
+                                ))))
+                .then(Commands.literal("unlock")
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> setControlLock(
+                                        context.getSource(),
+                                        BlockPosArgument.getLoadedBlockPos(context, "terminal_pos"),
+                                        false
+                                ))));
+    }
+
+    private static int showControlLock(CommandSourceStack source, BlockPos terminalPos) {
+        ShipControlLockSavedData locks = ShipControlLockSavedData.get(source.getLevel());
+        if (!locks.isLocked(terminalPos)) {
+            source.sendSuccess(() -> Component.literal("Ship controls are unlocked for " + terminalPos.toShortString()), false);
+            return 1;
+        }
+        String reason = locks.reason(terminalPos).orElse("");
+        source.sendSuccess(() -> Component.literal("Ship controls are locked for " + terminalPos.toShortString() + (reason.isBlank() ? "" : ": " + reason)), false);
+        return 1;
+    }
+
+    private static int setControlLock(CommandSourceStack source, BlockPos terminalPos, boolean lock) {
+        ShipControlLockSavedData locks = ShipControlLockSavedData.get(source.getLevel());
+        if (lock) {
+            locks.lock(terminalPos, "manual");
+            source.sendSuccess(() -> Component.literal("Locked ship controls for " + terminalPos.toShortString()), false);
+        } else {
+            boolean changed = locks.unlock(terminalPos);
+            source.sendSuccess(() -> Component.literal((changed ? "Unlocked" : "Already unlocked") + " ship controls for " + terminalPos.toShortString()), false);
+        }
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> shipAnchorCommand() {

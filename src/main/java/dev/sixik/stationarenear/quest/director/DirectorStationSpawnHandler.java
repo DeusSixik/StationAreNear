@@ -93,7 +93,7 @@ public final class DirectorStationSpawnHandler {
         consume(offer, 1);
         event.getZone().data().putBoolean("energyPanel", true);
         event.getZone().data().putInt("energyPanelChance", 100);
-        event.getZone().data().putBoolean("powered", false);
+        event.getZone().data().putBoolean("broken", true);
     }
 
     private static CompoundTag takeOffer(CompoundTag plan, StationOfferType type, PlacedTriggerZone zone) {

@@ -123,6 +123,11 @@ public final class RetroTerminalScreen {
             return true;
         }
 
+        if (minecraft.player.getMainHandItem().is(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get())
+                || minecraft.player.getOffhandItem().is(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get())) {
+            return false;
+        }
+
         return minecraft.player.distanceToSqr(Vec3.atCenterOf(terminalPos)) > BLOCK_UI_MAX_DISTANCE_SQ;
     }
 

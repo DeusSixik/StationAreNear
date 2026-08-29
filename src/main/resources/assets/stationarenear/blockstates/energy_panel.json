@@ -1,33 +1,63 @@
 {
   "variants": {
-    "facing=north,powered=false": {
+    "broken=false,facing=north,powered=false": {
       "model": "stationarenear:block/energy_panel_off"
     },
-    "facing=north,powered=true": {
+    "broken=false,facing=north,powered=true": {
       "model": "stationarenear:block/energy_panel_on"
     },
-    "facing=east,powered=false": {
+    "broken=false,facing=east,powered=false": {
       "model": "stationarenear:block/energy_panel_off",
       "y": 90
     },
-    "facing=east,powered=true": {
+    "broken=false,facing=east,powered=true": {
       "model": "stationarenear:block/energy_panel_on",
       "y": 90
     },
-    "facing=south,powered=false": {
+    "broken=false,facing=south,powered=false": {
       "model": "stationarenear:block/energy_panel_off",
       "y": 180
     },
-    "facing=south,powered=true": {
+    "broken=false,facing=south,powered=true": {
       "model": "stationarenear:block/energy_panel_on",
       "y": 180
     },
-    "facing=west,powered=false": {
+    "broken=false,facing=west,powered=false": {
       "model": "stationarenear:block/energy_panel_off",
       "y": 270
     },
-    "facing=west,powered=true": {
+    "broken=false,facing=west,powered=true": {
       "model": "stationarenear:block/energy_panel_on",
+      "y": 270
+    },
+    "broken=true,facing=north,powered=false": {
+      "model": "stationarenear:block/energy_panel_broken"
+    },
+    "broken=true,facing=north,powered=true": {
+      "model": "stationarenear:block/energy_panel_broken"
+    },
+    "broken=true,facing=east,powered=false": {
+      "model": "stationarenear:block/energy_panel_broken",
+      "y": 90
+    },
+    "broken=true,facing=east,powered=true": {
+      "model": "stationarenear:block/energy_panel_broken",
+      "y": 90
+    },
+    "broken=true,facing=south,powered=false": {
+      "model": "stationarenear:block/energy_panel_broken",
+      "y": 180
+    },
+    "broken=true,facing=south,powered=true": {
+      "model": "stationarenear:block/energy_panel_broken",
+      "y": 180
+    },
+    "broken=true,facing=west,powered=false": {
+      "model": "stationarenear:block/energy_panel_broken",
+      "y": 270
+    },
+    "broken=true,facing=west,powered=true": {
+      "model": "stationarenear:block/energy_panel_broken",
       "y": 270
     }
   }

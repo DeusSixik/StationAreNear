@@ -28,7 +28,10 @@ public final class QuestBlocks {
             () -> new FridgeBlock(BlockBehaviour.Properties.of()
                     .strength(1.8F, 6.0F)
                     .sound(SoundType.METAL)
-                    .noOcclusion())
+                    .noOcclusion()
+                    .isViewBlocking((state, getter, pos) -> false)
+                    .isSuffocating((state, getter, pos) -> false)
+                    .isRedstoneConductor((state, getter, pos) -> false))
     );
 
     public static final RegistryObject<Item> FRIDGE_ITEM = ITEMS.register(
@@ -68,7 +71,10 @@ public final class QuestBlocks {
             () -> new EnergyPanelBlock(BlockBehaviour.Properties.of()
                     .strength(1.6F, 6.0F)
                     .sound(SoundType.METAL)
-                    .noOcclusion())
+                    .noOcclusion()
+                    .isViewBlocking((state, getter, pos) -> false)
+                    .isSuffocating((state, getter, pos) -> false)
+                    .isRedstoneConductor((state, getter, pos) -> false))
     );
 
     public static final RegistryObject<Item> ENERGY_PANEL_ITEM = ITEMS.register(
@@ -76,12 +82,20 @@ public final class QuestBlocks {
             () -> new BlockItem(ENERGY_PANEL.get(), new Item.Properties())
     );
 
+    public static final RegistryObject<Item> BROKEN_ENERGY_PANEL_ITEM = ITEMS.register(
+            "broken_energy_panel",
+            () -> new dev.sixik.stationarenear.quest.item.BrokenEnergyPanelItem(ENERGY_PANEL.get(), new Item.Properties())
+    );
+
     public static final RegistryObject<WallMountedPanelBlock> OXYGEN_PANEL = BLOCKS.register(
             "oxygen_panel",
             () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
                     .strength(1.6F, 6.0F)
                     .sound(SoundType.METAL)
-                    .noOcclusion(), 4.0D)
+                    .noOcclusion()
+                    .isViewBlocking((state, getter, pos) -> false)
+                    .isSuffocating((state, getter, pos) -> false)
+                    .isRedstoneConductor((state, getter, pos) -> false), 4.0D)
     );
 
     public static final RegistryObject<Item> OXYGEN_PANEL_ITEM = ITEMS.register(
@@ -94,7 +108,10 @@ public final class QuestBlocks {
             () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
                     .strength(1.6F, 6.0F)
                     .sound(SoundType.METAL)
-                    .noOcclusion(), 6.0D)
+                    .noOcclusion()
+                    .isViewBlocking((state, getter, pos) -> false)
+                    .isSuffocating((state, getter, pos) -> false)
+                    .isRedstoneConductor((state, getter, pos) -> false), 6.0D)
     );
 
     public static final RegistryObject<Item> GRAVITATION_PANEL_ITEM = ITEMS.register(
@@ -121,7 +138,10 @@ public final class QuestBlocks {
             () -> new WorkbenchBlock(BlockBehaviour.Properties.of()
                     .strength(2.5F, 8.0F)
                     .sound(SoundType.WOOD)
-                    .noOcclusion())
+                    .noOcclusion()
+                    .isViewBlocking((state, getter, pos) -> false)
+                    .isSuffocating((state, getter, pos) -> false)
+                    .isRedstoneConductor((state, getter, pos) -> false))
     );
 
     public static final RegistryObject<Item> WORKBENCH_ITEM = ITEMS.register(

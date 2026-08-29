@@ -157,20 +157,21 @@ public final class StationTriggerHandlers {
             return;
         }
 
-        boolean powered = !data.contains("powered") || data.getBoolean("powered");
-        placeEnergyPanel(event.getLevel(), event.getStation(), event.getZone(), powered);
+        boolean broken = data.contains("broken") ? data.getBoolean("broken") : (data.contains("powered") && !data.getBoolean("powered"));
+        placeEnergyPanel(event.getLevel(), event.getStation(), event.getZone(), broken);
     }
 
     public static Optional<PlacedTriggerZone> selectEnergyPanelTrigger(dev.sixik.stationarenear.structures.data.StationInstance station) {
         return selectEnergyPanelTarget(station).map(EnergyPanelTarget::zone);
     }
 
-    public static boolean placeEnergyPanel(net.minecraft.server.level.ServerLevel level, dev.sixik.stationarenear.structures.data.StationInstance station, PlacedTriggerZone zone, boolean powered) {
+    public static boolean placeEnergyPanel(net.minecraft.server.level.ServerLevel level, dev.sixik.stationarenear.structures.data.StationInstance station, PlacedTriggerZone zone, boolean broken) {
         BlockPos pos = centerPos(zone);
         Direction facing = panelFacing(zone.data(), station.stationDirection());
         level.setBlock(pos, QuestBlocks.ENERGY_PANEL.get().defaultBlockState()
                 .setValue(EnergyPanelBlock.FACING, facing)
-                .setValue(EnergyPanelBlock.POWERED, powered), 3);
+                .setValue(EnergyPanelBlock.POWERED, false)
+                .setValue(EnergyPanelBlock.BROKEN, broken), 3);
         return true;
     }
 

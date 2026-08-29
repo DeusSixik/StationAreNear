@@ -2,13 +2,18 @@ package dev.sixik.stationarenear.quest.client;
 
 import dev.sixik.stationarenear.quest.block.QuestPickupBlock;
 import dev.sixik.stationarenear.quest.network.QuestNetwork;
+import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 public final class QuestClientEvents {
 
@@ -17,10 +22,21 @@ public final class QuestClientEvents {
     private QuestClientEvents() {
     }
 
-    public static void register() {
+    public static void register(IEventBus modEventBus) {
+        modEventBus.addListener(QuestClientEvents::onClientSetup);
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientTick);
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientLogout);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupOverlay::onRenderGui);
+    }
+
+    private static void onClientSetup(FMLClientSetupEvent event) {
+        event.enqueueWork(() -> {
+            ItemBlockRenderTypes.setRenderLayer(QuestBlocks.OXYGEN_PANEL.get(), RenderType.cutout());
+            ItemBlockRenderTypes.setRenderLayer(QuestBlocks.ENERGY_PANEL.get(), RenderType.cutout());
+            ItemBlockRenderTypes.setRenderLayer(QuestBlocks.GRAVITATION_PANEL.get(), RenderType.cutout());
+            ItemBlockRenderTypes.setRenderLayer(QuestBlocks.WORKBENCH.get(), RenderType.cutout());
+            ItemBlockRenderTypes.setRenderLayer(QuestBlocks.FRIDGE.get(), RenderType.cutout());
+        });
     }
 
     private static void onClientTick(TickEvent.ClientTickEvent event) {

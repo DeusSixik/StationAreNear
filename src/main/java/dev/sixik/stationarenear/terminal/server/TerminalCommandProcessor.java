@@ -429,6 +429,13 @@ public final class TerminalCommandProcessor {
     }
 
     public static boolean canUseTerminal(ServerPlayer player, BlockPos terminalPos) {
+        if (player.getMainHandItem().is(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get())
+                || player.getOffhandItem().is(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get())) {
+            return true;
+        }
+        if (terminalPos.equals(BlockPos.ZERO)) {
+            return false;
+        }
         ServerLevel level = player.serverLevel();
         BlockState state = level.getBlockState(terminalPos);
         return level.isLoaded(terminalPos)

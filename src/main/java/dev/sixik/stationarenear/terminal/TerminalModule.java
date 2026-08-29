@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.terminal;
 import dev.sixik.stationarenear.terminal.network.MapTerminalNetwork;
 import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
 import dev.sixik.stationarenear.terminal.registry.TerminalBlocks;
+import dev.sixik.stationarenear.terminal.registry.TerminalItems;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.DistExecutor;
@@ -16,6 +17,7 @@ public final class TerminalModule {
         TerminalNetwork.register();
         MapTerminalNetwork.register();
         TerminalBlocks.register(modEventBus);
+        TerminalItems.register(modEventBus);
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> dev.sixik.stationarenear.terminal.client.TerminalClientEvents.register(modEventBus));
     }
 }

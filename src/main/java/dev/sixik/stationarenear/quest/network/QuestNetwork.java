@@ -43,10 +43,19 @@ public final class QuestNetwork {
                 .decoder(RepairDoorCompletePacket::decode)
                 .consumerMainThread(RepairDoorCompletePacket::handle)
                 .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.quest.network.packet.RepairEnergyPanelCompletePacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(dev.sixik.stationarenear.quest.network.packet.RepairEnergyPanelCompletePacket::encode)
+                .decoder(dev.sixik.stationarenear.quest.network.packet.RepairEnergyPanelCompletePacket::decode)
+                .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.RepairEnergyPanelCompletePacket::handle)
+                .add();
     }
 
     public static void sendRepairDoor(BlockPos pos) {
         CHANNEL.sendToServer(new dev.sixik.stationarenear.quest.network.packet.RepairDoorCompletePacket(pos));
+    }
+
+    public static void sendRepairEnergyPanel(BlockPos pos) {
+        CHANNEL.sendToServer(new dev.sixik.stationarenear.quest.network.packet.RepairEnergyPanelCompletePacket(pos));
     }
 
     public static void sendFurniturePickupHold(BlockPos pos, boolean holding) {

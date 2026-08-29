@@ -63,10 +63,12 @@ public final class QuestItems {
                         output.accept(QuestBlocks.KITCHEN_SINK_ITEM.get());
                         output.accept(QuestBlocks.MICROWAVE_ITEM.get());
                         output.accept(QuestBlocks.ENERGY_PANEL_ITEM.get());
+                        output.accept(QuestBlocks.BROKEN_ENERGY_PANEL_ITEM.get());
                         output.accept(QuestBlocks.OXYGEN_PANEL_ITEM.get());
                         output.accept(QuestBlocks.GRAVITATION_PANEL_ITEM.get());
                         output.accept(QuestBlocks.CONSOLE_NO_ANGLE_ITEM.get());
                         output.accept(QuestBlocks.WORKBENCH_ITEM.get());
+                        output.accept(dev.sixik.stationarenear.terminal.registry.TerminalItems.HAND_TERMINAL.get());
                     })
                     .build()
     );

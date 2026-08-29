@@ -29,7 +29,7 @@ public final class QuestModule {
         DirectorConfigManager.init();
         DirectorStationSpawnHandler.register();
         QuestCommands.register();
-        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> dev.sixik.stationarenear.quest.client.QuestClientEvents::register);
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> dev.sixik.stationarenear.quest.client.QuestClientEvents.register(modEventBus));
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerStopping);

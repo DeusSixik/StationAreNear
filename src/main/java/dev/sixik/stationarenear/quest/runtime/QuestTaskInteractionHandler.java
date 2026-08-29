@@ -54,10 +54,18 @@ public final class QuestTaskInteractionHandler {
             return;
         }
         BlockState state = event.getState();
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+
+        if (state.is(QuestTags.HANGING_CABLES) && player != null && !player.isSpectator() && !player.getAbilities().instabuild) {
+            if (dev.sixik.stationarenear.structures.lamps.StationLampManager.isPowerOn(level, event.getPos())) {
+                player.hurt(level.damageSources().lightningBolt(), 8.0F);
+                level.playSound(null, event.getPos(), dev.sixik.stationarenear.quest.registry.StationSounds.ELECTRIC_SHOCK.get(), net.minecraft.sounds.SoundSource.BLOCKS, 0.6F, 1.0F);
+            }
+        }
+
         if (!state.is(QuestTags.TRASH_BLOCKS) && !DirectorConfigManager.isTrashBlock(state)) {
             return;
         }
-        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
         stationPieceAt(level, event.getPos()).ifPresent(context -> incrementCleanup(level, context, event.getPos(), player));
     }
 

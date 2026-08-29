@@ -137,6 +137,7 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         BlockState masterState = level.getBlockState(master);
         if (isBroken(masterState)) {
             repairDoor(level, master, masterState);
+            level.playSound(null, master, net.minecraft.sounds.SoundEvents.SMITHING_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
             ItemStack heldItem = player.getItemInHand(hand);
             if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
                 heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));

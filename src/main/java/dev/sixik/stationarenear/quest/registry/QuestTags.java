@@ -13,6 +13,7 @@ public final class QuestTags {
     public static final TagKey<Block> REPAIRABLE_BLOCKS = block("repairable_blocks");
     public static final TagKey<Block> BUILD_TARGET_BLOCKS = block("build_target_blocks");
     public static final TagKey<Block> REPAIRABLE_PRESSURE_DOORS = block("repairable_pressure_doors");
+    public static final TagKey<Block> HANGING_CABLES = block("hanging_cables");
     public static final TagKey<Item> MOPS = item("mops");
 
     private QuestTags() {

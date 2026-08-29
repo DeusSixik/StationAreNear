@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "station_blocks:hanging_cables_1",
+    "station_blocks:hanging_cables_2",
+    "station_blocks:hanging_cables_3",
+    "station_blocks:hanging_cables_4",
+    "station_blocks:hanging_cables_5",
+    "station_blocks:hanging_cables_6"
+  ]
+}

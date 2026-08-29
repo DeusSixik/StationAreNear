@@ -12,6 +12,7 @@ public enum StationStructureTriggerType {
     QUEST,
     QUEST_PLACE,
     LAMP_SWITCH,
+    SOUND_TRIGGER,
     OTHER;
 
     public static StationStructureTriggerType from(String value) {
@@ -25,6 +26,7 @@ public enum StationStructureTriggerType {
             case TagsConstants.Trigger.QUEST, TagsConstants.Trigger.QUEST_TRIGGER, TagsConstants.Trigger.TRIGGER_QUEST -> QUEST;
             case TagsConstants.Trigger.QUEST_PLACE, TagsConstants.Trigger.PLACE_QUEST, TagsConstants.Trigger.QUEST_PLACE_TRIGGER, TagsConstants.Trigger.PLACE_TRIGGER -> QUEST_PLACE;
             case TagsConstants.Trigger.LAMP_SWITCH, TagsConstants.Trigger.LAMP, TagsConstants.Trigger.LAMP_TRIGGER -> LAMP_SWITCH;
+            case TagsConstants.Trigger.SOUND_TRIGGER, TagsConstants.Trigger.SOUND -> SOUND_TRIGGER;
             default -> OTHER;
         };
     }

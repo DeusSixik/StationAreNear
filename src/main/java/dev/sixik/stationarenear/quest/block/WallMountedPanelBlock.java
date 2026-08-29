@@ -100,13 +100,31 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable net.minecraft.world.entity.LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if (!level.isClientSide) {
+            if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.GRAVITATION_PANEL.get())) {
+                dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onPanelPlaced((ServerLevel) level, pos, state.getValue(BROKEN));
+            } else if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.OXYGEN_PANEL.get())) {
+                dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onPanelPlaced((ServerLevel) level, pos, state.getValue(BROKEN));
+            }
+        }
+    }
+
     public static void performRepair(ServerLevel level, BlockPos pos, Player player, InteractionHand hand) {
         BlockState state = level.getBlockState(pos);
         if (state.getBlock() instanceof WallMountedPanelBlock && state.getValue(BROKEN)) {
             level.setBlock(pos, state.setValue(BROKEN, false), 3);
+            level.playSound(null, pos, net.minecraft.sounds.SoundEvents.SMITHING_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
             ItemStack heldItem = player.getItemInHand(hand);
             if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
                 heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));
+            }
+            if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.GRAVITATION_PANEL.get())) {
+                dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onPanelRepaired(level, pos, player);
+            } else if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.OXYGEN_PANEL.get())) {
+                dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onPanelRepaired(level, pos, player);
             }
             player.displayClientMessage(Component.literal("Панель успешно починена и синхронизирована."), true);
         }

@@ -24,6 +24,7 @@ public final class QuestModule {
     public static void register(IEventBus modEventBus) {
         QuestBlocks.register(modEventBus);
         QuestItems.register(modEventBus);
+        dev.sixik.stationarenear.quest.registry.StationSounds.register(modEventBus);
         QuestNetwork.register();
         StationQuests.register();
         DirectorConfigManager.init();
@@ -32,9 +33,12 @@ public final class QuestModule {
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> dev.sixik.stationarenear.quest.client.QuestClientEvents.register(modEventBus));
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.lamps.StationLampManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(QuestAnnouncementHandler::onQuestStarted);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.gravity.StationGravitationManager::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.oxygen.StationOxygenManager::onLivingBreathe);
         MinecraftForge.EVENT_BUS.register(QuestTaskInteractionHandler.class);
     }
 }

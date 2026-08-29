@@ -31,7 +31,6 @@ public final class TagsConstants {
         public static final String TRASH = "trash";
 
         /** Цель рядом с розеткой для установки холодильника или микроволновки. */
-        /** ????? ????????? ????????????? ????? ??? ????????????, ????????????? ? ??????? ????????. */
         public static final String ELECTRIC = "electric";
 
         public static final String SOCKET = "socket";
@@ -131,14 +130,12 @@ public final class TagsConstants {
 
         /** Trigger переключения аварийных и штатных ламп станции. */
         public static final String LAMP_SWITCH = "lamp_switch";
-
-        /** Alias для {@link #LAMP_SWITCH}. */
         public static final String LAMP = "lamp";
-
-        /** Alias для {@link #LAMP_SWITCH}. */
         public static final String LAMP_TRIGGER = "lamp_trigger";
 
-        /** Универсальный fallback-trigger, если специализированный тип не указан. */
+        public static final String SOUND_TRIGGER = "sound_trigger";
+        public static final String SOUND = "sound";
+
         public static final String TRIGGER = "trigger";
 
         /** Старое значение для служебных/прочих trigger-ов. */

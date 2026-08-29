@@ -7,6 +7,8 @@ public enum StationOfferType {
     BROKEN_DOOR,
     DOOR,
     ENERGY_FAILURE,
+    GRAVITATION_FAILURE,
+    OXYGEN_FAILURE,
     OBJECT,
     CUSTOM;
 
@@ -17,6 +19,8 @@ public enum StationOfferType {
             case "BROKEN_DOOR", "BROKEN_PRESSURE_DOOR", "PRESSURE_DOOR_BROKEN" -> BROKEN_DOOR;
             case "DOOR", "PRESSURE_DOOR" -> DOOR;
             case "ENERGY_FAILURE", "ELECTRIC_FAILURE", "POWER_FAILURE" -> ENERGY_FAILURE;
+            case "GRAVITATION_FAILURE", "GRAVITY_FAILURE", "GRAVITATION" -> GRAVITATION_FAILURE;
+            case "OXYGEN_FAILURE", "OXYGEN" -> OXYGEN_FAILURE;
             case "OBJECT", "OBJECT_PLACER", "PROP" -> OBJECT;
             default -> CUSTOM;
         };

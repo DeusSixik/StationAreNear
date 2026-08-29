@@ -286,6 +286,8 @@ public final class QuestTestScenario {
         data.station(moved);
         data.currentStationId(station.id());
         dev.sixik.stationarenear.structures.lamps.StationLampManager.onQuestStarted(level, station);
+        dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onQuestStarted(level, station);
+        dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onQuestStarted(level, station);
     }
 
     private static QuestStationState createPendingState(ServerLevel level, StationInstance station) {

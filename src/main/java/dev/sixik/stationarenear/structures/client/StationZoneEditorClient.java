@@ -711,6 +711,22 @@ public final class StationZoneEditorClient {
                 row("Place", place);
                 bind(questId, value -> updateTriggerData(index, dataTag -> dataTag.putString("questId", value)));
                 bind(place, value -> updateTriggerData(index, dataTag -> dataTag.putString("place", value)));
+            } else if (nodeType == StationEditorNodeType.SOUND_TRIGGER) {
+                TextField soundField = field(data.getString("sound"), "sound ID (e.g. stationarenear:meteor_collide)");
+                TextField volumeField = field(Float.toString(data.contains("volume") ? data.getFloat("volume") : 1.0F), "1.0");
+                TextField pitchField = field(Float.toString(data.contains("pitch") ? data.getFloat("pitch") : 1.0F), "1.0");
+                ToggleButton onceToggle = new ToggleButton("Play Once").silentChecked(!data.contains("once") || data.getBoolean("once"));
+                ToggleButton globalToggle = new ToggleButton("Global Sound").silentChecked(data.getBoolean("global"));
+                row("Sound ID", soundField);
+                row("Volume", volumeField);
+                row("Pitch", pitchField);
+                inspector.addChild(onceToggle);
+                inspector.addChild(globalToggle);
+                bind(soundField, value -> updateTriggerData(index, dataTag -> dataTag.putString("sound", value.trim())));
+                bind(volumeField, value -> updateTriggerData(index, dataTag -> dataTag.putFloat("volume", parseFloat(value, 1.0F))));
+                bind(pitchField, value -> updateTriggerData(index, dataTag -> dataTag.putFloat("pitch", parseFloat(value, 1.0F))));
+                onceToggle.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("once", event.newValue())); syncEditorStateAndSave(); });
+                globalToggle.onCheckedChanged(event -> { updateTriggerData(index, dataTag -> dataTag.putBoolean("global", event.newValue())); syncEditorStateAndSave(); });
             }
         }
 
@@ -804,6 +820,9 @@ public final class StationZoneEditorClient {
             if (TagsConstants.Trigger.LAMP_SWITCH.equalsIgnoreCase(value) || TagsConstants.Trigger.LAMP.equalsIgnoreCase(value) || TagsConstants.Trigger.LAMP_TRIGGER.equalsIgnoreCase(value)) {
                 return StationEditorNodeType.LAMP_SWITCH;
             }
+            if (TagsConstants.Trigger.SOUND_TRIGGER.equalsIgnoreCase(value) || TagsConstants.Trigger.SOUND.equalsIgnoreCase(value)) {
+                return StationEditorNodeType.SOUND_TRIGGER;
+            }
             try {
                 return StationEditorNodeType.valueOf(value);
             } catch (IllegalArgumentException exception) {
@@ -821,6 +840,7 @@ public final class StationZoneEditorClient {
                 case TRIGGER_QUEST, QUEST_TRIGGER -> "quest";
                 case QUEST_PLACE -> "quest_place";
                 case LAMP_SWITCH -> TagsConstants.Trigger.LAMP_SWITCH;
+                case SOUND_TRIGGER -> TagsConstants.Trigger.SOUND_TRIGGER;
                 default -> nodeType.name().toLowerCase(Locale.ROOT);
             };
         }
@@ -926,6 +946,19 @@ public final class StationZoneEditorClient {
             } else if (nodeType == StationEditorNodeType.TRIGGER_QUEST || nodeType == StationEditorNodeType.QUEST_TRIGGER) {
                 if (!data.contains("questId")) {
                     data.putString("questId", "");
+                }
+            } else if (nodeType == StationEditorNodeType.SOUND_TRIGGER) {
+                if (!data.contains("sound")) {
+                    data.putString("sound", "stationarenear:meteor_collide");
+                }
+                if (!data.contains("volume")) {
+                    data.putFloat("volume", 1.0F);
+                }
+                if (!data.contains("pitch")) {
+                    data.putFloat("pitch", 1.0F);
+                }
+                if (!data.contains("once")) {
+                    data.putBoolean("once", true);
                 }
             }
         }
@@ -1444,6 +1477,14 @@ public final class StationZoneEditorClient {
         private int parseInt(String value, int fallback) {
             try {
                 return Integer.parseInt(value.trim());
+            } catch (NumberFormatException exception) {
+                return fallback;
+            }
+        }
+
+        private float parseFloat(String value, float fallback) {
+            try {
+                return Float.parseFloat(value.trim());
             } catch (NumberFormatException exception) {
                 return fallback;
             }

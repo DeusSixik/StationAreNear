@@ -13,5 +13,6 @@ public enum StationEditorNodeType {
     OBJECT_ZONE_PLACER,
     LOOT,
     MOB_SPAWN,
-    LAMP_SWITCH
+    LAMP_SWITCH,
+    SOUND_TRIGGER
 }

@@ -36,7 +36,7 @@ public final class QuestBlocks {
 
     public static final RegistryObject<Item> FRIDGE_ITEM = ITEMS.register(
             "fridge",
-            () -> new BlockItem(FRIDGE.get(), new Item.Properties())
+            () -> new BlockItem(FRIDGE.get(), new Item.Properties().stacksTo(1))
     );
 
     public static final RegistryObject<KitchenSinkBlock> KITCHEN_SINK = BLOCKS.register(
@@ -49,7 +49,7 @@ public final class QuestBlocks {
 
     public static final RegistryObject<Item> KITCHEN_SINK_ITEM = ITEMS.register(
             "kitchen_sink",
-            () -> new BlockItem(KITCHEN_SINK.get(), new Item.Properties())
+            () -> new BlockItem(KITCHEN_SINK.get(), new Item.Properties().stacksTo(1))
     );
 
     public static final RegistryObject<MicrowaveBlock> MICROWAVE = BLOCKS.register(
@@ -62,7 +62,7 @@ public final class QuestBlocks {
 
     public static final RegistryObject<Item> MICROWAVE_ITEM = ITEMS.register(
             "microwave",
-            () -> new BlockItem(MICROWAVE.get(), new Item.Properties())
+            () -> new BlockItem(MICROWAVE.get(), new Item.Properties().stacksTo(1))
     );
 
 

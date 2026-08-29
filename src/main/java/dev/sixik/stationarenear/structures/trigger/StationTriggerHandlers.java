@@ -55,6 +55,7 @@ public final class StationTriggerHandlers {
 
     private static void onStationTrigger(StationTriggerEvent event) {
         MobTriggerSpawner.spawnOnActivation(event, DirectorStationSpawnHandler.hasDirectorPlan(event.getStation()));
+        SoundTriggerHandler.handleTrigger(event);
     }
 
     private static void onStructureSpawnTrigger(StationStructureSpawnTriggerEvent event) {
@@ -62,16 +63,19 @@ public final class StationTriggerHandlers {
             return;
         }
         switch (event.getTriggerType()) {
-            case OBJECT_PLACER -> placeObject(event);
-            case QUEST_OBJECT_PLACER -> {
-                // Quest object placers are activated explicitly by quest generation code.
+            case OBJECT_PLACER, QUEST_OBJECT_PLACER -> {
+                if (isEnergySwitchTrigger(event.getZone())) {
+                    placeEnergyPanel(event);
+                } else if (event.getTriggerType() == StationStructureTriggerType.OBJECT_PLACER) {
+                    placeObject(event);
+                }
             }
             case OBJECT_ZONE_PLACER -> placeObjectZone(event, event.isForcePlaceObjectZone(), event.getForcedObjectZoneCount());
             case MOB_SPAWN -> MobTriggerSpawner.spawnFromStructureTrigger(event);
             case DOOR_TRIGGER -> placeDoor(event);
             case QUEST_PLACE -> placeEnergyPanel(event);
+            case SOUND_TRIGGER -> SoundTriggerHandler.handleSpawnTrigger(event);
             case QUEST -> {
-                // Quest triggers intentionally only publish StationStructureSpawnTriggerEvent for quest code.
             }
             default -> {
             }
@@ -138,31 +142,32 @@ public final class StationTriggerHandlers {
 
 
     private static void placeEnergyPanel(StationStructureSpawnTriggerEvent event) {
-        if (!isEnergySwitchTrigger(event.getZone())) {
-            return;
-        }
         CompoundTag data = event.getZone().data();
         if (data.contains("energyPanel") && !data.getBoolean("energyPanel")) {
             return;
         }
 
-        Optional<EnergyPanelTarget> selected = selectEnergyPanelTarget(event.getStation());
+        boolean isBroken = dev.sixik.stationarenear.structures.lamps.StationLampManager.hasEnergyFailureOffer(event.getStation())
+                || (data.contains("broken") && data.getBoolean("broken"));
+
+        Optional<EnergyPanelTarget> selected = selectEnergyPanelTarget(event.getStation(), isBroken);
         if (selected.isEmpty() || !selected.get().matches(event.getPiece(), event.getZone())) {
             return;
         }
 
-        RandomSource random = RandomSource.create(event.getStation().seed() ^ 0xE1EC7A11B0A2L);
-        int chance = Mth.clamp(data.contains("energyPanelChance") ? data.getInt("energyPanelChance") : ENERGY_PANEL_DEFAULT_CHANCE, 0, 100);
-        if (random.nextInt(100) >= chance) {
-            return;
+        if (data.contains("pool") && !data.getString("pool").isBlank()) {
+            String requiredTag = isBroken ? "electrick_broken" : "electrick_normal";
+            if (placeObject(event, true, requiredTag)) {
+                return;
+            }
         }
 
-        boolean broken = data.contains("broken") ? data.getBoolean("broken") : (data.contains("powered") && !data.getBoolean("powered"));
-        placeEnergyPanel(event.getLevel(), event.getStation(), event.getZone(), broken);
+        placeEnergyPanel(event.getLevel(), event.getStation(), event.getZone(), isBroken);
     }
 
     public static Optional<PlacedTriggerZone> selectEnergyPanelTrigger(dev.sixik.stationarenear.structures.data.StationInstance station) {
-        return selectEnergyPanelTarget(station).map(EnergyPanelTarget::zone);
+        boolean isBroken = dev.sixik.stationarenear.structures.lamps.StationLampManager.hasEnergyFailureOffer(station);
+        return selectEnergyPanelTarget(station, isBroken).map(EnergyPanelTarget::zone);
     }
 
     public static boolean placeEnergyPanel(net.minecraft.server.level.ServerLevel level, dev.sixik.stationarenear.structures.data.StationInstance station, PlacedTriggerZone zone, boolean broken) {
@@ -170,29 +175,43 @@ public final class StationTriggerHandlers {
         Direction facing = panelFacing(zone.data(), station.stationDirection());
         level.setBlock(pos, QuestBlocks.ENERGY_PANEL.get().defaultBlockState()
                 .setValue(EnergyPanelBlock.FACING, facing)
-                .setValue(EnergyPanelBlock.POWERED, false)
+                .setValue(EnergyPanelBlock.POWERED, !broken)
                 .setValue(EnergyPanelBlock.BROKEN, broken), 3);
         return true;
     }
 
-    private static Optional<EnergyPanelTarget> selectEnergyPanelTarget(dev.sixik.stationarenear.structures.data.StationInstance station) {
-        List<EnergyPanelTarget> preferred = new ObjectArrayList<>();
+    private static Optional<EnergyPanelTarget> selectEnergyPanelTarget(dev.sixik.stationarenear.structures.data.StationInstance station, boolean isBroken) {
+        List<EnergyPanelTarget> topPriority = new ObjectArrayList<>();
+        List<EnergyPanelTarget> highPriority = new ObjectArrayList<>();
+        List<EnergyPanelTarget> mediumPriority = new ObjectArrayList<>();
         List<EnergyPanelTarget> fallback = new ObjectArrayList<>();
+
+        String targetSpecificTag = isBroken ? "electrick_broken" : "electrick_normal";
+        String altSpecificTag = isBroken ? "electric_broken" : "electric_normal";
+
         for (PlacedStationPiece piece : station.pieces()) {
             for (PlacedTriggerZone zone : piece.triggerZones()) {
                 StationStructureTriggerType type = StationStructureTriggerType.from(zone.type());
-                if (type != StationStructureTriggerType.QUEST_PLACE && type != StationStructureTriggerType.QUEST_OBJECT_PLACER) {
+                if (type != StationStructureTriggerType.QUEST_PLACE
+                        && type != StationStructureTriggerType.QUEST_OBJECT_PLACER
+                        && type != StationStructureTriggerType.OBJECT_PLACER) {
                     continue;
                 }
                 EnergyPanelTarget target = new EnergyPanelTarget(piece, zone);
-                if (isEnergySwitchTrigger(zone)) {
-                    preferred.add(target);
+                if (hasTriggerTag(zone, targetSpecificTag) || hasTriggerTag(zone, altSpecificTag)) {
+                    topPriority.add(target);
+                } else if (hasTriggerTag(zone, ENERGY_SWITCH_TAG) || hasTriggerTag(zone, "energy_panel") || hasTriggerTag(zone, "electrick") || hasTriggerTag(zone, "electric")) {
+                    highPriority.add(target);
+                } else if (isEnergySwitchTrigger(zone)) {
+                    mediumPriority.add(target);
                 } else {
                     fallback.add(target);
                 }
             }
         }
-        List<EnergyPanelTarget> candidates = preferred.isEmpty() ? fallback : preferred;
+        List<EnergyPanelTarget> candidates = !topPriority.isEmpty() ? topPriority
+                : (!highPriority.isEmpty() ? highPriority
+                : (!mediumPriority.isEmpty() ? mediumPriority : fallback));
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
@@ -206,7 +225,15 @@ public final class StationTriggerHandlers {
     }
 
     private static boolean isEnergySwitchTrigger(PlacedTriggerZone zone) {
-        return hasTriggerTag(zone, ENERGY_SWITCH_TAG);
+        return hasTriggerTag(zone, "electrick_broken")
+                || hasTriggerTag(zone, "electrick_normal")
+                || hasTriggerTag(zone, "electric_broken")
+                || hasTriggerTag(zone, "electric_normal")
+                || hasTriggerTag(zone, ENERGY_SWITCH_TAG)
+                || hasTriggerTag(zone, "energy_panel")
+                || hasTriggerTag(zone, "electrick")
+                || hasTriggerTag(zone, "electric")
+                || hasTriggerTag(zone, "electricity");
     }
 
     private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
@@ -255,7 +282,7 @@ public final class StationTriggerHandlers {
         }
 
         Direction facing = doorFacing(data, event.getStation().stationDirection());
-        boolean broken = data.contains("broken") ? data.getBoolean("broken") : random.nextInt(100) < doorBrokenChance(data, event.getStation().danger());
+        boolean broken = data.contains("broken") && data.getBoolean("broken");
         boolean open = !broken && random.nextInt(100) < Mth.clamp(data.contains("openChance") ? data.getInt("openChance") : 15, 0, 100);
         BlockPos masterPos = doorMasterPos(event.getZone());
         String doorId = doorId(event.getStation().seed(), masterPos);

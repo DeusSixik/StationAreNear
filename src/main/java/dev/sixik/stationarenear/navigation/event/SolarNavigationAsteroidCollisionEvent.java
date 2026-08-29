@@ -67,4 +67,11 @@ public class SolarNavigationAsteroidCollisionEvent extends Event {
     public float impactSpeed() {
         return impactSpeed;
     }
+
+    public boolean isLeftCollision() {
+        float dx = asteroidX - shipState.shipX();
+        float dy = asteroidY - shipState.shipY();
+        float sideDot = dy * (float) Math.cos(shipState.angle()) - dx * (float) Math.sin(shipState.angle());
+        return sideDot >= 0.0F;
+    }
 }

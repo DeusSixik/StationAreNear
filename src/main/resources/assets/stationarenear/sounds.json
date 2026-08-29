@@ -1,0 +1,40 @@
+{
+  "lightturn_on": {
+    "sounds": [
+      "stationarenear:lightturnon1",
+      "stationarenear:lightturnon2",
+      "stationarenear:lightturnon3",
+      "stationarenear:lightturnon4",
+      "stationarenear:lightturnon5",
+      "stationarenear:lightturnon6",
+      "stationarenear:lightturnon7"
+    ]
+  },
+  "lightturn_off": {
+    "sounds": [
+      "stationarenear:lightturnoff1",
+      "stationarenear:lightturnoff2",
+      "stationarenear:lightturnoff3",
+      "stationarenear:lightturnoff4",
+      "stationarenear:lightturnoff5"
+    ]
+  },
+  "electric_shock": {
+    "sounds": [
+      "stationarenear:electric_shock"
+    ]
+  },
+  "meteor_collide": {
+    "sounds": [
+      "stationarenear:meteor_colide_1",
+      "stationarenear:meteor_colide_2",
+      "stationarenear:meteor_colide_3"
+    ]
+  },
+  "spanner": {
+    "sounds": [
+      "stationarenear:spanner1",
+      "stationarenear:spanner2"
+    ]
+  }
+}

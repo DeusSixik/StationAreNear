@@ -27,6 +27,19 @@ public final class QuestClientEvents {
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientTick);
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientLogout);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupOverlay::onRenderGui);
+        MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onRenderInventoryEffects);
+    }
+
+    private static void onRenderInventoryEffects(net.minecraftforge.client.event.ScreenEvent.RenderInventoryMobEffects event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) {
+            return;
+        }
+        boolean hasVisibleEffects = minecraft.player.getActiveEffects().stream()
+                .anyMatch(net.minecraft.world.effect.MobEffectInstance::showIcon);
+        if (!hasVisibleEffects) {
+            event.setCanceled(true);
+        }
     }
 
     private static void onClientSetup(FMLClientSetupEvent event) {

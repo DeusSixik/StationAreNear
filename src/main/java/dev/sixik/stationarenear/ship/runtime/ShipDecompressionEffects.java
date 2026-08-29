@@ -86,14 +86,18 @@ public final class ShipDecompressionEffects {
 
     private static void tickDecompressedShips(ServerLevel level, ServerPlayer player) {
         ShipDockingAnchorSavedData anchors = ShipDockingAnchorSavedData.get(level);
-        ShipSavedData ships = ShipSavedData.get(level);
+        if (anchors.anchors().isEmpty()) {
+            ShipDockingAnchorResolver.bindNearbyShip(level, player.blockPosition());
+        }
         for (ShipDockingAnchor anchor : anchors.anchors()) {
-            ShipState state = ships.ship(ShipManager.stateTerminal(level, anchor.terminalPos()));
-            if (!state.decompressed() || !contains(anchor.shipBounds(), player.blockPosition())) {
+            if (!contains(anchor.shipBounds(), player.blockPosition())) {
                 continue;
             }
-            ejectPlayer(level, anchor, player);
-            return;
+            ShipIntegrityScanner.IntegrityReport report = ShipManager.updateDecompression(level, anchor.terminalPos());
+            if (!report.docked() && report.decompressed()) {
+                ejectPlayer(level, anchor, player);
+                return;
+            }
         }
     }
 
@@ -163,9 +167,16 @@ public final class ShipDecompressionEffects {
             return pathExit;
         }
 
-        return dockingExits.entrySet().stream()
+        Optional<ExitPoint> directExit = dockingExits.entrySet().stream()
                 .map(entry -> new ExitPoint(Vec3.atCenterOf(entry.getKey()), entry.getValue()))
                 .min((left, right) -> Double.compare(left.center().distanceToSqr(player.position()), right.center().distanceToSqr(player.position())));
+        if (directExit.isPresent()) {
+            return directExit;
+        }
+
+        Direction dir = anchor.direction();
+        BlockPos fallbackPos = anchor.anchorPos().relative(dir, 2);
+        return Optional.of(new ExitPoint(Vec3.atCenterOf(fallbackPos), dir));
     }
 
     private static Optional<ExitPoint> reachableExit(ServerLevel level, BoundingBox bounds, BlockPos start, Map<BlockPos, Direction> dockingExits) {

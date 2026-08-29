@@ -127,7 +127,50 @@ public final class ShipManager {
         }
 
         float damage = Math.max(1.0F, event.impactSpeed() * 0.04F);
-        damage(event.player().serverLevel(), event.terminalPos(), damage, "asteroid_collision", event.player());
+        ServerLevel level = event.player().serverLevel();
+        BlockPos terminalPos = event.terminalPos();
+        damage(level, terminalPos, damage, "asteroid_collision", event.player());
+
+        String targetTag = event.isLeftCollision() ? "sound_left" : "sound_right";
+        boolean played = false;
+
+        for (dev.sixik.stationarenear.structures.data.StationInstance station : dev.sixik.stationarenear.structures.world.StationSavedData.get(level).stations()) {
+            for (dev.sixik.stationarenear.structures.data.PlacedStationPiece piece : station.pieces()) {
+                if (piece.bounds().isInside(terminalPos)) {
+                    for (dev.sixik.stationarenear.structures.data.PlacedTriggerZone zone : piece.triggerZones()) {
+                        if (hasSoundTag(zone, targetTag)) {
+                            BlockPos soundPos = new BlockPos(
+                                    (zone.min().getX() + zone.max().getX()) / 2,
+                                    (zone.min().getY() + zone.max().getY()) / 2,
+                                    (zone.min().getZ() + zone.max().getZ()) / 2
+                            );
+                            level.playSound(null, soundPos, dev.sixik.stationarenear.quest.registry.StationSounds.METEOR_COLLIDE.get(), net.minecraft.sounds.SoundSource.BLOCKS, 1.4F, 0.85F + level.random.nextFloat() * 0.3F);
+                            played = true;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (!played) {
+            level.playSound(null, terminalPos, dev.sixik.stationarenear.quest.registry.StationSounds.METEOR_COLLIDE.get(), net.minecraft.sounds.SoundSource.BLOCKS, 1.2F, 0.85F + level.random.nextFloat() * 0.3F);
+        }
+    }
+
+    private static boolean hasSoundTag(dev.sixik.stationarenear.structures.data.PlacedTriggerZone zone, String targetTag) {
+        if (zone.id().equalsIgnoreCase(targetTag)) {
+            return true;
+        }
+        String tagsStr = zone.data().contains(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                ? zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                : (zone.data().contains("tag") ? zone.data().getString("tag") : "");
+        for (String tag : tagsStr.split("[,; ]+")) {
+            if (tag.trim().equalsIgnoreCase(targetTag)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void onHullBlockDamage(ShipHullBlockDamageEvent event) {

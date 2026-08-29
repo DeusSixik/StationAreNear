@@ -93,6 +93,7 @@ public class EnergyPanelBlock extends HorizontalDirectionalBlock {
         BlockState state = level.getBlockState(pos);
         if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.ENERGY_PANEL.get()) && state.getValue(BROKEN)) {
             level.setBlock(pos, state.setValue(BROKEN, false).setValue(POWERED, false), 3);
+            level.playSound(null, pos, SoundEvents.SMITHING_TABLE_USE, SoundSource.BLOCKS, 1.0F, 1.0F);
             ItemStack heldItem = player.getItemInHand(hand);
             if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
                 heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));

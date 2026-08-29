@@ -97,8 +97,8 @@ repositories {
         }
     }
 
-    flatDir {
-        dir 'libs'
+    maven {
+        url "file://${projectDir}/libs/repo"
     }
 }
 
@@ -118,6 +118,8 @@ dependencies {
 //    compileOnly fg.deobf("com.github.DeusSixik.UniGUI:unigui-common-${minecraft_version}:${unigui_version}")
     implementation fg.deobf("com.github.DeusSixik.UniGUI:unigui-forge-${minecraft_version}:${unigui_version}")
     jarJar("com.github.DeusSixik.UniGUI:unigui-forge-${minecraft_version}:[${unigui_version},)")
+
+    implementation fg.deobf("dev.sixik.stationblocks:StationHasBlocks_forge:1.0.1")
 }
 
 tasks.named('processResources', ProcessResources).configure {

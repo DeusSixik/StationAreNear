@@ -56,6 +56,9 @@ public final class SpannerRhythmMinigameScreen {
             if (completionHook != null) completionHook.run();
             if (closeAction[0] != null) closeAction[0].run();
         });
+        minigame.onFailed(() -> {
+            if (closeAction[0] != null) closeAction[0].run();
+        });
 
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Spanner Rhythm Minigame"), root(minigame), context) {
             @Override
@@ -116,8 +119,10 @@ public final class SpannerRhythmMinigameScreen {
         private float hitPulse;
         private float mistakePulse;
         private int hits;
+        private int misses;
         private Side expectedSide = Side.LEFT;
         private Runnable completedCallback = () -> {};
+        private Runnable failedCallback = () -> {};
 
         public SpannerRhythmMinigameWidget() {
             focusable(true);
@@ -125,6 +130,11 @@ public final class SpannerRhythmMinigameScreen {
 
         public SpannerRhythmMinigameWidget onCompleted(Runnable callback) {
             completedCallback = callback == null ? () -> {} : callback;
+            return this;
+        }
+
+        public SpannerRhythmMinigameWidget onFailed(Runnable callback) {
+            failedCallback = callback == null ? () -> {} : callback;
             return this;
         }
 
@@ -136,6 +146,7 @@ public final class SpannerRhythmMinigameScreen {
             hitPulse = 0.0f;
             mistakePulse = 0.0f;
             hits = 0;
+            misses = 0;
             expectedSide = Side.LEFT;
             invalidate(InvalidationFlags.VISUAL);
         }
@@ -202,8 +213,12 @@ public final class SpannerRhythmMinigameScreen {
                 }
             } else {
                 hits = Math.max(0, hits - 1);
+                misses++;
                 targetAngle = side == Side.LEFT ? MAX_ANGLE * 0.32f : -MAX_ANGLE * 0.32f;
                 mistakePulse = 1.0f;
+                if (misses >= 3) {
+                    failedCallback.run();
+                }
             }
             invalidate(InvalidationFlags.VISUAL);
         }

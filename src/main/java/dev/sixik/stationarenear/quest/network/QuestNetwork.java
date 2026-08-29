@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.quest.network;
 import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.quest.network.packet.QuestFurniturePickupHoldPacket;
 import dev.sixik.stationarenear.quest.network.packet.QuestFurniturePickupProgressPacket;
+import dev.sixik.stationarenear.quest.network.packet.RepairDoorCompletePacket;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,6 +38,15 @@ public final class QuestNetwork {
                 .decoder(QuestFurniturePickupProgressPacket::decode)
                 .consumerMainThread(QuestFurniturePickupProgressPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.quest.network.packet.RepairDoorCompletePacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(RepairDoorCompletePacket::encode)
+                .decoder(RepairDoorCompletePacket::decode)
+                .consumerMainThread(RepairDoorCompletePacket::handle)
+                .add();
+    }
+
+    public static void sendRepairDoor(BlockPos pos) {
+        CHANNEL.sendToServer(new dev.sixik.stationarenear.quest.network.packet.RepairDoorCompletePacket(pos));
     }
 
     public static void sendFurniturePickupHold(BlockPos pos, boolean holding) {

@@ -1,5 +1,7 @@
 package dev.sixik.stationarenear.ship.block;
 
+import dev.sixik.stationarenear.minigames.SpannerRhythmMinigameScreen;
+import dev.sixik.stationarenear.quest.network.QuestNetwork;
 import dev.sixik.stationarenear.quest.registry.QuestItems;
 import dev.sixik.stationarenear.ship.block.entity.PressureTightDoorBlockEntity;
 import dev.sixik.stationarenear.ship.event.PressureTightDoorRepairedEvent;
@@ -101,22 +103,20 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
 
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
-        if (!level.isClientSide) {
-            BlockPos master = masterPos(pos, state);
-            BlockState masterState = level.getBlockState(master);
-            ItemStack heldItem = player.getItemInHand(hand);
-            if (isBroken(masterState) && heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
-                repairDoor(level, master, masterState);
-                if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
-                    heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));
-                }
-                if (level instanceof ServerLevel serverLevel) {
-                    MinecraftForge.EVENT_BUS.post(new PressureTightDoorRepairedEvent(serverLevel, player, master));
-                }
-                player.displayClientMessage(Component.literal("Pressure door repaired."), true);
-                return InteractionResult.SUCCESS;
-            }
+        BlockPos master = masterPos(pos, state);
+        BlockState masterState = level.getBlockState(master);
+        ItemStack heldItem = player.getItemInHand(hand);
 
+        if (isBroken(masterState) && heldItem.is(QuestItems.ENGINEERING_GEAR.get())) {
+            if (level.isClientSide) {
+                SpannerRhythmMinigameScreen.open(() -> {
+                    QuestNetwork.sendRepairDoor(master);
+                });
+            }
+            return InteractionResult.sidedSuccess(level.isClientSide);
+        }
+
+        if (!level.isClientSide) {
             BlockEntity blockEntity = level.getBlockEntity(master);
             if (blockEntity instanceof PressureTightDoorBlockEntity door && !door.doorId().isBlank()) {
                 String repairHint = isBroken(masterState) ? " | Repair: Engineering Gear" : "";
@@ -127,6 +127,19 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
             }
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    public static void performRepair(ServerLevel level, BlockPos master, Player player, InteractionHand hand) {
+        BlockState masterState = level.getBlockState(master);
+        if (isBroken(masterState)) {
+            repairDoor(level, master, masterState);
+            ItemStack heldItem = player.getItemInHand(hand);
+            if (player instanceof ServerPlayer serverPlayer && !serverPlayer.getAbilities().instabuild) {
+                heldItem.hurtAndBreak(1, serverPlayer, brokenPlayer -> brokenPlayer.broadcastBreakEvent(hand));
+            }
+            MinecraftForge.EVENT_BUS.post(new PressureTightDoorRepairedEvent(level, player, master));
+            player.displayClientMessage(Component.literal("Pressure door repaired."), true);
+        }
     }
 
     public static boolean isMaster(BlockState state) {

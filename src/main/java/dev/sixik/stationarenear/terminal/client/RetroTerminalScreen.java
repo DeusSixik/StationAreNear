@@ -40,11 +40,16 @@ import dev.sixik.stationarenear.terminal.data.TerminalCommandDefinition;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryKind;
 import dev.sixik.stationarenear.terminal.data.TerminalHistoryLine;
 import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
+import dev.sixik.stationarenear.terminal.shop.ShopCatalog;
+import dev.sixik.stationarenear.terminal.shop.ShopItemInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.List;
 import java.util.Locale;
@@ -486,6 +491,8 @@ public final class RetroTerminalScreen {
                     case "objectives" -> (console, call) -> console.appendInfo("Submit /objectives to refresh current mission objectives.");
                     case "map" -> (console, call) -> console.appendInfo("Submit /map to open the docked station level map.");
                     case "stations", "scan" -> (console, call) -> appendStations(console);
+                    case "store" -> (console, call) -> console.appendInfo("Submit /store to browse items. Usage: /store <index> <count> to buy.");
+                    case "balance" -> (console, call) -> console.appendInfo("Submit /balance to see your current credit balance.");
                     case "clear", "cls" -> (console, call) -> clearOutput();
                     default -> (console, call) -> console.appendError("Unknown command: " + command.command());
                 });
@@ -497,6 +504,8 @@ public final class RetroTerminalScreen {
             String normalized = input.startsWith("/") ? input.substring(1) : input;
             int commandStart = input.startsWith("/") ? 1 : 0;
             String lower = normalized.toLowerCase(Locale.ROOT);
+
+            // --- door subcommands ---
             if (lower.startsWith("door ") || lower.equals("door")) {
                 int subcommandStart = commandStart + 5;
                 String typed = normalized.length() <= 5 ? "" : normalized.substring(5).trim().toLowerCase(Locale.ROOT);
@@ -505,6 +514,8 @@ public final class RetroTerminalScreen {
                 addTvCompletion(items, typed, "close", "door close", "close pressure door", subcommandStart, input.length());
                 return items;
             }
+
+            // --- tv subcommands ---
             if (lower.startsWith("tv ") || lower.equals("tv")) {
                 int subcommandStart = commandStart + 3;
                 String typed = normalized.length() <= 3 ? "" : normalized.substring(3).trim().toLowerCase(Locale.ROOT);
@@ -515,6 +526,8 @@ public final class RetroTerminalScreen {
                 addTvCompletion(items, typed, "clear", "tv clear", "clear manual TV text", subcommandStart, input.length());
                 return items;
             }
+
+            // --- tv_pos subcommands ---
             if (lower.startsWith("tv_pos ") || lower.equals("tv_pos")) {
                 int valueStart = commandStart + 7;
                 String typed = normalized.length() <= 7 ? "" : normalized.substring(7).trim().toLowerCase(Locale.ROOT);
@@ -524,6 +537,8 @@ public final class RetroTerminalScreen {
                 addTvCompletion(items, typed, "DOWN", "tv_pos DOWN", "bottom-align manual TV text", valueStart, input.length());
                 return items;
             }
+
+            // --- tv_scale subcommands ---
             if (lower.startsWith("tv_scale ") || lower.equals("tv_scale")) {
                 int valueStart = commandStart + 9;
                 String typed = normalized.length() <= 9 ? "" : normalized.substring(9).trim().toLowerCase(Locale.ROOT);
@@ -533,7 +548,68 @@ public final class RetroTerminalScreen {
                 addTvCompletion(items, typed, "1.5", "tv_scale 1.5", "larger TV text", valueStart, input.length());
                 return items;
             }
+
+            // --- store completions ---
+            if (lower.startsWith("store ") || lower.equals("store")) {
+                return storeCompletions(normalized, commandStart, input);
+            }
+
             return defaultCompletions(console, inputText);
+        }
+
+        private List<CompletionItem> storeCompletions(String normalized, int commandStart, String rawInput) {
+            List<ShopItemInfo> catalog = ShopCatalog.ENTRIES;
+            List<CompletionItem> items = new ArrayList<>();
+
+            String afterStore = normalized.length() <= 6 ? "" : normalized.substring(6);
+            String[] parts = afterStore.trim().split("\\s+", 2);
+
+            boolean hasCount = parts.length >= 2 && !parts[1].isBlank();
+
+            if (hasCount) {
+                int indexArg;
+                try {
+                    indexArg = Integer.parseInt(parts[0].trim());
+                } catch (NumberFormatException ex) {
+                    return items;
+                }
+                if (indexArg < 0 || indexArg >= catalog.size()) {
+                    return items;
+                }
+                ShopItemInfo entry = catalog.get(indexArg);
+                int countStart = commandStart + 6 + parts[0].length() + 1;
+                String typedCount = parts[1].trim().toLowerCase(Locale.ROOT);
+                for (String qty : new String[]{"1", "10", "16", "32", "64"}) {
+                    if (typedCount.isBlank() || qty.startsWith(typedCount)) {
+                        String full = "store " + indexArg + " " + qty;
+                        String desc = String.format(Locale.ROOT, "%dx %s = %.2f credits",
+                                Integer.parseInt(qty), resolveDisplayName(entry.itemId()), entry.price() * Integer.parseInt(qty));
+                        items.add(CompletionItem.replace(qty, full, desc, countStart, rawInput.length()));
+                    }
+                }
+                return items;
+            }
+
+            String typedIndex = parts[0].trim().toLowerCase(Locale.ROOT);
+            int itemStart = commandStart + 6;
+            for (ShopItemInfo entry : catalog) {
+                String idxStr = String.valueOf(entry.index());
+                if (typedIndex.isBlank() || idxStr.startsWith(typedIndex)) {
+                    String full = "store " + entry.index();
+                    String desc = String.format(Locale.ROOT, "%s — %.2f credits",
+                            resolveDisplayName(entry.itemId()), entry.price());
+                    items.add(CompletionItem.replace(idxStr, full, desc, itemStart, rawInput.length()));
+                }
+            }
+            return items;
+        }
+
+        private static String resolveDisplayName(String itemId) {
+            ResourceLocation loc = new ResourceLocation(itemId);
+            if (ForgeRegistries.ITEMS.containsKey(loc)) {
+                return new ItemStack(ForgeRegistries.ITEMS.getValue(loc)).getHoverName().getString();
+            }
+            return itemId;
         }
 
         private static void addTvCompletion(List<CompletionItem> items, String typed, String insert, String display, String description, int start, int end) {
@@ -541,6 +617,7 @@ public final class RetroTerminalScreen {
                 items.add(CompletionItem.replace(insert, display, description, start, end));
             }
         }
+
 
         private void appendHelp(AdminConsole console) {
             console.appendInfo("Available terminal commands:");
@@ -650,4 +727,3 @@ public final class RetroTerminalScreen {
         }
     }
 }
-

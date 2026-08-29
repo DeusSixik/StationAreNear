@@ -18,6 +18,8 @@ public final class TerminalCommandCatalog {
             new TerminalCommandDefinition("map", "open docked station level map"),
             new TerminalCommandDefinition("stations", "known station IDs near current solar position"),
             new TerminalCommandDefinition("scan", "scan <station_id> and show distance"),
+            new TerminalCommandDefinition("store", "store [<index> <count>] — browse or buy items"),
+            new TerminalCommandDefinition("balance", "show your current credit balance"),
             new TerminalCommandDefinition("clear", "clear shared terminal history"),
             new TerminalCommandDefinition("cls", "alias for clear")
     );

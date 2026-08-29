@@ -24,14 +24,19 @@ import dev.sixik.stationarenear.terminal.data.TerminalSnapshotFactory;
 import dev.sixik.stationarenear.terminal.network.MapTerminalNetwork;
 import dev.sixik.stationarenear.terminal.network.TerminalNetwork;
 import dev.sixik.stationarenear.terminal.registry.TerminalBlocks;
-import dev.sixik.stationarenear.terminal.world.TerminalSavedData;
+import dev.sixik.stationarenear.terminal.shop.PlayerBalanceSavedData;
+import dev.sixik.stationarenear.terminal.shop.ShopCatalog;
+import dev.sixik.stationarenear.terminal.shop.ShopItemInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,7 +53,7 @@ public final class TerminalCommandProcessor {
     }
 
     public static List<TerminalHistoryLine> historyForOpen(ServerLevel level, BlockPos terminalPos) {
-        return TerminalSavedData.get(level).history(terminalPos);
+        return dev.sixik.stationarenear.terminal.world.TerminalSavedData.get(level).history(terminalPos);
     }
 
     public static void submit(ServerPlayer player, BlockPos terminalPos, String rawCommand) {
@@ -62,7 +67,8 @@ public final class TerminalCommandProcessor {
         }
 
         ServerLevel level = player.serverLevel();
-        TerminalSavedData data = TerminalSavedData.get(level);
+        dev.sixik.stationarenear.terminal.world.TerminalSavedData data =
+                dev.sixik.stationarenear.terminal.world.TerminalSavedData.get(level);
         if (isClearCommand(command)) {
             data.clear(terminalPos);
             TerminalNetwork.syncHistory(level, terminalPos, data.history(terminalPos));
@@ -100,8 +106,111 @@ public final class TerminalCommandProcessor {
                     appendStationScan(level, snapshot, argument, output);
                 }
             }
+            case "store" -> appendStoreCommand(player, argument, output);
+            case "balance" -> appendBalanceCommand(player, output);
             default -> output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "Unknown command: " + command + " / use help"));
         }
+    }
+
+    private static void appendStoreCommand(ServerPlayer player, String argument, List<TerminalHistoryLine> output) {
+        List<ShopItemInfo> catalog = ShopCatalog.ENTRIES;
+
+        if (argument.isBlank()) {
+            if (catalog.isEmpty()) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "Store catalog is empty."));
+                return;
+            }
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, "=== STATION STORE ==="));
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                    String.format(Locale.ROOT, "  %-4s %-30s %s", "#", "Item", "Price (credits)")));
+            for (ShopItemInfo entry : catalog) {
+                output.add(new TerminalHistoryLine(TerminalHistoryKind.OUTPUT,
+                        String.format(Locale.ROOT, "  %-4d %-30s %.2f",
+                                entry.index(), resolveDisplayName(entry.itemId()), entry.price())));
+            }
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                    "Usage: store <index> <count>"));
+            return;
+        }
+
+        String[] parts = argument.split("\\s+", 2);
+        int itemIndex;
+        int count;
+        try {
+            itemIndex = Integer.parseInt(parts[0].trim());
+        } catch (NumberFormatException ex) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    "Invalid index '" + parts[0] + "'. Usage: store <index> <count>"));
+            return;
+        }
+        try {
+            count = parts.length > 1 ? Integer.parseInt(parts[1].trim()) : 1;
+            if (count < 1) count = 1;
+        } catch (NumberFormatException ex) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    "Invalid count '" + parts[1] + "'. Must be a positive integer."));
+            return;
+        }
+
+        if (itemIndex < 0 || itemIndex >= catalog.size()) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    "Index " + itemIndex + " out of range. Use 'store' to see available items."));
+            return;
+        }
+
+        ShopItemInfo entry = catalog.get(itemIndex);
+        double totalCost = entry.price() * count;
+
+        PlayerBalanceSavedData balanceData = PlayerBalanceSavedData.get(player.serverLevel());
+        if (!balanceData.canAfford(player.getUUID(), totalCost)) {
+            double balance = balanceData.getBalance(player.getUUID());
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    String.format(Locale.ROOT,
+                            "Insufficient funds. Need %.2f credits, have %.2f.",
+                            totalCost, balance)));
+            return;
+        }
+
+        ResourceLocation loc = new ResourceLocation(entry.itemId());
+        if (!ForgeRegistries.ITEMS.containsKey(loc)) {
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR,
+                    "Item '" + entry.itemId() + "' does not exist on this server."));
+            return;
+        }
+
+        net.minecraft.world.item.Item item = ForgeRegistries.ITEMS.getValue(loc);
+        String displayName = resolveDisplayName(entry.itemId());
+        int maxStack = item.getMaxStackSize();
+        int remaining = count;
+        while (remaining > 0) {
+            int batch = Math.min(remaining, maxStack);
+            ItemStack stack = new ItemStack(item, batch);
+            if (!player.getInventory().add(stack)) {
+                player.drop(stack, false);
+            }
+            remaining -= batch;
+        }
+
+        double newBalance = balanceData.addBalance(player.getUUID(), -totalCost);
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                String.format(Locale.ROOT,
+                        "Purchased %dx %s for %.2f credits. Balance: %.2f",
+                        count, displayName, totalCost, newBalance)));
+    }
+
+    private static String resolveDisplayName(String itemId) {
+        ResourceLocation loc = new ResourceLocation(itemId);
+        if (ForgeRegistries.ITEMS.containsKey(loc)) {
+            return new ItemStack(ForgeRegistries.ITEMS.getValue(loc)).getHoverName().getString();
+        }
+        return itemId;
+    }
+
+    private static void appendBalanceCommand(ServerPlayer player, List<TerminalHistoryLine> output) {
+        double balance = PlayerBalanceSavedData.get(player.serverLevel())
+                .getBalance(player.getUUID());
+        output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
+                String.format(Locale.ROOT, "Your balance: %.2f credits", balance)));
     }
 
     private static void appendMapCommand(ServerPlayer player, BlockPos terminalPos, List<TerminalHistoryLine> output) {
@@ -231,8 +340,7 @@ public final class TerminalCommandProcessor {
         }
 
         if (changed) {
-            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO,
-                    message));
+            output.add(new TerminalHistoryLine(TerminalHistoryKind.INFO, message));
         } else {
             output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No ship television found for this terminal."));
         }

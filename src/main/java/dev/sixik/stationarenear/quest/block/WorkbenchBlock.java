@@ -2,7 +2,16 @@ package dev.sixik.stationarenear.quest.block;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.stats.Stats;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.MenuProvider;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.ContainerLevelAccess;
+import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
@@ -18,12 +27,14 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 public class WorkbenchBlock extends HorizontalDirectionalBlock {
@@ -76,6 +87,49 @@ public class WorkbenchBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        if (level.isClientSide) {
+            return InteractionResult.SUCCESS;
+        }
+        BlockPos master = masterPos(pos, state);
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, inventory, p) -> new CraftingMenu(containerId, inventory, createLevelAccess(level, master, p)),
+                Component.translatable("container.crafting")
+        ));
+        player.awardStat(Stats.INTERACT_WITH_CRAFTING_TABLE);
+        return InteractionResult.CONSUME;
+    }
+
+    @Nullable
+    @Override
+    public MenuProvider getMenuProvider(BlockState state, Level level, BlockPos pos) {
+        BlockPos master = masterPos(pos, state);
+        return new SimpleMenuProvider(
+                (containerId, inventory, player) -> new CraftingMenu(containerId, inventory, createLevelAccess(level, master, player)),
+                Component.translatable("container.crafting")
+        );
+    }
+
+    private static ContainerLevelAccess createLevelAccess(Level level, BlockPos masterPos, Player player) {
+        return new ContainerLevelAccess() {
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> Optional<T> evaluate(java.util.function.BiFunction<Level, BlockPos, T> getter) {
+                if (level.getBlockState(masterPos).getBlock() instanceof WorkbenchBlock
+                        && player.distanceToSqr(masterPos.getX() + 0.5D, masterPos.getY() + 0.5D, masterPos.getZ() + 0.5D) <= 64.0D) {
+                    return Optional.of((T) Boolean.TRUE);
+                }
+                return Optional.of((T) Boolean.FALSE);
+            }
+
+            @Override
+            public void execute(java.util.function.BiConsumer<Level, BlockPos> consumer) {
+                consumer.accept(level, masterPos);
+            }
+        };
+    }
+
+    @Override
     public RenderShape getRenderShape(BlockState state) {
         return isMaster(state) ? RenderShape.MODEL : RenderShape.INVISIBLE;
     }
@@ -86,8 +140,13 @@ public class WorkbenchBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    public VoxelShape getVisualShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        return Shapes.empty();
+    }
+
+    @Override
     public boolean useShapeForLightOcclusion(BlockState state) {
-        return true;
+        return false;
     }
 
     @Override

@@ -37,7 +37,7 @@ public final class ShipModulePlacer {
     }
 
     public static PlacementResult installCraftStation(ServerLevel level, BlockPos terminalPos) {
-        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, "craft_station");
+        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.CRAFT_STATION, TagsConstants.Ship.CRAFTING_STATION, TagsConstants.Ship.WORKBENCH);
         if (positions.isEmpty()) {
             return PlacementResult.NO_TRIGGERS_FOUND;
         }
@@ -57,7 +57,7 @@ public final class ShipModulePlacer {
     }
 
     public static PlacementResult installExtraStorage(ServerLevel level, BlockPos terminalPos) {
-        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, "storage", "extra_storage");
+        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.STORAGE, TagsConstants.Ship.EXTRA_STORAGE);
         if (positions.isEmpty()) {
             return PlacementResult.NO_TRIGGERS_FOUND;
         }
@@ -73,7 +73,7 @@ public final class ShipModulePlacer {
     }
 
     public static int availableStorageSlots(ServerLevel level, BlockPos terminalPos) {
-        return findShipTriggerPositions(level, terminalPos, "storage", "extra_storage").size();
+        return findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.STORAGE, TagsConstants.Ship.EXTRA_STORAGE).size();
     }
 
     public static List<BlockPos> findShipTriggerPositions(ServerLevel level, BlockPos terminalPos, String... tags) {

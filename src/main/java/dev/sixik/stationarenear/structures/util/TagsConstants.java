@@ -136,10 +136,44 @@ public final class TagsConstants {
         public static final String SOUND_TRIGGER = "sound_trigger";
         public static final String SOUND = "sound";
 
+        public static final String SPAWN_POSITION = "spawn_position";
+        public static final String SPAWN_POS = "spawn_pos";
+        public static final String PLAYER_SPAWN = "player_spawn";
+        public static final String SPAWN = "spawn";
+
+        public static final String CRAFT_STATION = "craft_station";
+        public static final String CRAFTING_STATION = "crafting_station";
+        public static final String WORKBENCH = "workbench";
+
+        public static final String STORAGE = "storage";
+        public static final String EXTRA_STORAGE = "extra_storage";
+
+
         public static final String TRIGGER = "trigger";
 
-        /** Старое значение для служебных/прочих trigger-ов. */
         public static final String OTHER = "other";
+    }
+
+    public static final class Ship {
+
+        private Ship() {
+
+        }
+
+        public static final String SPAWN_POSITION = "spawn_position";
+        public static final String SPAWN_POS = "spawn_pos";
+        public static final String PLAYER_SPAWN = "player_spawn";
+        public static final String SPAWN = "spawn";
+
+        public static final String CRAFT_STATION = "craft_station";
+        public static final String CRAFTING_STATION = "crafting_station";
+        public static final String WORKBENCH = "workbench";
+
+        public static final String STORAGE = "storage";
+        public static final String EXTRA_STORAGE = "extra_storage";
+
+        public static final String SOUND_LEFT = "sound_left";
+        public static final String SOUND_RIGHT = "sound_right";
     }
 
     /**

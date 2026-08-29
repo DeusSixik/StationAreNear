@@ -31,5 +31,7 @@ public final class ShipModule {
         MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onStationQuestsCompleted);
         MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onQuestTimerExpired);
         MinecraftForge.EVENT_BUS.addListener(ShipTelevisionManager::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.ship.runtime.ShipWorldSpawnManager::onPlayerLoggedIn);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.ship.runtime.ShipWorldSpawnManager::onPlayerRespawn);
     }
 }

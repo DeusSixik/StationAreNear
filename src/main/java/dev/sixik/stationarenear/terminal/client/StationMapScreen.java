@@ -46,13 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Экран предпросмотра карты станции из сетевого {@link StationMapSnapshot}.
- *
- * <p>Этот класс намеренно остаётся TestMod-примером: он показывает, как поверх {@link MapCanvas}
- * отрисовать снапшот генератора данжей без отдельного core-виджета. Боевой мод может вызвать
- * {@link #open(StationMapSnapshot)} и передать снапшот, полученный с сервера.</p>
- */
 public final class StationMapScreen {
     private static final double BLOCK_UI_MAX_DISTANCE_SQ = 16.0D;
 
@@ -288,13 +281,7 @@ public final class StationMapScreen {
                 + '|' + piece.maxX() + ':' + piece.maxZ();
     }
 
-    private static boolean pieceHasVerticalConnection(StationMapPiece piece) {
-        if (piece == null) return false;
-        for (StationMapConnection connection : piece.connections()) {
-            if (connection.direction().getAxis().isVertical()) return true;
-        }
-        return false;
-    }
+
 
     private static final MutableColor COLOR_TITLE = MutableColor.rgba(0.74f, 0.90f, 1.0f, 1.0f);
     private static final MutableColor COLOR_TEXT = MutableColor.rgba(0.72f, 0.78f, 0.86f, 1.0f);
@@ -411,16 +398,7 @@ public final class StationMapScreen {
         }
 
         private String fallbackMarkerId(StationMapPiece piece) {
-            return pieceHasVerticalConnection(piece) ? "lift" : "room";
-        }
-
-        private boolean hasVerticalConnection(StationMapPiece piece) {
-            for (StationMapConnection connection : piece.connections()) {
-                if (connection.direction().getAxis().isVertical()) {
-                    return true;
-                }
-            }
-            return false;
+            return piece.minFloor() != piece.maxFloor() ? "lift" : "room";
         }
     }
 
@@ -499,7 +477,6 @@ public final class StationMapScreen {
             combo.silentSelectedIndex(selectedIndex);
             combo.dropDownSameWidth();
             combo.useOverlay();
-//            combo.headerIndicator("");
             combo.optionRowHeight(24.0f);
             combo.maxVisibleOptions(6);
             combo.layout(style -> style.width(108.0f).height(30.0f).flexGrow(0.0f).flexShrink(0.0f));
@@ -697,7 +674,6 @@ public final class StationMapScreen {
             return new ArrayList<>(result.values());
         }
         private void renderStationLayer(WorldCanvas ignored, DrawScope draw) {
-//            drawFloorBadge(draw);
             for (StationMapPiece piece : snapshot.pieces()) {
                 if (!pieceVisibleOnFloor(piece, activeFloor)) continue;
                 drawPiece(draw, piece);
@@ -742,9 +718,9 @@ public final class StationMapScreen {
                 if (connection.floor() != activeFloor || connection.direction().getAxis().isVertical()) continue;
                 drawConnectionMarker(draw, connection);
             }
-            if (verticalMarkerVisible(piece, activeFloor)) {
+      /*      if (verticalMarkerVisible(piece, activeFloor)) {
                 drawVerticalConnection(draw, piece);
-            }
+            }*/
         }
 
         private void drawConnectionMarker(DrawScope draw, StationMapConnection connection) {
@@ -801,8 +777,6 @@ public final class StationMapScreen {
 
             if (piece.dockPiece()) {
                 draw.addRect(x - 7.0f, y - 7.0f, w + 14.0f, h + 14.0f, radius + 6.0f, marker.border(), 1.5f);
-//                draw.addText("Ты здесь", x + 16.0f, y + 16.0f, w - 32.0f, 24.0f,
-//                        MutableColor.rgba(0.90f, 1.0f, 1.0f, 1.0f));
             }
         }
 
@@ -823,26 +797,10 @@ public final class StationMapScreen {
 
 
     private static boolean verticalMarkerVisible(StationMapPiece piece, int floor) {
-        if (!pieceVisibleOnFloor(piece, floor)) return false;
-        boolean hasVerticalConnection = false;
-        for (StationMapConnection connection : piece.connections()) {
-            if (!connection.direction().getAxis().isVertical()) continue;
-            hasVerticalConnection = true;
-            if (connection.floor() == floor) return true;
-        }
-        return hasVerticalConnection && piece.minFloor() != piece.maxFloor();
+        return containsFloor(piece, floor) && piece.minFloor() != piece.maxFloor();
     }
     private static boolean pieceVisibleOnFloor(StationMapPiece piece, int floor) {
-        if (!containsFloor(piece, floor)) return false;
-        if (piece.minFloor() == piece.maxFloor() || piece.dockPiece()) return true;
-        boolean hasSideConnection = false;
-        for (StationMapConnection connection : piece.connections()) {
-            if (!connection.direction().getAxis().isVertical()) {
-                hasSideConnection = true;
-                if (connection.floor() == floor) return true;
-            }
-        }
-        return !hasSideConnection && floor == piece.minFloor();
+        return containsFloor(piece, floor);
     }
 
     private static boolean containsFloor(StationMapPiece piece, int floor) {

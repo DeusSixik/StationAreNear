@@ -117,8 +117,8 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
         SolarNavigationControlManager.forceStop(level, packet.terminalPos());
         ShipManager.setDocking(level, packet.terminalPos(), true);
 
-        int pieces = result.station().map(station -> station.pieces().size()).orElse(0);
-        String cleanupMessage = clearedOldStations > 0 ? " cleared old=" + clearedOldStations : "";
-        player.displayClientMessage(Component.literal("Docked with " + packet.stationCode() + ": generated " + pieces + " station pieces." + cleanupMessage), false);
+//        int pieces = result.station().map(station -> station.pieces().size()).orElse(0);
+//        String cleanupMessage = clearedOldStations > 0 ? " cleared old=" + clearedOldStations : "";
+//        player.displayClientMessage(Component.literal("Docked with " + packet.stationCode() + ": generated " + pieces + " station pieces." + cleanupMessage), false);
     }
 }

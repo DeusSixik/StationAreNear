@@ -499,7 +499,7 @@ public final class RetroTerminalScreen {
 
         @Override
         protected String initialOutputLine() {
-            return "The service is provided by Helicorp";
+            return "The service is provided by HELICORP";
         }
 
         private void registerTerminalCommands() {

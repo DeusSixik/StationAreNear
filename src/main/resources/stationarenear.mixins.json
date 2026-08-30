@@ -6,9 +6,13 @@
   "refmap": "stationarenear.refmap.json",
   "mixins": [
     "modules.FixBug$ComboBoxMixin",
-    "LevelMixin"
+    "LevelMixin",
+    "SlotMixin",
+    "ItemStackHandlerMixin",
+    "RecipeManagerMixin"
   ],
   "client": [
+    "client.WorldCreationUiStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

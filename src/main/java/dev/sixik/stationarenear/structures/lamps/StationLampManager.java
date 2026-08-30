@@ -28,14 +28,29 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
+import dev.sixik.stationarenear.quest.event.QuestMissionFailedEvent;
+import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
+import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
+import dev.sixik.stationarenear.ship.world.ShipWorldSpawnSavedData;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
+import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
+import dev.sixik.stationarenear.structures.data.StationTriggerZone;
+import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
+import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class StationLampManager {
@@ -272,6 +287,81 @@ public final class StationLampManager {
     private static boolean isWallLamp(BlockState state) {
         String path = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
         return path.startsWith("wall_lamp");
+    }
+
+    public static boolean isLamp(BlockState state) {
+        if (state == null || state.isAir()) {
+            return false;
+        }
+        String path = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+        return path.contains("lamp");
+    }
+
+    public static void onQuestMissionFailed(QuestMissionFailedEvent event) {
+        turnShipLampsRed(event.getLevel());
+    }
+
+    public static void turnShipLampsRed(ServerLevel level) {
+        Set<BlockPos> lampPositions = new HashSet<>();
+        StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        StationStructureFileStorage.loadExternalDefinitions(library);
+
+        List<BoundingBox> shipBoxes = new ArrayList<>();
+        for (ShipDockingAnchor anchor : ShipDockingAnchorSavedData.get(level).anchors()) {
+            shipBoxes.add(anchor.shipBounds());
+        }
+        BoundingBox spawnShipBounds = ShipWorldSpawnSavedData.get(level).getShipBounds();
+        if (spawnShipBounds != null) {
+            shipBoxes.add(spawnShipBounds);
+        }
+        for (Map.Entry<ResourceLocation, BoundingBox> entry : library.savedTemplateSelections().entrySet()) {
+            for (StationPieceDefinition piece : library.pieces()) {
+                if (piece.pool().equals(StationStructureIds.pool("space_ship")) && (piece.template().equals(entry.getKey()) || piece.id().equals(entry.getKey()))) {
+                    shipBoxes.add(entry.getValue());
+                }
+            }
+        }
+
+        for (StationPieceDefinition piece : library.pieces()) {
+            if (!piece.pool().equals(StationStructureIds.pool("space_ship"))) {
+                continue;
+            }
+            for (BoundingBox shipBox : shipBoxes) {
+                StationPlacementUtil.PlacedPieceContext context = StationPlacementUtil.resolvePlacedPiece(piece, shipBox).orElse(null);
+                if (context != null) {
+                    for (StationTriggerZone zone : piece.triggerZones()) {
+                        if (StationStructureTriggerType.from(zone.type()) == StationStructureTriggerType.LAMP_SWITCH
+                                || (zone.id() != null && zone.id().toLowerCase(Locale.ROOT).contains("lamp"))) {
+                            dev.sixik.stationarenear.structures.data.PlacedTriggerZone placed = context.transformTrigger(zone);
+                            for (BlockPos pos : BlockPos.betweenClosed(placed.min().getX(), placed.min().getY(), placed.min().getZ(), placed.max().getX(), placed.max().getY(), placed.max().getZ())) {
+                                lampPositions.add(pos.immutable());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (BoundingBox shipBox : shipBoxes) {
+            for (BlockPos pos : BlockPos.betweenClosed(shipBox.minX(), shipBox.minY(), shipBox.minZ(), shipBox.maxX(), shipBox.maxY(), shipBox.maxZ())) {
+                BlockState state = level.getBlockState(pos);
+                if (isLamp(state)) {
+                    lampPositions.add(pos.immutable());
+                }
+            }
+        }
+
+        for (BlockPos pos : lampPositions) {
+            BlockState current = level.getBlockState(pos);
+            if (isLamp(current)) {
+                boolean isWall = isWallLamp(current);
+                BlockState redState = isWall
+                        ? StationBlocksModBlocks.WALL_LAMP_RED.get().defaultBlockState()
+                        : StationBlocksModBlocks.LAMP_RED.get().defaultBlockState();
+                level.setBlock(pos, copyFacing(redState, current), 3);
+                level.playSound(null, pos, StationSounds.LIGHT_TURN_ON.get(), SoundSource.BLOCKS, 0.4F, 0.85F);
+            }
+        }
     }
 
     public static boolean hasEnergyFailureOffer(StationInstance station) {

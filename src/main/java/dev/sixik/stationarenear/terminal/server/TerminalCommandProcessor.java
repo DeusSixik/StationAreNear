@@ -319,7 +319,7 @@ public final class TerminalCommandProcessor {
                     output.add(new TerminalHistoryLine(TerminalHistoryKind.ERROR, "No 'craft_station' trigger zone found on ship structure."));
                     return;
                 }
-                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.ALREADY_EXISTS) {
+                if (res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.ALREADY_EXISTS || res == dev.sixik.stationarenear.ship.runtime.ShipModulePlacer.PlacementResult.LIMIT_REACHED) {
                     output.add(new TerminalHistoryLine(TerminalHistoryKind.WARNING, "Crafting station is already installed on the ship."));
                     return;
                 }

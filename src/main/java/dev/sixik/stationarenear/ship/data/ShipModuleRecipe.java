@@ -119,19 +119,19 @@ public final class ShipModuleRecipe {
             ),
             ShipSystemType.MANEUVERABILITY, List.of(
                     new Ingredient("metal_sheet", 10),
-                    new Ingredient("stationarenear:repair_kit", 1),
-                    new Ingredient("stationarenear:putty_bucket", 1)
+                    new Ingredient("stationarenear:repair_kit", 1)
+//                    new Ingredient("stationarenear:putty_bucket", 1)
             ),
             ShipSystemType.PLAYER_TRACKER, List.of(
                     new Ingredient("videocard", 1),
-                    new Ingredient("monitor", 1)
+                    new Ingredient("monitor_item", 1)
             ),
             ShipSystemType.STATION_LOCATOR, List.of(
                     new Ingredient("satelliteantenna", 1),
                     new Ingredient("videocard", 1)
             ),
             ShipSystemType.RAD_SHIELDING, List.of(
-                    new Ingredient("radiation_isolation", 1)
+                    new Ingredient("radiation_isolation", 20)
             )
     );
 

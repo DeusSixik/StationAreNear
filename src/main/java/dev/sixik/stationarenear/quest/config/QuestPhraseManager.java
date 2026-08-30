@@ -26,12 +26,12 @@ public final class QuestPhraseManager {
     private static final Path PHRASES_FILE = CONFIG_DIR.resolve("phrases.json");
 
     private static final PhraseEntry DEFAULT_QUEST_START = new PhraseEntry(
-            "§e[SAM]§r Команда, получено новое задание. Отправляйтесь на станцию §6{station}§r. Время на выполнение: §b{time}§r. Награда: §a{reward} CR§r.",
-            "Команда, у вас новое задание. Отправляйтесь на станцию {station}. Время на выполнение: {time}."
+            "§e[HELICORP]§r Команда, получено новое задание. Отправляйтесь на станцию §6{station}§r. Время на выполнение: §b{time}§r. Награда: §a{reward} CR§r.",
+            "Команда, у вас новое задание. Отправляйтесь на станцию {station}. Время на выполнение: {time}. {objectives}"
     );
 
     private static final PhraseEntry DEFAULT_FAILED_EJECTION = new PhraseEntry(
-            "§c[SAM] Внимание! Задание на станции {station} провалено. Нарушение контракта. Процедура сброса персонала в открытый космос будет активирована через {delay} сек.§r",
+            "§c[HELICORP] Внимание! Задание на станции {station} провалено. Нарушение контракта. Процедура сброса персонала в открытый космос будет активирована через {delay} сек.§r",
             "Внимание. Задание провалено. Разгерметизация и сброс персонала через несколько секунд."
     );
 

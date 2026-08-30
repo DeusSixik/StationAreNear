@@ -227,20 +227,39 @@ public final class ShipCommands {
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> spawnSpaceShipCommand() {
         return Commands.literal("spawn_space_ship")
-                .executes(context -> spawnSpaceShip(context.getSource(), context.getSource().getPlayerOrException().blockPosition(), null))
+                .executes(context -> spawnSpaceShip(context.getSource(), context.getSource().getPlayerOrException().blockPosition(), null, Rotation.NONE))
                 .then(Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes(context -> spawnSpaceShip(
                                 context.getSource(),
                                 BlockPosArgument.getLoadedBlockPos(context, "pos"),
-                                null
+                                null,
+                                Rotation.NONE
                         ))
-                        .then(Commands.argument("template", StringArgumentType.word())
-                                .suggests(ShipCommands::suggestSpaceShipPieces)
-                                .executes(context -> spawnSpaceShip(
-                                        context.getSource(),
-                                        BlockPosArgument.getLoadedBlockPos(context, "pos"),
-                                        StringArgumentType.getString(context, "template")
-                                ))));
+                        .then(Commands.argument("arg1", StringArgumentType.word())
+                                .suggests(ShipCommands::suggestRotationsAndTemplates)
+                                .executes(context -> {
+                                    String arg1 = StringArgumentType.getString(context, "arg1");
+                                    BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
+                                    if (isRotationName(arg1)) {
+                                        return spawnSpaceShip(context.getSource(), pos, null, parseRotation(arg1));
+                                    } else {
+                                        return spawnSpaceShip(context.getSource(), pos, arg1, Rotation.NONE);
+                                    }
+                                })
+                                .then(Commands.argument("arg2", StringArgumentType.word())
+                                        .suggests(ShipCommands::suggestRotationsAndTemplates)
+                                        .executes(context -> {
+                                            String arg1 = StringArgumentType.getString(context, "arg1");
+                                            String arg2 = StringArgumentType.getString(context, "arg2");
+                                            BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
+                                            if (isRotationName(arg1)) {
+                                                return spawnSpaceShip(context.getSource(), pos, arg2, parseRotation(arg1));
+                                            } else if (isRotationName(arg2)) {
+                                                return spawnSpaceShip(context.getSource(), pos, arg1, parseRotation(arg2));
+                                            } else {
+                                                return spawnSpaceShip(context.getSource(), pos, arg1, Rotation.NONE);
+                                            }
+                                        }))));
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> controlCommand() {
@@ -328,6 +347,45 @@ public final class ShipCommands {
                         .executes(context -> listShipAnchors(context.getSource())));
     }
 
+    private static CompletableFuture<Suggestions> suggestRotationsAndTemplates(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        List<String> suggestions = new ArrayList<>(List.of("north", "east", "south", "west", "0", "90", "180", "270", "none", "clockwise_90", "clockwise_180", "counterclockwise_90"));
+        StationStructureLibraryData library = StationStructureLibraryData.get(context.getSource().getLevel());
+        StationStructureFileStorage.loadExternalDefinitions(library);
+        library.pool(SPACE_SHIP_POOL).ifPresent(pool -> {
+            for (ResourceLocation id : allPoolPieces(pool)) {
+                suggestions.add(id.toString());
+                suggestions.add(id.getPath());
+            }
+        });
+        return SharedSuggestionProvider.suggest(suggestions, builder);
+    }
+
+    private static Rotation parseRotation(String text) {
+        if (text == null || text.isBlank()) {
+            return Rotation.NONE;
+        }
+        String s = text.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (s) {
+            case "east", "cw_90", "clockwise_90", "90", "e" -> Rotation.CLOCKWISE_90;
+            case "south", "180", "clockwise_180", "cw_180", "s" -> Rotation.CLOCKWISE_180;
+            case "west", "270", "counterclockwise_90", "ccw_90", "w" -> Rotation.COUNTERCLOCKWISE_90;
+            default -> Rotation.NONE;
+        };
+    }
+
+    private static boolean isRotationName(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String s = text.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (s) {
+            case "north", "east", "south", "west", "0", "90", "180", "270",
+                 "none", "clockwise_90", "clockwise_180", "counterclockwise_90",
+                 "cw_90", "cw_180", "ccw_90", "n", "e", "s", "w" -> true;
+            default -> false;
+        };
+    }
+
     private static CompletableFuture<Suggestions> suggestSpaceShipPieces(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         List<String> suggestions = new ArrayList<>();
         StationStructureLibraryData library = StationStructureLibraryData.get(context.getSource().getLevel());
@@ -358,7 +416,7 @@ public final class ShipCommands {
         return SharedSuggestionProvider.suggest(suggestions, builder);
     }
 
-    private static int spawnSpaceShip(CommandSourceStack source, BlockPos origin, String templateText) {
+    private static int spawnSpaceShip(CommandSourceStack source, BlockPos origin, String templateText, Rotation rotation) {
         ServerLevel level = source.getLevel();
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
         StationStructureFileStorage.loadExternalDefinitions(library);
@@ -375,12 +433,21 @@ public final class ShipCommands {
             return 0;
         }
 
-        template.get().placeInWorld(level, origin, origin, new StructurePlaceSettings().setRotation(Rotation.NONE), level.getRandom(), 2);
-        BoundingBox selectionBounds = StationPlacementUtil.transformBox(origin, definition.selectionMin(), definition.selectionMax(), Rotation.NONE);
+        StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation);
+        template.get().placeInWorld(level, origin, origin, settings, level.getRandom(), 2);
+        BoundingBox selectionBounds = StationPlacementUtil.transformBox(origin, definition.selectionMin(), definition.selectionMax(), rotation);
+        for (BlockPos pos : BlockPos.betweenClosed(selectionBounds.minX(), selectionBounds.minY(), selectionBounds.minZ(), selectionBounds.maxX(), selectionBounds.maxY(), selectionBounds.maxZ())) {
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity television) {
+                television.questText("");
+                television.manualText("");
+            }
+        }
         library.upsertTemplateSelection(definition.template(), selectionBounds);
         StationStructureNetwork.syncTemplateSelections(level);
         source.sendSuccess(() -> Component.literal("Spawned space ship " + definition.id()
                 + " at " + origin.toShortString()
+                + " rotation=" + rotation.name()
                 + " bounds=" + formatBounds(selectionBounds)), false);
         return 1;
     }

@@ -34,7 +34,6 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class SyncBatteryMinigameScreen {
-    private static final MutableColor BACKGROUND = MutableColor.rgba(0.006f, 0.009f, 0.014f, 0.94f);
     private static final MutableColor WHITE = MutableColor.rgba(1.0f, 1.0f, 1.0f, 1.0f);
 
     private SyncBatteryMinigameScreen() {
@@ -97,21 +96,9 @@ public final class SyncBatteryMinigameScreen {
     private static Widget root(SyncBatteryMinigameWidget minigame) {
         StackPanel viewport = new StackPanel();
         viewport.layout(style -> style.sizePercent(100.0f, 100.0f));
-        viewport.addChild(backgroundFrame());
         minigame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
         viewport.addChild(minigame);
         return new OverlayLayer(viewport);
-    }
-
-    private static Box backgroundFrame() {
-        Box frame = new Box();
-        frame.themeEnabled(false);
-        frame.backgroundVisible(true);
-        frame.borderVisible(false);
-        frame.radius(0.0f);
-        frame.background(BACKGROUND);
-        frame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
-        return frame;
     }
 
     public static final class SyncBatteryMinigameWidget extends WidgetBase {

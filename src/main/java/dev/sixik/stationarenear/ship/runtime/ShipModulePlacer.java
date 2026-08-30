@@ -20,10 +20,12 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -90,15 +92,15 @@ public final class ShipModulePlacer {
         }
 
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        StationStructureFileStorage.loadExternalDefinitions(library);
 
         for (ShipTriggerTarget target : targets) {
             BoundingBox box = target.bounds();
-            BlockPos checkPos = new BlockPos(box.minX(), box.minY(), box.minZ());
-
-            if (!level.getBlockState(checkPos).isAir() && !level.getBlockState(checkPos).canBeReplaced()) {
+            if (isTargetOccupied(level, box, fallbackBlockState)) {
                 continue;
             }
 
+            BlockPos checkPos = new BlockPos(box.minX(), box.minY(), box.minZ());
             String poolName = target.pool() != null && !target.pool().isBlank() ? target.pool() : defaultPool;
             ResourceLocation poolId = StationStructureIds.pool(poolName);
             Optional<StationPoolDefinition> poolOpt = library.pool(poolId);
@@ -111,9 +113,12 @@ public final class ShipModulePlacer {
                 for (ResourceLocation id : poolOpt.get().startPieces()) {
                     library.piece(id).ifPresent(candidates::add);
                 }
-            } else {
+            }
+            if (candidates.isEmpty()) {
                 for (StationPieceDefinition piece : library.pieces()) {
-                    if (piece.pool().equals(poolId)) {
+                    if (piece.pool().equals(poolId)
+                            || piece.pool().getPath().equalsIgnoreCase(poolName)
+                            || (piece.id() != null && piece.id().getPath().equalsIgnoreCase(poolName))) {
                         candidates.add(piece);
                     }
                 }
@@ -129,10 +134,16 @@ public final class ShipModulePlacer {
                     Rotation rotation = rotationForTemplate(template, direction, target.data());
                     BoundingBox localBounds = StationPlacementUtil.transformBounds(BlockPos.ZERO, template.getSize(), rotation);
                     BlockPos origin = checkPos.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
+                    if (poolName.contains("craft_station") || defaultPool.contains("craft_station")) {
+                        origin = origin.relative(direction.getCounterClockWise(), 1);
+                    }
 
-                    StructurePlaceSettings settings = new StructurePlaceSettings()
-                            .setRotation(rotation)
-                            .addProcessor(BlockIgnoreProcessor.AIR);
+                    BoundingBox placeBox = StationPlacementUtil.transformBounds(origin, template.getSize(), rotation);
+                    for (BlockPos p : BlockPos.betweenClosed(placeBox.minX(), placeBox.minY(), placeBox.minZ(), placeBox.maxX(), placeBox.maxY(), placeBox.maxZ())) {
+                        level.removeBlock(p, false);
+                    }
+
+                    StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation);
                     template.placeInWorld(level, origin, origin, settings, level.getRandom(), 2);
                     ensureMultipartPlaced(level, origin, template, rotation);
                     return PlacementResult.SUCCESS;
@@ -141,17 +152,55 @@ public final class ShipModulePlacer {
 
             BlockState stateToPlace = fallbackBlockState;
             if (stateToPlace.getBlock() instanceof WorkbenchBlock) {
-                WorkbenchBlock.placeWorkbenchParts(level, checkPos, direction);
+                int x = switch (direction) {
+                    case NORTH -> box.maxX();
+                    case SOUTH -> box.minX();
+                    case EAST -> box.minX();
+                    case WEST -> box.minX();
+                    default -> box.minX();
+                };
+                int z = switch (direction) {
+                    case NORTH -> box.minZ();
+                    case SOUTH -> box.minZ();
+                    case EAST -> box.maxZ();
+                    case WEST -> box.minZ();
+                    default -> box.minZ();
+                };
+                BlockPos masterPos = new BlockPos(x, box.minY(), z).relative(direction.getCounterClockWise(), 1);
+                for (BlockPos partPos : WorkbenchBlock.partPositions(masterPos, direction)) {
+                    level.removeBlock(partPos, false);
+                }
+                WorkbenchBlock.placeWorkbenchParts(level, masterPos, direction);
                 return PlacementResult.SUCCESS;
             }
+
             if (stateToPlace.hasProperty(HorizontalDirectionalBlock.FACING)) {
                 stateToPlace = stateToPlace.setValue(HorizontalDirectionalBlock.FACING, direction);
             }
-            level.setBlockAndUpdate(checkPos, stateToPlace);
+            for (BlockPos pos : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
+                level.setBlock(pos, stateToPlace, 3);
+            }
             return PlacementResult.SUCCESS;
         }
 
         return PlacementResult.LIMIT_REACHED;
+    }
+
+    private static boolean isTargetOccupied(ServerLevel level, BoundingBox box, BlockState fallbackBlockState) {
+        Block cabinetBig = ForgeRegistries.BLOCKS.getValue(new ResourceLocation("station_blocks", "cabinet_big"));
+        for (BlockPos pos : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
+            BlockState state = level.getBlockState(pos);
+            if (cabinetBig != null && cabinetBig != Blocks.AIR && state.is(cabinetBig)) {
+                return true;
+            }
+            if (state.getBlock() instanceof WorkbenchBlock) {
+                return true;
+            }
+            if (fallbackBlockState != null && !fallbackBlockState.isAir() && state.is(fallbackBlockState.getBlock()) && !state.isAir()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void ensureMultipartPlaced(ServerLevel level, BlockPos origin, StructureTemplate template, Rotation rotation) {
@@ -179,6 +228,7 @@ public final class ShipModulePlacer {
         ShipDockingAnchor anchor = anchorOpt.get();
         BoundingBox shipBounds = anchor.shipBounds();
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        StationStructureFileStorage.loadExternalDefinitions(library);
         List<ShipTriggerTarget> results = new ArrayList<>();
 
         for (Map.Entry<ResourceLocation, BoundingBox> entry : library.savedTemplateSelections().entrySet()) {
@@ -189,13 +239,15 @@ public final class ShipModulePlacer {
                 if (!isShipPieceSelection(piece, entry.getKey())) {
                     continue;
                 }
-                BlockPos origin = new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin());
+                StationPlacementUtil.PlacedPieceContext context = StationPlacementUtil.resolvePlacedPiece(piece, shipBounds)
+                        .orElseGet(() -> new StationPlacementUtil.PlacedPieceContext(piece, new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin()), Rotation.NONE, shipBounds));
                 for (StationTriggerZone zone : piece.triggerZones()) {
                     if (hasMatchingTag(zone, tags)) {
-                        BoundingBox triggerBounds = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), Rotation.NONE);
-                        Direction dir = triggerDirection(zone.data());
-                        String pool = zone.data() != null && zone.data().contains("pool") ? zone.data().getString("pool") : "";
-                        results.add(new ShipTriggerTarget(triggerBounds, zone.data(), dir, pool));
+                        dev.sixik.stationarenear.structures.data.PlacedTriggerZone placedZone = context.transformTrigger(zone);
+                        BoundingBox triggerBounds = new BoundingBox(placedZone.min().getX(), placedZone.min().getY(), placedZone.min().getZ(), placedZone.max().getX(), placedZone.max().getY(), placedZone.max().getZ());
+                        Direction dir = triggerDirection(placedZone.data(), context.rotation());
+                        String pool = placedZone.data() != null && placedZone.data().contains("pool") ? placedZone.data().getString("pool") : "";
+                        results.add(new ShipTriggerTarget(triggerBounds, placedZone.data(), dir, pool));
                     }
                 }
             }
@@ -206,13 +258,15 @@ public final class ShipModulePlacer {
                 if (!piece.pool().equals(SHIP_POOL)) {
                     continue;
                 }
-                BlockPos origin = new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin());
+                StationPlacementUtil.PlacedPieceContext context = StationPlacementUtil.resolvePlacedPiece(piece, shipBounds)
+                        .orElseGet(() -> new StationPlacementUtil.PlacedPieceContext(piece, new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin()), Rotation.NONE, shipBounds));
                 for (StationTriggerZone zone : piece.triggerZones()) {
                     if (hasMatchingTag(zone, tags)) {
-                        BoundingBox triggerBounds = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), Rotation.NONE);
-                        Direction dir = triggerDirection(zone.data());
-                        String pool = zone.data() != null && zone.data().contains("pool") ? zone.data().getString("pool") : "";
-                        results.add(new ShipTriggerTarget(triggerBounds, zone.data(), dir, pool));
+                        dev.sixik.stationarenear.structures.data.PlacedTriggerZone placedZone = context.transformTrigger(zone);
+                        BoundingBox triggerBounds = new BoundingBox(placedZone.min().getX(), placedZone.min().getY(), placedZone.min().getZ(), placedZone.max().getX(), placedZone.max().getY(), placedZone.max().getZ());
+                        Direction dir = triggerDirection(placedZone.data(), context.rotation());
+                        String pool = placedZone.data() != null && placedZone.data().contains("pool") ? placedZone.data().getString("pool") : "";
+                        results.add(new ShipTriggerTarget(triggerBounds, placedZone.data(), dir, pool));
                     }
                 }
             }
@@ -221,7 +275,7 @@ public final class ShipModulePlacer {
         return results;
     }
 
-    private static Direction triggerDirection(CompoundTag data) {
+    private static Direction triggerDirection(CompoundTag data, Rotation fallbackRotation) {
         if (data != null) {
             String dirStr = data.contains("objectDirection") ? data.getString("objectDirection")
                     : (data.contains("direction") ? data.getString("direction")
@@ -231,7 +285,7 @@ public final class ShipModulePlacer {
                 return dir;
             }
         }
-        return Direction.NORTH;
+        return fallbackRotation != null ? fallbackRotation.rotate(Direction.NORTH) : Direction.NORTH;
     }
 
     private static Rotation rotationForTemplate(StructureTemplate template, Direction targetDirection, CompoundTag data) {

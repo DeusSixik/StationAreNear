@@ -58,6 +58,11 @@ public final class ShipTelevisionManager {
         refresh(event.getLevel());
     }
 
+    public static void onServerStopping(net.minecraftforge.event.server.ServerStoppingEvent event) {
+        lastQuestRefreshGameTime = -1L;
+        lastDynamicRefreshGameTime = -1L;
+    }
+
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;
@@ -96,6 +101,9 @@ public final class ShipTelevisionManager {
         for (ShipTelevisionBlockEntity television : shipTelevisions(level)) {
             if (!television.questTextEquals(questText)) {
                 television.questText(questText);
+            }
+            if (questText.isEmpty() && ShipTelevisionBlockEntity.isQuestLike(television.manualText())) {
+                television.manualText("");
             }
         }
     }
@@ -251,6 +259,15 @@ public final class ShipTelevisionManager {
                 if (visitedMasters.add(television.getBlockPos().asLong())) {
                     televisions.add(television);
                 }
+            }
+        }
+        BoundingBox spawnBounds = dev.sixik.stationarenear.ship.world.ShipWorldSpawnSavedData.get(level).getShipBounds();
+        if (spawnBounds != null) {
+            addTelevisions(level, spawnBounds, televisions, visitedMasters);
+        }
+        for (BoundingBox selection : dev.sixik.stationarenear.structures.world.StationStructureLibraryData.get(level).savedTemplateSelections().values()) {
+            if (selection != null) {
+                addTelevisions(level, selection, televisions, visitedMasters);
             }
         }
         for (ShipDockingAnchor anchor : ShipDockingAnchorSavedData.get(level).anchors()) {

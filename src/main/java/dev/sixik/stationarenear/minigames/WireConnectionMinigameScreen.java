@@ -35,7 +35,6 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class WireConnectionMinigameScreen {
-    private static final MutableColor BACKGROUND = MutableColor.rgba(0.006f, 0.009f, 0.014f, 0.94f);
     private static final MutableColor BORDER = MutableColor.rgba(0.22f, 0.34f, 0.52f, 0.76f);
 
     private WireConnectionMinigameScreen() {
@@ -90,21 +89,9 @@ public final class WireConnectionMinigameScreen {
     private static Widget root(WireConnectionMinigameWidget minigame) {
         StackPanel viewport = new StackPanel();
         viewport.layout(style -> style.sizePercent(100.0f, 100.0f));
-        viewport.addChild(backgroundFrame());
         minigame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
         viewport.addChild(minigame);
         return new OverlayLayer(viewport);
-    }
-
-    private static Box backgroundFrame() {
-        Box frame = new Box();
-        frame.themeEnabled(false);
-        frame.backgroundVisible(true);
-        frame.borderVisible(false);
-        frame.radius(0.0f);
-        frame.background(BACKGROUND);
-        frame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
-        return frame;
     }
 
     public static final class WireConnectionMinigameWidget extends WidgetBase {

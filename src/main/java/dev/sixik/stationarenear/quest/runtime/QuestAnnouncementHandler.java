@@ -48,17 +48,26 @@ public final class QuestAnnouncementHandler {
         long seconds = totalSeconds % 60L;
         String timeStr = String.format(java.util.Locale.ROOT, "%02d:%02d", minutes, seconds);
 
+        String objectivesText = formatObjectivesText(event.getTasks(), event.getObjectiveTexts());
+        if (objectivesText.isBlank()) {
+            objectivesText = event.getAnnouncementText() != null ? event.getAnnouncementText() : "";
+        }
+
         Map<String, String> placeholders = Map.of(
                 "station", stationCode,
                 "time", timeStr,
-                "reward", String.format(java.util.Locale.ROOT, "%.0f", event.getMoneyReward())
+                "reward", String.format(java.util.Locale.ROOT, "%.0f", event.getMoneyReward()),
+                "objectives", objectivesText
         );
 
         dev.sixik.stationarenear.quest.config.QuestPhraseManager.PhraseEntry phrase = dev.sixik.stationarenear.quest.config.QuestPhraseManager.getQuestStartPhrase(level.getRandom());
         String chatText = dev.sixik.stationarenear.quest.config.QuestPhraseManager.format(phrase.text(), placeholders);
         String samRawText = dev.sixik.stationarenear.quest.config.QuestPhraseManager.format(phrase.sam(), placeholders);
+
         if (samRawText.isBlank()) {
             samRawText = event.getAnnouncementText();
+        } else if (!phrase.sam().contains("{objectives}") && !objectivesText.isBlank()) {
+            samRawText = samRawText + ". " + (objectivesText.startsWith("Your objectives") ? objectivesText : "Your objectives are: " + objectivesText);
         }
 
         if (!chatText.isBlank()) {
@@ -68,6 +77,28 @@ public final class QuestAnnouncementHandler {
         }
 
         speak(level, event.getStationId(), samRawText);
+    }
+
+    private static String formatObjectivesText(List<dev.sixik.stationarenear.quest.data.QuestTask> tasks, Map<String, String> texts) {
+        if (tasks == null || tasks.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < tasks.size(); i++) {
+            dev.sixik.stationarenear.quest.data.QuestTask task = tasks.get(i);
+            String text = texts != null ? texts.getOrDefault(task.id(), task.id()) : task.id();
+            if (tasks.size() > 1) {
+                builder.append(i + 1).append(". ");
+            }
+            builder.append(text);
+            if (task.count() > 1) {
+                builder.append(". Required count: ").append(task.count());
+            }
+            if (i < tasks.size() - 1) {
+                builder.append(". ");
+            }
+        }
+        return builder.toString().trim();
     }
 
     public static void speak(ServerLevel level, java.util.UUID contextId, String rawText) {
@@ -137,13 +168,15 @@ public final class QuestAnnouncementHandler {
     }
 
     private static void addSamSpeakerPositions(StationPieceDefinition piece, BoundingBox shipBounds, List<Vec3> positions, Set<String> addedPositions) {
-        BlockPos origin = new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin());
+        StationPlacementUtil.PlacedPieceContext context = StationPlacementUtil.resolvePlacedPiece(piece, shipBounds)
+                .orElseGet(() -> new StationPlacementUtil.PlacedPieceContext(piece, new BlockPos(shipBounds.minX(), shipBounds.minY(), shipBounds.minZ()).subtract(piece.selectionMin()), Rotation.NONE, shipBounds));
         for (StationTriggerZone triggerZone : piece.triggerZones()) {
             if (!isSamSpeakTrigger(triggerZone)) {
                 continue;
             }
 
-            BoundingBox triggerBounds = StationPlacementUtil.transformBox(origin, triggerZone.min(), triggerZone.max(), Rotation.NONE);
+            dev.sixik.stationarenear.structures.data.PlacedTriggerZone placed = context.transformTrigger(triggerZone);
+            BoundingBox triggerBounds = new BoundingBox(placed.min().getX(), placed.min().getY(), placed.min().getZ(), placed.max().getX(), placed.max().getY(), placed.max().getZ());
             Vec3 position = center(triggerBounds);
             if (addedPositions.add(positionKey(position))) {
                 positions.add(position);

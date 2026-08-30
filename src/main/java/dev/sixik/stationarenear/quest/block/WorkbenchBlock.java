@@ -243,7 +243,7 @@ public class WorkbenchBlock extends HorizontalDirectionalBlock {
         return true;
     }
 
-    private static Set<BlockPos> partPositions(BlockPos masterPos, Direction facing) {
+    public static Set<BlockPos> partPositions(BlockPos masterPos, Direction facing) {
         Set<BlockPos> positions = new HashSet<>(4);
         Direction side = facing.getClockWise();
         for (int sideOffset = -1; sideOffset <= 0; sideOffset++) {

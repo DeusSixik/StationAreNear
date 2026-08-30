@@ -56,15 +56,16 @@ public final class ShipWorldSpawnManager {
         }
 
         BlockPos origin = DEFAULT_ORIGIN;
-        templateOpt.get().placeInWorld(level, origin, origin, new StructurePlaceSettings().setRotation(Rotation.NONE), level.getRandom(), 2);
-        BoundingBox selectionBounds = StationPlacementUtil.transformBox(origin, definition.selectionMin(), definition.selectionMax(), Rotation.NONE);
+        Rotation rotation = Rotation.CLOCKWISE_90;
+        templateOpt.get().placeInWorld(level, origin, origin, new StructurePlaceSettings().setRotation(rotation), level.getRandom(), 2);
+        BoundingBox selectionBounds = StationPlacementUtil.transformBox(origin, definition.selectionMin(), definition.selectionMax(), rotation);
         library.upsertTemplateSelection(definition.template(), selectionBounds);
         StationStructureNetwork.syncTemplateSelections(level);
 
         BoundingBox spawnZone = null;
         for (StationTriggerZone zone : definition.triggerZones()) {
             if (hasSpawnTag(zone)) {
-                spawnZone = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), Rotation.NONE);
+                spawnZone = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), rotation);
                 break;
             }
         }
@@ -83,7 +84,11 @@ public final class ShipWorldSpawnManager {
             BlockState state = level.getBlockState(pos);
             if (state.is(SolarNavigationBlocks.SOLAR_NAVIGATION_TERMINAL.get()) && state.hasProperty(SolarNavigationTerminalBlock.FACING)) {
                 ShipDockingAnchorResolver.bindNearbyShip(level, pos.immutable());
-                break;
+            }
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity television) {
+                television.questText("");
+                television.manualText("");
             }
         }
 

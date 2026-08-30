@@ -38,6 +38,7 @@ public final class QuestModule {
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.lamps.StationLampManager::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.lamps.StationLampManager::onQuestMissionFailed);
         MinecraftForge.EVENT_BUS.addListener(QuestTimerManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.AutoQuestManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerStopping);

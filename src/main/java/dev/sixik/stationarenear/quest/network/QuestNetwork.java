@@ -53,6 +53,24 @@ public final class QuestNetwork {
                 .decoder(dev.sixik.stationarenear.quest.network.packet.RepairWallPanelCompletePacket::decode)
                 .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.RepairWallPanelCompletePacket::handle)
                 .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketMissPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketMissPacket::encode)
+                .decoder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketMissPacket::decode)
+                .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.ForkInSocketMissPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket::encode)
+                .decoder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket::decode)
+                .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket::handle)
+                .add();
+    }
+
+    public static void sendForkInSocketMiss() {
+        CHANNEL.sendToServer(new dev.sixik.stationarenear.quest.network.packet.ForkInSocketMissPacket());
+    }
+
+    public static void sendForkInSocketSuccess(BlockPos clickedPos, net.minecraft.core.Direction clickedFace, net.minecraft.world.InteractionHand hand) {
+        CHANNEL.sendToServer(new dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket(clickedPos, clickedFace, hand));
     }
 
     public static void sendRepairDoor(BlockPos pos) {

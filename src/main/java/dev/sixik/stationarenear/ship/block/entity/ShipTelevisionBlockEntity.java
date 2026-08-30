@@ -17,7 +17,7 @@ import java.util.WeakHashMap;
 
 public class ShipTelevisionBlockEntity extends BlockEntity {
 
-    private static final Set<ShipTelevisionBlockEntity> LOADED_TELEVISIONS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<ShipTelevisionBlockEntity> LOADED_TELEVISIONS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private static final String LEGACY_TEXT_KEY = "Text";
     private static final String MANUAL_TEXT_KEY = "ManualText";
@@ -42,9 +42,7 @@ public class ShipTelevisionBlockEntity extends BlockEntity {
     }
 
     public static Set<ShipTelevisionBlockEntity> loadedTelevisions() {
-        synchronized (LOADED_TELEVISIONS) {
-            return new HashSet<>(LOADED_TELEVISIONS);
-        }
+        return new HashSet<>(LOADED_TELEVISIONS);
     }
 
     @Override
@@ -56,6 +54,12 @@ public class ShipTelevisionBlockEntity extends BlockEntity {
     @Override
     public void setRemoved() {
         super.setRemoved();
+        LOADED_TELEVISIONS.remove(this);
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
         LOADED_TELEVISIONS.remove(this);
     }
 
@@ -172,10 +176,29 @@ public class ShipTelevisionBlockEntity extends BlockEntity {
         tag.putLong(CONTROLLER_TERMINAL_POS_KEY, controllerTerminalPos.asLong());
     }
 
+    public String manualText() {
+        return manualText;
+    }
+
+    public static boolean isQuestLike(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        return text.startsWith("\u0417\u0410\u0414\u0410\u041d\u0418\u0415")
+                || text.startsWith("ЗАДАНИЕ")
+                || text.contains("\u0421\u0422\u0410\u041d\u0426\u0418\u042f:")
+                || text.contains("СТАНЦИЯ:")
+                || text.contains("Current mission station:");
+    }
+
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        manualText = tag.contains(MANUAL_TEXT_KEY) ? tag.getString(MANUAL_TEXT_KEY) : tag.getString(LEGACY_TEXT_KEY);
+        String loadedManual = tag.contains(MANUAL_TEXT_KEY) ? tag.getString(MANUAL_TEXT_KEY) : "";
+        if (isQuestLike(loadedManual)) {
+            loadedManual = "";
+        }
+        manualText = loadedManual;
         questText = tag.getString(QUEST_TEXT_KEY);
         manualTextPosition = TelevisionTextPosition.fromName(tag.getString(MANUAL_TEXT_POSITION_KEY));
         manualTextScale = tag.contains(MANUAL_TEXT_SCALE_KEY) ? clampScale(tag.getFloat(MANUAL_TEXT_SCALE_KEY)) : 1.0F;

@@ -210,13 +210,13 @@ public final class SolarNavigationScreen {
         private float shipY;
         private float velocityX;
         private float velocityY;
-        private float angle = -0.45f;
+        private float angle = 0.0f;
         private float turnVelocity;
         private float renderShipX;
         private float renderShipY;
         private float renderVelocityX;
         private float renderVelocityY;
-        private float renderAngle = -0.45f;
+        private float renderAngle = 0.0f;
         private boolean renderStateInitialized;
         private float timeSeconds;
         private long lastFrameNanos;

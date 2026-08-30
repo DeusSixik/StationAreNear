@@ -21,6 +21,7 @@ import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
 import dev.sixik.stationarenear.terminal.shop.PlayerBalanceSavedData;
 import dev.sixik.stationarenear.structures.data.StationInstance;
+import dev.sixik.stationarenear.structures.world.StationSavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -92,15 +93,36 @@ public final class QuestStationDepartureHandler {
         removeNavigationMarker(level, station);
     }
 
-    private static void failMission(ServerLevel level, StationInstance station, QuestStationState state, Optional<BlockPos> terminalPos, String reason) {
-        QuestApi.fail(level, station.id(), reason);
+    public static boolean failMission(ServerLevel level, java.util.UUID stationId, String reason) {
+        Optional<StationInstance> stationOpt = StationSavedData.get(level).station(stationId);
+        Optional<QuestStationState> stateOpt = QuestSavedData.get(level).stationIfPresent(stationId);
+        if (stateOpt.isEmpty() && stationOpt.isEmpty()) {
+            return false;
+        }
+        StationInstance station = stationOpt.orElse(null);
+        QuestStationState state = stateOpt.orElse(null);
+        Optional<BlockPos> terminalPos = Optional.empty();
+        if (station != null) {
+            terminalPos = navigationTerminalPos(station);
+        }
+        if (terminalPos.isEmpty()) {
+            terminalPos = dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData.get(level).anchors().stream().map(dev.sixik.stationarenear.ship.docking.ShipDockingAnchor::terminalPos).findFirst();
+        }
+        failMission(level, station, state, terminalPos, reason);
+        return true;
+    }
+
+    public static void failMission(ServerLevel level, StationInstance station, QuestStationState state, Optional<BlockPos> terminalPos, String reason) {
+        java.util.UUID stationId = station != null ? station.id() : (state != null ? state.stationId() : java.util.UUID.randomUUID());
+        QuestApi.fail(level, stationId, reason);
+        dev.sixik.stationarenear.structures.lamps.StationLampManager.turnShipLampsRed(level);
 
         int delaySec = QuestPhraseManager.getEjectionDelaySeconds();
         String stationCode = state != null && !state.displayStationCode().isBlank()
                 ? state.displayStationCode()
                 : (station != null && station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE)
                 ? station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE)
-                : StationCodeGenerator.code(station.id()));
+                : StationCodeGenerator.code(stationId));
 
         Map<String, String> placeholders = Map.of(
                 "station", stationCode,
@@ -119,7 +141,7 @@ public final class QuestStationDepartureHandler {
         }
 
         if (!samText.isBlank()) {
-            QuestAnnouncementHandler.speak(level, station.id(), samText);
+            QuestAnnouncementHandler.speak(level, stationId, samText);
         }
 
         terminalPos.ifPresent(pos -> {
@@ -128,8 +150,10 @@ public final class QuestStationDepartureHandler {
             ShipManager.setDocking(level, pos, false);
             scheduleEjection(level, pos, delaySec);
         });
-        QuestSavedData.get(level).remove(station.id());
-        removeNavigationMarker(level, station);
+        QuestSavedData.get(level).remove(stationId);
+        if (station != null) {
+            removeNavigationMarker(level, station);
+        }
     }
 
     private static void scheduleEjection(ServerLevel level, BlockPos pos, int delaySec) {
@@ -171,7 +195,7 @@ public final class QuestStationDepartureHandler {
     }
 
     private static Optional<BlockPos> navigationTerminalPos(StationInstance station) {
-        if (!station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)) {
+        if (station == null || !station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)) {
             return Optional.empty();
         }
         return Optional.of(BlockPos.of(station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)));
@@ -185,9 +209,12 @@ public final class QuestStationDepartureHandler {
                 continue;
             }
             BlockPos pos = player.blockPosition();
-            if (anchor.map(value -> contains(value.shipBounds(), pos)).orElse(false) || contains(station, pos)) {
+            if (anchor.map(value -> contains(value.shipBounds(), pos)).orElse(false) || (station != null && contains(station, pos))) {
                 players.add(player);
             }
+        }
+        if (players.isEmpty()) {
+            players.addAll(level.players());
         }
         return players;
     }

@@ -325,10 +325,12 @@ public final class StationStructureEditorEvents {
             Optional<StationPieceDefinition> definition = library.piece(entry.getKey());
             if (definition.isPresent()) {
                 StationPieceDefinition piece = definition.get();
+                StationPlacementUtil.PlacedPieceContext context = StationPlacementUtil.resolvePlacedPiece(piece, bounds)
+                        .orElseGet(() -> new StationPlacementUtil.PlacedPieceContext(piece, minPos(bounds).subtract(piece.selectionMin()), Rotation.NONE, bounds));
                 return Optional.of(new CopySource(
                         piece,
-                        minPos(bounds).subtract(piece.selectionMin()),
-                        Rotation.NONE,
+                        context.origin(),
+                        context.rotation(),
                         bounds,
                         isStartPiece(library, piece)
                 ));

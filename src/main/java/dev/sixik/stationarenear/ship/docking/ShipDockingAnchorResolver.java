@@ -69,10 +69,13 @@ public final class ShipDockingAnchorResolver {
             return Optional.empty();
         }
 
-        return piece.connectors().stream()
+        dev.sixik.stationarenear.structures.generation.StationPlacementUtil.PlacedPieceContext context = dev.sixik.stationarenear.structures.generation.StationPlacementUtil.resolvePlacedPiece(piece, bounds)
+                .orElseGet(() -> new dev.sixik.stationarenear.structures.generation.StationPlacementUtil.PlacedPieceContext(piece, new BlockPos(bounds.minX(), bounds.minY(), bounds.minZ()).subtract(piece.selectionMin()), net.minecraft.world.level.block.Rotation.NONE, bounds));
+
+        return context.transformConnectors().stream()
                 .filter(connector -> connector.direction().getAxis().isHorizontal())
                 .min(Comparator
-                        .comparingLong((StationConnector connector) -> distanceSqr(terminalPos, worldConnectorPos(piece, bounds, connector)))
+                        .comparingLong((StationConnector connector) -> distanceSqr(terminalPos, connector.position()))
                         .thenComparingInt(connector -> -connector.priority()))
                 .map(connector -> new Candidate(piece, bounds, connector, distanceSqr));
     }
@@ -82,7 +85,7 @@ public final class ShipDockingAnchorResolver {
         return new ShipDockingAnchor(
                 terminalPos,
                 candidate.bounds(),
-                worldConnectorPos(candidate.piece(), candidate.bounds(), connector),
+                connector.position(),
                 connector.direction(),
                 connector.name(),
                 connector.width(),
@@ -90,11 +93,6 @@ public final class ShipDockingAnchorResolver {
                 String.join(",", connector.tags()),
                 String.join(",", connector.accepts())
         );
-    }
-
-    private static BlockPos worldConnectorPos(StationPieceDefinition piece, BoundingBox bounds, StationConnector connector) {
-        BlockPos localFromSelection = connector.position().subtract(piece.selectionMin());
-        return new BlockPos(bounds.minX(), bounds.minY(), bounds.minZ()).offset(localFromSelection);
     }
 
     private static boolean contains(BoundingBox bounds, BlockPos pos) {

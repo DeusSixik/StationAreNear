@@ -2,6 +2,7 @@ package dev.sixik.stationarenear.structures.generation;
 
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationConnector;
+import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.trigger.StationStructureTriggerType;
 import dev.sixik.stationarenear.structures.util.NbtPos;
@@ -40,7 +41,7 @@ public final class StationPlacementUtil {
         return null;
     }
 
-    static BlockPos transform(BlockPos local, Rotation rotation) {
+    public static BlockPos transform(BlockPos local, Rotation rotation) {
         return StructureTemplate.transform(local, Mirror.NONE, rotation, BlockPos.ZERO);
     }
 
@@ -190,5 +191,74 @@ public final class StationPlacementUtil {
             }
         }
         return values;
+    }
+
+    public record PlacedPieceContext(
+            StationPieceDefinition piece,
+            BlockPos origin,
+            Rotation rotation,
+            BoundingBox bounds
+    ) {
+        public PlacedTriggerZone transformTrigger(StationTriggerZone zone) {
+            return StationPlacementUtil.transformTrigger(zone, origin, rotation, 0.0F, piece.selectionMin(), piece.selectionMax());
+        }
+
+        public List<PlacedTriggerZone> transformTriggers() {
+            List<PlacedTriggerZone> list = new ArrayList<>(piece.triggerZones().size());
+            for (StationTriggerZone zone : piece.triggerZones()) {
+                list.add(transformTrigger(zone));
+            }
+            return list;
+        }
+
+        public StationConnector transformConnector(StationConnector connector) {
+            return StationPlacementUtil.transformConnector(connector, origin, rotation);
+        }
+
+        public List<StationConnector> transformConnectors() {
+            List<StationConnector> list = new ArrayList<>(piece.connectors().size());
+            for (StationConnector connector : piece.connectors()) {
+                list.add(transformConnector(connector));
+            }
+            return list;
+        }
+    }
+
+    public static java.util.Optional<PlacedPieceContext> resolvePlacedPiece(StationPieceDefinition piece, BoundingBox bounds) {
+        if (piece == null || bounds == null) {
+            return java.util.Optional.empty();
+        }
+
+        for (Rotation rotation : List.of(Rotation.NONE, Rotation.CLOCKWISE_90, Rotation.CLOCKWISE_180, Rotation.COUNTERCLOCKWISE_90)) {
+            int candidateOx = switch (rotation) {
+                case NONE -> bounds.minX() - piece.selectionMin().getX();
+                case CLOCKWISE_90 -> bounds.minX() + piece.selectionMax().getZ();
+                case CLOCKWISE_180 -> bounds.minX() + piece.selectionMax().getX();
+                case COUNTERCLOCKWISE_90 -> bounds.minX() - piece.selectionMin().getZ();
+            };
+            int candidateOz = switch (rotation) {
+                case NONE -> bounds.minZ() - piece.selectionMin().getZ();
+                case CLOCKWISE_90 -> bounds.minZ() - piece.selectionMin().getX();
+                case CLOCKWISE_180 -> bounds.minZ() + piece.selectionMax().getZ();
+                case COUNTERCLOCKWISE_90 -> bounds.minZ() + piece.selectionMax().getX();
+            };
+            int candidateOy = bounds.minY() - piece.selectionMin().getY();
+
+            List<BlockPos> origins = List.of(
+                    new BlockPos(candidateOx, candidateOy, candidateOz),
+                    new BlockPos(bounds.minX() - piece.selectionMin().getX(), candidateOy, bounds.minZ() - piece.selectionMin().getZ()),
+                    new BlockPos(bounds.minX(), candidateOy, bounds.minZ()),
+                    new BlockPos(0, candidateOy, 0)
+            );
+
+            for (BlockPos origin : origins) {
+                BoundingBox testBox = transformBox(origin, piece.selectionMin(), piece.selectionMax(), rotation);
+                if (testBox.minX() == bounds.minX() && testBox.minY() == bounds.minY() && testBox.minZ() == bounds.minZ()
+                        && testBox.maxX() == bounds.maxX() && testBox.maxY() == bounds.maxY() && testBox.maxZ() == bounds.maxZ()) {
+                    return java.util.Optional.of(new PlacedPieceContext(piece, origin, rotation, bounds));
+                }
+            }
+        }
+        return java.util.Optional.empty();
     }
 }

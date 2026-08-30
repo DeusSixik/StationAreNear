@@ -30,7 +30,6 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public final class SpannerRhythmMinigameScreen {
-    private static final MutableColor BACKGROUND = MutableColor.rgba(0.006f, 0.009f, 0.014f, 0.94f);
 
     private SpannerRhythmMinigameScreen() {
     }
@@ -87,21 +86,9 @@ public final class SpannerRhythmMinigameScreen {
     private static Widget root(SpannerRhythmMinigameWidget minigame) {
         StackPanel viewport = new StackPanel();
         viewport.layout(style -> style.sizePercent(100.0f, 100.0f));
-        viewport.addChild(backgroundFrame());
         minigame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
         viewport.addChild(minigame);
         return new OverlayLayer(viewport);
-    }
-
-    private static Box backgroundFrame() {
-        Box frame = new Box();
-        frame.themeEnabled(false);
-        frame.backgroundVisible(true);
-        frame.borderVisible(false);
-        frame.radius(0.0f);
-        frame.background(BACKGROUND);
-        frame.layout(style -> style.sizePercent(100.0f, 100.0f).align(Alignment.STRETCH, Alignment.STRETCH));
-        return frame;
     }
 
     public static final class SpannerRhythmMinigameWidget extends WidgetBase {

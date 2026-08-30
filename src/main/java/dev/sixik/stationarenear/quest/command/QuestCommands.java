@@ -108,6 +108,17 @@ public final class QuestCommands {
                                 .then(Commands.argument("station", StringArgumentType.word())
                                         .suggests(QuestCommands::suggestStationIds)
                                         .executes(context -> completeAll(context.getSource(), StringArgumentType.getString(context, "station")))))
+                        .then(Commands.literal("fail")
+                                .executes(context -> failCurrentQuest(context.getSource()))
+                                .then(Commands.argument("station", StringArgumentType.word())
+                                        .suggests(QuestCommands::suggestStationIds)
+                                        .executes(context -> failQuest(context.getSource(), StringArgumentType.getString(context, "station")))))
+                        .then(Commands.literal("fail_at")
+                                .then(Commands.argument("station", StringArgumentType.word())
+                                        .suggests(QuestCommands::suggestStationIds)
+                                        .executes(context -> failQuest(context.getSource(), StringArgumentType.getString(context, "station")))))
+                        .then(Commands.literal("fail_all")
+                                .executes(context -> failAllQuests(context.getSource())))
                         .then(Commands.literal("tp_objective")
                                 .executes(context -> teleportToObjective(context.getSource(), "", 1))
                                 .then(Commands.argument("quest", ResourceLocationArgument.id())
@@ -363,9 +374,62 @@ public final class QuestCommands {
                 completed++;
             }
         }
-        int result = completed;
-        source.sendSuccess(() -> Component.literal("Completed " + result + " quest(s) on station " + stationId + "."), false);
+        int completedCount = completed;
+        source.sendSuccess(() -> Component.literal("Completed " + completedCount + " quest(s) on station " + stationId + "."), false);
         return completed;
+    }
+
+    private static int failCurrentQuest(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        Optional<UUID> stationId = QuestApi.currentStationId(level);
+        if (stationId.isEmpty()) {
+            var stations = QuestSavedData.get(level).stations();
+            if (!stations.isEmpty()) {
+                stationId = Optional.of(stations.iterator().next().stationId());
+            }
+        }
+        if (stationId.isEmpty()) {
+            source.sendFailure(Component.literal("No active quest/mission found."));
+            return 0;
+        }
+        return failQuest(source, stationId.get());
+    }
+
+    private static int failQuest(CommandSourceStack source, String stationIdText) {
+        Optional<UUID> stationId = parseUuid(stationIdText);
+        if (stationId.isEmpty()) {
+            source.sendFailure(Component.literal("Invalid station UUID: " + stationIdText));
+            return 0;
+        }
+        return failQuest(source, stationId.get());
+    }
+
+    private static int failQuest(CommandSourceStack source, UUID stationId) {
+        ServerLevel level = source.getLevel();
+        if (dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler.failMission(level, stationId, "command_fail")) {
+            source.sendSuccess(() -> Component.literal("Failed mission on station " + stationId + "."), true);
+            return 1;
+        }
+        source.sendFailure(Component.literal("Failed to fail mission on station " + stationId + "."));
+        return 0;
+    }
+
+    private static int failAllQuests(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        List<QuestStationState> stations = new ArrayList<>(QuestSavedData.get(level).stations());
+        if (stations.isEmpty()) {
+            source.sendFailure(Component.literal("No active missions found."));
+            return 0;
+        }
+        int count = 0;
+        for (QuestStationState state : stations) {
+            if (dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler.failMission(level, state.stationId(), "command_fail")) {
+                count++;
+            }
+        }
+        final int failedCount = count;
+        source.sendSuccess(() -> Component.literal("Failed " + failedCount + " mission(s)."), true);
+        return count;
     }
 
     private static int teleportToObjective(CommandSourceStack source, String questId, int index) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

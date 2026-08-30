@@ -70,19 +70,39 @@ public class WorkbenchBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving) {
+        if (!level.isClientSide && isMaster(state) && !state.is(oldState.getBlock())) {
+            placeWorkbenchParts(level, pos, state.getValue(FACING));
+        }
+        super.onPlace(state, level, pos, oldState, isMoving);
+    }
+
+    @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(level, pos, state, placer, stack);
         if (level.isClientSide || !isMaster(state)) {
             return;
         }
-        Direction facing = state.getValue(FACING);
-        for (BlockPos partPos : partPositions(pos, facing)) {
-            if (partPos.equals(pos)) {
+        placeWorkbenchParts(level, pos, state.getValue(FACING));
+    }
+
+    public static void placeWorkbenchParts(Level level, BlockPos masterPos, Direction facing) {
+        BlockState masterState = level.getBlockState(masterPos);
+        if (!(masterState.getBlock() instanceof WorkbenchBlock)) {
+            masterState = dev.sixik.stationarenear.quest.registry.QuestBlocks.WORKBENCH.get().defaultBlockState()
+                    .setValue(FACING, facing)
+                    .setValue(PART_X, MASTER_PART_X)
+                    .setValue(PART_Y, MASTER_PART_Y);
+            level.setBlock(masterPos, masterState, 3);
+        }
+        for (BlockPos partPos : partPositions(masterPos, facing)) {
+            if (partPos.equals(masterPos)) {
                 continue;
             }
-            int partX = partX(pos, facing, partPos);
-            int partY = partPos.getY() - pos.getY();
-            level.setBlock(partPos, state.setValue(PART_X, partX).setValue(PART_Y, partY), 3);
+            int partX = partX(masterPos, facing, partPos);
+            int partY = partPos.getY() - masterPos.getY();
+            BlockState partState = masterState.setValue(PART_X, partX).setValue(PART_Y, partY);
+            level.setBlock(partPos, partState, 3);
         }
     }
 

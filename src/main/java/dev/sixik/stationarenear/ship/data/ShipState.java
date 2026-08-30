@@ -74,6 +74,10 @@ public record ShipState(float hp, float maxHp, List<ShipSystemModule> modules, b
         return withModules(updated);
     }
 
+    public ShipState withResetModules() {
+        return withModules(defaultModules());
+    }
+
     public float hpPercent() {
         return maxHp <= 0.0F ? 0.0F : hp / maxHp;
     }

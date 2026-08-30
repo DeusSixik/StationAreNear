@@ -71,7 +71,40 @@ public final class ShipCommands {
                         .then(decompressionCommand())
                         .then(controlCommand())
                         .then(shipAnchorCommand())
-                        .then(televisionCommand())));
+                        .then(televisionCommand())
+                        .then(modulesCommand())));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> modulesCommand() {
+        return Commands.literal("modules")
+                .then(Commands.literal("reset")
+                        .executes(context -> resetModules(context.getSource(), null))
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> resetModules(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "terminal_pos")))))
+                .then(Commands.literal("clear")
+                        .executes(context -> resetModules(context.getSource(), null))
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> resetModules(context.getSource(), BlockPosArgument.getLoadedBlockPos(context, "terminal_pos")))));
+    }
+
+    private static int resetModules(CommandSourceStack source, BlockPos terminalPos) {
+        ServerLevel level = source.getLevel();
+        BlockPos target = terminalPos;
+        if (target == null) {
+            if (source.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+                target = player.blockPosition();
+            } else {
+                source.sendFailure(Component.literal("Terminal position is required."));
+                return 0;
+            }
+        }
+
+        BlockPos stateTerminal = dev.sixik.stationarenear.ship.runtime.ShipManager.stateTerminal(level, target);
+        dev.sixik.stationarenear.ship.data.ShipState shipState = dev.sixik.stationarenear.ship.runtime.ShipManager.state(level, stateTerminal);
+        dev.sixik.stationarenear.ship.data.ShipState resetState = shipState.withResetModules();
+        dev.sixik.stationarenear.ship.world.ShipSavedData.get(level).ship(stateTerminal, resetState);
+        source.sendSuccess(() -> Component.literal("Reset all upgrade modules for ship at " + stateTerminal.toShortString()), true);
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> televisionCommand() {

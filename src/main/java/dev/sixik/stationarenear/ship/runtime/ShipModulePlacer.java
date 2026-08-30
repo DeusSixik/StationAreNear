@@ -1,24 +1,36 @@
 package dev.sixik.stationarenear.ship.runtime;
 
+import dev.sixik.stationarenear.quest.block.WorkbenchBlock;
 import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
+import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
 import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -36,47 +48,126 @@ public final class ShipModulePlacer {
         LIMIT_REACHED
     }
 
+    public record ShipTriggerTarget(BoundingBox bounds, CompoundTag data, Direction direction, String pool) {
+    }
+
     public static PlacementResult installCraftStation(ServerLevel level, BlockPos terminalPos) {
-        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.CRAFT_STATION, TagsConstants.Ship.CRAFTING_STATION, TagsConstants.Ship.WORKBENCH);
-        if (positions.isEmpty()) {
-            return PlacementResult.NO_TRIGGERS_FOUND;
-        }
-
-        for (BlockPos pos : positions) {
-            if (level.getBlockState(pos).is(QuestBlocks.WORKBENCH.get())) {
-                return PlacementResult.ALREADY_EXISTS;
-            }
-            if (level.getBlockState(pos).isAir() || level.getBlockState(pos).canBeReplaced()) {
-                level.setBlockAndUpdate(pos, QuestBlocks.WORKBENCH.get().defaultBlockState());
-                return PlacementResult.SUCCESS;
-            }
-        }
-
-        level.setBlockAndUpdate(positions.get(0), QuestBlocks.WORKBENCH.get().defaultBlockState());
-        return PlacementResult.SUCCESS;
+        return placePoolOrFallback(
+                level,
+                terminalPos,
+                "craft_station",
+                QuestBlocks.WORKBENCH.get().defaultBlockState(),
+                TagsConstants.Ship.CRAFT_STATION,
+                TagsConstants.Ship.CRAFTING_STATION,
+                TagsConstants.Ship.WORKBENCH
+        );
     }
 
     public static PlacementResult installExtraStorage(ServerLevel level, BlockPos terminalPos) {
-        List<BlockPos> positions = findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.STORAGE, TagsConstants.Ship.EXTRA_STORAGE);
-        if (positions.isEmpty()) {
+        return placePoolOrFallback(
+                level,
+                terminalPos,
+                "storage",
+                getStorageBlockState(),
+                TagsConstants.Ship.STORAGE,
+                TagsConstants.Ship.EXTRA_STORAGE
+        );
+    }
+
+    private static BlockState getStorageBlockState() {
+        net.minecraft.world.level.block.Block cabinet = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(new ResourceLocation("station_blocks", "cabinet_big"));
+        if (cabinet != null && cabinet != Blocks.AIR) {
+            return cabinet.defaultBlockState();
+        }
+        return Blocks.CHEST.defaultBlockState();
+    }
+
+    public static PlacementResult placePoolOrFallback(ServerLevel level, BlockPos terminalPos, String defaultPool, BlockState fallbackBlockState, String... tags) {
+        List<ShipTriggerTarget> targets = findShipTriggerTargets(level, terminalPos, tags);
+        if (targets.isEmpty()) {
             return PlacementResult.NO_TRIGGERS_FOUND;
         }
 
-        for (BlockPos pos : positions) {
-            if (level.getBlockState(pos).isAir() || level.getBlockState(pos).canBeReplaced()) {
-                level.setBlockAndUpdate(pos, Blocks.CHEST.defaultBlockState());
+        StationStructureLibraryData library = StationStructureLibraryData.get(level);
+
+        for (ShipTriggerTarget target : targets) {
+            BoundingBox box = target.bounds();
+            BlockPos checkPos = new BlockPos(box.minX(), box.minY(), box.minZ());
+
+            if (!level.getBlockState(checkPos).isAir() && !level.getBlockState(checkPos).canBeReplaced()) {
+                continue;
+            }
+
+            String poolName = target.pool() != null && !target.pool().isBlank() ? target.pool() : defaultPool;
+            ResourceLocation poolId = StationStructureIds.pool(poolName);
+            Optional<StationPoolDefinition> poolOpt = library.pool(poolId);
+
+            List<StationPieceDefinition> candidates = new ArrayList<>();
+            if (poolOpt.isPresent()) {
+                for (ResourceLocation id : poolOpt.get().roomPieces()) {
+                    library.piece(id).ifPresent(candidates::add);
+                }
+                for (ResourceLocation id : poolOpt.get().startPieces()) {
+                    library.piece(id).ifPresent(candidates::add);
+                }
+            } else {
+                for (StationPieceDefinition piece : library.pieces()) {
+                    if (piece.pool().equals(poolId)) {
+                        candidates.add(piece);
+                    }
+                }
+            }
+
+            Direction direction = target.direction();
+
+            if (!candidates.isEmpty()) {
+                StationPieceDefinition pieceDef = candidates.get(level.getRandom().nextInt(candidates.size()));
+                Optional<StructureTemplate> templateOpt = level.getStructureManager().get(pieceDef.template());
+                if (templateOpt.isPresent()) {
+                    StructureTemplate template = templateOpt.get();
+                    Rotation rotation = rotationForTemplate(template, direction, target.data());
+                    BoundingBox localBounds = StationPlacementUtil.transformBounds(BlockPos.ZERO, template.getSize(), rotation);
+                    BlockPos origin = checkPos.offset(-localBounds.minX(), -localBounds.minY(), -localBounds.minZ());
+
+                    StructurePlaceSettings settings = new StructurePlaceSettings()
+                            .setRotation(rotation)
+                            .addProcessor(BlockIgnoreProcessor.AIR);
+                    template.placeInWorld(level, origin, origin, settings, level.getRandom(), 2);
+                    ensureMultipartPlaced(level, origin, template, rotation);
+                    return PlacementResult.SUCCESS;
+                }
+            }
+
+            BlockState stateToPlace = fallbackBlockState;
+            if (stateToPlace.getBlock() instanceof WorkbenchBlock) {
+                WorkbenchBlock.placeWorkbenchParts(level, checkPos, direction);
                 return PlacementResult.SUCCESS;
             }
+            if (stateToPlace.hasProperty(HorizontalDirectionalBlock.FACING)) {
+                stateToPlace = stateToPlace.setValue(HorizontalDirectionalBlock.FACING, direction);
+            }
+            level.setBlockAndUpdate(checkPos, stateToPlace);
+            return PlacementResult.SUCCESS;
         }
 
         return PlacementResult.LIMIT_REACHED;
     }
 
-    public static int availableStorageSlots(ServerLevel level, BlockPos terminalPos) {
-        return findShipTriggerPositions(level, terminalPos, TagsConstants.Ship.STORAGE, TagsConstants.Ship.EXTRA_STORAGE).size();
+    private static void ensureMultipartPlaced(ServerLevel level, BlockPos origin, StructureTemplate template, Rotation rotation) {
+        BoundingBox box = StationPlacementUtil.transformBounds(origin, template.getSize(), rotation);
+        BlockPos.betweenClosedStream(box).forEach(pos -> {
+            BlockState state = level.getBlockState(pos);
+            if (state.getBlock() instanceof WorkbenchBlock && WorkbenchBlock.isMaster(state)) {
+                WorkbenchBlock.placeWorkbenchParts(level, pos.immutable(), state.getValue(WorkbenchBlock.FACING));
+            }
+        });
     }
 
-    public static List<BlockPos> findShipTriggerPositions(ServerLevel level, BlockPos terminalPos, String... tags) {
+    public static int availableStorageSlots(ServerLevel level, BlockPos terminalPos) {
+        return findShipTriggerTargets(level, terminalPos, TagsConstants.Ship.STORAGE, TagsConstants.Ship.EXTRA_STORAGE).size();
+    }
+
+    public static List<ShipTriggerTarget> findShipTriggerTargets(ServerLevel level, BlockPos terminalPos, String... tags) {
         Optional<ShipDockingAnchor> anchorOpt = ShipDockingAnchorSavedData.get(level)
                 .anchor(terminalPos)
                 .or(() -> ShipDockingAnchorResolver.bindNearbyShip(level, terminalPos));
@@ -87,7 +178,7 @@ public final class ShipModulePlacer {
         ShipDockingAnchor anchor = anchorOpt.get();
         BoundingBox shipBounds = anchor.shipBounds();
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
-        List<BlockPos> results = new ArrayList<>();
+        List<ShipTriggerTarget> results = new ArrayList<>();
 
         for (Map.Entry<ResourceLocation, BoundingBox> entry : library.savedTemplateSelections().entrySet()) {
             if (!sameBounds(shipBounds, entry.getValue())) {
@@ -101,7 +192,9 @@ public final class ShipModulePlacer {
                 for (StationTriggerZone zone : piece.triggerZones()) {
                     if (hasMatchingTag(zone, tags)) {
                         BoundingBox triggerBounds = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), Rotation.NONE);
-                        results.add(new BlockPos(triggerBounds.minX(), triggerBounds.minY(), triggerBounds.minZ()));
+                        Direction dir = triggerDirection(zone.data());
+                        String pool = zone.data() != null && zone.data().contains("pool") ? zone.data().getString("pool") : "";
+                        results.add(new ShipTriggerTarget(triggerBounds, zone.data(), dir, pool));
                     }
                 }
             }
@@ -116,13 +209,69 @@ public final class ShipModulePlacer {
                 for (StationTriggerZone zone : piece.triggerZones()) {
                     if (hasMatchingTag(zone, tags)) {
                         BoundingBox triggerBounds = StationPlacementUtil.transformBox(origin, zone.min(), zone.max(), Rotation.NONE);
-                        results.add(new BlockPos(triggerBounds.minX(), triggerBounds.minY(), triggerBounds.minZ()));
+                        Direction dir = triggerDirection(zone.data());
+                        String pool = zone.data() != null && zone.data().contains("pool") ? zone.data().getString("pool") : "";
+                        results.add(new ShipTriggerTarget(triggerBounds, zone.data(), dir, pool));
                     }
                 }
             }
         }
 
         return results;
+    }
+
+    private static Direction triggerDirection(CompoundTag data) {
+        if (data != null) {
+            String dirStr = data.contains("objectDirection") ? data.getString("objectDirection")
+                    : (data.contains("direction") ? data.getString("direction")
+                    : (data.contains("facing") ? data.getString("facing") : ""));
+            Direction dir = Direction.byName(dirStr.toLowerCase(Locale.ROOT));
+            if (dir != null && dir.getAxis().isHorizontal()) {
+                return dir;
+            }
+        }
+        return Direction.NORTH;
+    }
+
+    private static Rotation rotationForTemplate(StructureTemplate template, Direction targetDirection, CompoundTag data) {
+        Direction baseFacing = inferTemplateFacing(template, data);
+        if (baseFacing == null) {
+            baseFacing = Direction.NORTH;
+        }
+        for (Rotation rot : List.of(Rotation.NONE, Rotation.CLOCKWISE_90, Rotation.CLOCKWISE_180, Rotation.COUNTERCLOCKWISE_90)) {
+            if (rot.rotate(baseFacing) == targetDirection) {
+                return rot;
+            }
+        }
+        return Rotation.NONE;
+    }
+
+    private static Direction inferTemplateFacing(StructureTemplate template, CompoundTag data) {
+        if (data != null && data.contains("objectBaseDirection")) {
+            Direction dir = Direction.byName(data.getString("objectBaseDirection").toLowerCase(Locale.ROOT));
+            if (dir != null && dir.getAxis().isHorizontal()) {
+                return dir;
+            }
+        }
+        CompoundTag savedTemplate = template.save(new CompoundTag());
+        ListTag palettes = savedTemplate.getList("palettes", Tag.TAG_LIST);
+        ListTag palette = !palettes.isEmpty() ? palettes.getList(0) : savedTemplate.getList("palette", Tag.TAG_COMPOUND);
+        for (int i = 0; i < palette.size(); i++) {
+            CompoundTag state = palette.getCompound(i);
+            if (!state.contains("Properties", Tag.TAG_COMPOUND)) {
+                continue;
+            }
+            CompoundTag properties = state.getCompound("Properties");
+            for (String key : List.of("facing", "horizontal_facing")) {
+                if (properties.contains(key, Tag.TAG_STRING)) {
+                    Direction dir = Direction.byName(properties.getString(key).toLowerCase(Locale.ROOT));
+                    if (dir != null && dir.getAxis().isHorizontal()) {
+                        return dir;
+                    }
+                }
+            }
+        }
+        return Direction.NORTH;
     }
 
     private static boolean hasMatchingTag(StationTriggerZone zone, String... tags) {

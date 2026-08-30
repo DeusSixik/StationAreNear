@@ -419,12 +419,18 @@ public final class StationZoneEditorClient {
             Button electricSource = button("QOP Electric");
             Button sinkSource = button("QOP Sink");
             Button panelSource = button("QOP Panel");
+            Button gravitySource = button("QOP Gravity");
+            Button oxygenSource = button("QOP Oxygen");
             electricSource.onClick(event -> createQuestObjectPlacerPreset("electric", TagsConstants.Quest.ELECTRIC + ",electrics," + TagsConstants.Quest.SOCKET));
             sinkSource.onClick(event -> createQuestObjectPlacerPreset("sink", "kitchen_sink,sink,stationarenear:kitchen_sink,place_kitchen_sink,stationarenear:place_kitchen_sink"));
             panelSource.onClick(event -> createQuestObjectPlacerPreset("electric_switch", TagsConstants.Quest.ELECTRIC_SWITCH + ",energy_panel,electric_panel"));
+            gravitySource.onClick(event -> createQuestObjectPlacerPreset("gravitation_panel", TagsConstants.Quest.GRAVITATION_PANEL + ",gravitation,gravity,broken_gravity"));
+            oxygenSource.onClick(event -> createQuestObjectPlacerPreset("oxygen_panel", TagsConstants.Quest.OXYGEN_PANEL + ",oxygen,oxygen_system,broken_oxygen"));
             questSources.addChild(electricSource);
             questSources.addChild(sinkSource);
             questSources.addChild(panelSource);
+            questSources.addChild(gravitySource);
+            questSources.addChild(oxygenSource);
             inspector.addChild(questSources);
 
             HBox questTargets = new HBox();

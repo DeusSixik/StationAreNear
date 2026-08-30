@@ -273,6 +273,20 @@ public final class QuestTaskInteractionHandler {
                 .ifPresent(context -> incrementRepairElectricPanel(event.getLevel(), context, event.getPos(), player));
     }
 
+    @SubscribeEvent
+    public static void onGravitationPanelRepaired(dev.sixik.stationarenear.quest.event.GravitationPanelRepairedEvent event) {
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        stationPieceAt(event.getLevel(), event.getPos())
+                .ifPresent(context -> incrementRepairGravitationPanel(event.getLevel(), context, event.getPos(), player));
+    }
+
+    @SubscribeEvent
+    public static void onOxygenPanelRepaired(dev.sixik.stationarenear.quest.event.OxygenPanelRepairedEvent event) {
+        ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        stationPieceAt(event.getLevel(), event.getPos())
+                .ifPresent(context -> incrementRepairOxygenPanel(event.getLevel(), context, event.getPos(), player));
+    }
+
     private static boolean increment(ServerLevel level, UUID stationId, String questId, BlockPos pos, ServerPlayer player) {
         Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
                 .stationIfPresent(stationId)
@@ -335,6 +349,52 @@ public final class QuestTaskInteractionHandler {
         markDone(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, pos);
         if (next >= objective.get().targetCount()) {
             QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_ELECTRIC_PANEL, player);
+        }
+        return true;
+    }
+
+    private static boolean incrementRepairGravitationPanel(ServerLevel level, StationPieceContext context, BlockPos pos, ServerPlayer player) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.REPAIR_GRAVITATION_PANEL));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!triggerZoneMatches(context.piece(), objective.get(), pos)) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.REPAIR_GRAVITATION_PANEL, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.REPAIR_GRAVITATION_PANEL, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_GRAVITATION_PANEL, player);
+        }
+        return true;
+    }
+
+    private static boolean incrementRepairOxygenPanel(ServerLevel level, StationPieceContext context, BlockPos pos, ServerPlayer player) {
+        Optional<QuestObjectiveState> objective = QuestSavedData.get(level)
+                .stationIfPresent(context.station().id())
+                .flatMap(state -> state.objective(StationQuests.REPAIR_OXYGEN_PANEL));
+        if (objective.isEmpty() || objective.get().completed() || alreadyDone(objective.get(), pos)) {
+            return false;
+        }
+        if (!triggerZoneMatches(context.piece(), objective.get(), pos)) {
+            return false;
+        }
+
+        int current = objective.get().progress().getInt("value");
+        int next = Math.min(objective.get().targetCount(), current + 1);
+        if (!QuestApi.progress(level, context.station().id(), StationQuests.REPAIR_OXYGEN_PANEL, next)) {
+            return false;
+        }
+        markDone(level, context.station().id(), StationQuests.REPAIR_OXYGEN_PANEL, pos);
+        if (next >= objective.get().targetCount()) {
+            QuestApi.complete(level, context.station().id(), StationQuests.REPAIR_OXYGEN_PANEL, player);
         }
         return true;
     }

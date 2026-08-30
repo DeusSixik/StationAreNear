@@ -150,7 +150,7 @@ public final class StationGravitationManager {
         }
     }
 
-    private static boolean hasGravitationFailureOffer(StationInstance station) {
+    public static boolean hasGravitationFailureOffer(StationInstance station) {
         CompoundTag customData = station.customData();
         if (customData.contains("stationOffers", Tag.TAG_LIST)) {
             ListTag offers = customData.getList("stationOffers", Tag.TAG_COMPOUND);

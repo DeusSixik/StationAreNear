@@ -278,7 +278,7 @@ public final class DirectorConfigManager {
             result.merge(TagsConstants.Trigger.OBJECT_ZONE_PLACER, 1, Integer::sum);
             return Map.copyOf(result);
         }
-        if (kind == QuestObjectiveKind.REPAIR_ELECTRIC_PANEL) {
+        if (kind == QuestObjectiveKind.REPAIR_ELECTRIC_PANEL || kind == QuestObjectiveKind.REPAIR_GRAVITATION_PANEL || kind == QuestObjectiveKind.REPAIR_OXYGEN_PANEL) {
             result.merge(TagsConstants.Trigger.QUEST_OBJECT_PLACER, 1, Integer::sum);
             return Map.copyOf(result);
         }
@@ -477,6 +477,26 @@ public final class DirectorConfigManager {
                     "%s": ["%s"],
                     "text": "Починить электрический щиток",
                     "sam_text": "Repair the station electrical panel."
+                  },
+                  {
+                    "id": "stationarenear:repair_gravitation_panel",
+                    "kind": "REPAIR_GRAVITATION_PANEL",
+                    "cost": 60,
+                    "weight": 4,
+                    "count": 1,
+                    "%s": ["%s"],
+                    "text": "Починить панель гравитации",
+                    "sam_text": "Repair the station gravitation panel."
+                  },
+                  {
+                    "id": "stationarenear:repair_oxygen_panel",
+                    "kind": "REPAIR_OXYGEN_PANEL",
+                    "cost": 70,
+                    "weight": 4,
+                    "count": 1,
+                    "%s": ["%s"],
+                    "text": "Починить панель кислорода",
+                    "sam_text": "Repair the station oxygen panel."
                   }
                 ]
               }
@@ -487,7 +507,9 @@ public final class DirectorConfigManager {
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC,
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC,
             TagsConstants.Keys.TARGET_TAGS, "kitchen_sink",
-            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC_SWITCH
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC_SWITCH,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.GRAVITATION_PANEL,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.OXYGEN_PANEL
     );
     private static final String DEFAULT_STATION_OFFERS_JSON = """
             {
@@ -534,6 +556,22 @@ public final class DirectorConfigManager {
                     "weight": 3,
                     "count": 1,
                     "%s": ["%s"]
+                  },
+                  {
+                    "id": "stationarenear:gravitation_failure",
+                    "type": "GRAVITATION_FAILURE",
+                    "cost": 40,
+                    "weight": 3,
+                    "count": 1,
+                    "%s": ["%s"]
+                  },
+                  {
+                    "id": "stationarenear:oxygen_failure",
+                    "type": "OXYGEN_FAILURE",
+                    "cost": 40,
+                    "weight": 3,
+                    "count": 1,
+                    "%s": ["%s"]
                   }
                 ]
               }
@@ -543,6 +581,8 @@ public final class DirectorConfigManager {
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Trigger.MOB_SPAWN,
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Trigger.DOOR_TRIGGER,
             TagsConstants.Keys.TARGET_TAGS, TagsConstants.Trigger.OBJECT_ZONE_PLACER,
-            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC_SWITCH
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.ELECTRIC_SWITCH,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.GRAVITATION_PANEL,
+            TagsConstants.Keys.TARGET_TAGS, TagsConstants.Quest.OXYGEN_PANEL
     );
 }

@@ -153,7 +153,7 @@ public final class StationOxygenManager {
         }
     }
 
-    private static boolean hasOxygenFailureOffer(StationInstance station) {
+    public static boolean hasOxygenFailureOffer(StationInstance station) {
         CompoundTag customData = station.customData();
         if (customData.contains("stationOffers", Tag.TAG_LIST)) {
             ListTag offers = customData.getList("stationOffers", Tag.TAG_COMPOUND);

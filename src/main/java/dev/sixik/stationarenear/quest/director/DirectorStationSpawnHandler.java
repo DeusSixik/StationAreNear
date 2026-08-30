@@ -41,8 +41,10 @@ public final class DirectorStationSpawnHandler {
             applyDoorOffer(event, plan);
         } else if (event.getTriggerType() == StationStructureTriggerType.OBJECT_ZONE_PLACER) {
             applyObjectOffer(event, plan);
-        } else if (event.getTriggerType() == StationStructureTriggerType.QUEST_PLACE) {
+        } else if (event.getTriggerType() == StationStructureTriggerType.QUEST_PLACE || event.getTriggerType() == StationStructureTriggerType.QUEST_OBJECT_PLACER || event.getTriggerType() == StationStructureTriggerType.OBJECT_PLACER) {
             applyEnergyFailureOffer(event, plan);
+            applyGravitationFailureOffer(event, plan);
+            applyOxygenFailureOffer(event, plan);
         }
     }
 
@@ -94,6 +96,26 @@ public final class DirectorStationSpawnHandler {
         event.getZone().data().putBoolean("energyPanel", true);
         event.getZone().data().putInt("energyPanelChance", 100);
         event.getZone().data().putBoolean("broken", true);
+    }
+
+    private static void applyGravitationFailureOffer(StationStructureSpawnTriggerEvent event, CompoundTag plan) {
+        CompoundTag offer = takeOffer(plan, StationOfferType.GRAVITATION_FAILURE, event.getZone());
+        if (offer.isEmpty()) {
+            return;
+        }
+        consume(offer, 1);
+        event.getZone().data().putBoolean("broken", true);
+        event.getZone().data().putBoolean("brokenGravitation", true);
+    }
+
+    private static void applyOxygenFailureOffer(StationStructureSpawnTriggerEvent event, CompoundTag plan) {
+        CompoundTag offer = takeOffer(plan, StationOfferType.OXYGEN_FAILURE, event.getZone());
+        if (offer.isEmpty()) {
+            return;
+        }
+        consume(offer, 1);
+        event.getZone().data().putBoolean("broken", true);
+        event.getZone().data().putBoolean("brokenOxygen", true);
     }
 
     private static CompoundTag takeOffer(CompoundTag plan, StationOfferType type, PlacedTriggerZone zone) {

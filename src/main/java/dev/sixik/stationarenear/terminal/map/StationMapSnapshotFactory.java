@@ -175,15 +175,15 @@ public final class StationMapSnapshotFactory {
     }
 
     private static boolean isPanelZone(PlacedTriggerZone zone) {
-        if ("ENERGY_PANEL".equalsIgnoreCase(zone.type()) || "LAMP_SWITCH".equalsIgnoreCase(zone.type()) || "ELECTRICK_BROKEN".equalsIgnoreCase(zone.type()) || "ELECTRICK_NORMAL".equalsIgnoreCase(zone.type())) {
+        if ("ENERGY_PANEL".equalsIgnoreCase(zone.type()) || "LAMP_SWITCH".equalsIgnoreCase(zone.type()) || "ELECTRICK_BROKEN".equalsIgnoreCase(zone.type()) || "ELECTRICK_NORMAL".equalsIgnoreCase(zone.type()) || "GRAVITATION_PANEL".equalsIgnoreCase(zone.type()) || "OXYGEN_PANEL".equalsIgnoreCase(zone.type())) {
             return true;
         }
-        if (zone.id() != null && (zone.id().toLowerCase().contains("energy_panel") || zone.id().toLowerCase().contains("panel") || zone.id().toLowerCase().contains("electrick"))) {
+        if (zone.id() != null && (zone.id().toLowerCase().contains("energy_panel") || zone.id().toLowerCase().contains("panel") || zone.id().toLowerCase().contains("electrick") || zone.id().toLowerCase().contains("gravitation") || zone.id().toLowerCase().contains("gravity") || zone.id().toLowerCase().contains("oxygen"))) {
             return true;
         }
         if (zone.data() != null && zone.data().contains(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)) {
             String tags = zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS).toLowerCase();
-            return tags.contains("energy_panel") || tags.contains("panel") || tags.contains("electrick");
+            return tags.contains("energy_panel") || tags.contains("panel") || tags.contains("electrick") || tags.contains("gravitation") || tags.contains("gravity") || tags.contains("oxygen");
         }
         return false;
     }

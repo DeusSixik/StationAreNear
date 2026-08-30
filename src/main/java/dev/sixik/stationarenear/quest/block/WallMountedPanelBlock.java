@@ -123,8 +123,10 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
             }
             if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.GRAVITATION_PANEL.get())) {
                 dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onPanelRepaired(level, pos, player);
+                net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new dev.sixik.stationarenear.quest.event.GravitationPanelRepairedEvent(level, player, pos));
             } else if (state.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.OXYGEN_PANEL.get())) {
                 dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onPanelRepaired(level, pos, player);
+                net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new dev.sixik.stationarenear.quest.event.OxygenPanelRepairedEvent(level, player, pos));
             }
             player.displayClientMessage(Component.literal("Панель успешно починена и синхронизирована."), true);
         }

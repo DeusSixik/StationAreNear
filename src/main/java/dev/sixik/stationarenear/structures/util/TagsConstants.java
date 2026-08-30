@@ -41,6 +41,12 @@ public final class TagsConstants {
         /** Цель для электрического щитка/переключателя станции. */
         public static final String ELECTRIC_SWITCH = "electric_switch";
 
+        public static final String GRAVITATION_PANEL = "gravitation_panel";
+        public static final String OXYGEN_PANEL = "oxygen_panel";
+        public static final String GRAVITATION = "gravitation";
+        public static final String OXYGEN = "oxygen";
+        public static final String GRAVITY = "gravity";
+
         /** Общий кухонный тег для зон установки бытовых объектов. */
         public static final String KITCHEN_PLACE = "kitchen_place";
     }
@@ -148,6 +154,9 @@ public final class TagsConstants {
         public static final String STORAGE = "storage";
         public static final String EXTRA_STORAGE = "extra_storage";
 
+
+        public static final String GRAVITATION_PANEL = "gravitation_panel";
+        public static final String OXYGEN_PANEL = "oxygen_panel";
 
         public static final String TRIGGER = "trigger";
 

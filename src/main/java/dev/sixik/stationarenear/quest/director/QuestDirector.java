@@ -36,6 +36,10 @@ public final class QuestDirector {
                 requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.BROKEN_DOOR;
             } else if (task.offer().kind() == dev.sixik.stationarenear.quest.data.QuestObjectiveKind.REPAIR_ELECTRIC_PANEL) {
                 requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.ENERGY_FAILURE;
+            } else if (task.offer().kind() == dev.sixik.stationarenear.quest.data.QuestObjectiveKind.REPAIR_GRAVITATION_PANEL) {
+                requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.GRAVITATION_FAILURE;
+            } else if (task.offer().kind() == dev.sixik.stationarenear.quest.data.QuestObjectiveKind.REPAIR_OXYGEN_PANEL) {
+                requiredType = dev.sixik.stationarenear.quest.config.director.StationOfferType.OXYGEN_FAILURE;
             }
             if (requiredType != null) {
                 dev.sixik.stationarenear.quest.config.director.StationOfferType finalType = requiredType;

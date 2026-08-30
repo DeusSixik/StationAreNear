@@ -12,7 +12,7 @@ import java.util.UUID;
 public final class PlayerBalanceSavedData extends SavedData {
 
     private static final String DATA_NAME = StationAreNear.MODID + "_player_balance";
-    public static final double DEFAULT_BALANCE = 100.0;
+    public static final double DEFAULT_BALANCE = 250.0d;
 
     private final Map<UUID, Double> balances = new HashMap<>();
 

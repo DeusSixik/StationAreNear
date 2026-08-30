@@ -16,6 +16,8 @@ public final class StationQuests {
     public static final String BUILD_SHEATHING = id("build_sheathing");
     public static final String REPAIR_DOORS = id("repair_doors");
     public static final String REPAIR_ELECTRIC_PANEL = id("repair_electric_panel");
+    public static final String REPAIR_GRAVITATION_PANEL = id("repair_gravitation_panel");
+    public static final String REPAIR_OXYGEN_PANEL = id("repair_oxygen_panel");
 
     private StationQuests() {
     }
@@ -30,6 +32,8 @@ public final class StationQuests {
         register(BUILD_SHEATHING, QuestObjectiveKind.BUILD_BLOCK, "\u041f\u043e\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043e\u0431\u0448\u0438\u0432\u043a\u0443 \u0441\u0442\u0430\u043d\u0446\u0438\u0438", "Build the requested station sheathing at the marked station zone");
         register(REPAIR_DOORS, QuestObjectiveKind.REPAIR_DOOR, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u0438", "Repair the pressure doors at the marked station zone");
         register(REPAIR_ELECTRIC_PANEL, QuestObjectiveKind.REPAIR_ELECTRIC_PANEL, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0449\u0438\u0442\u043e\u043a", "Repair the station electrical panel");
+        register(REPAIR_GRAVITATION_PANEL, QuestObjectiveKind.REPAIR_GRAVITATION_PANEL, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u043f\u0430\u043d\u0435\u043b\u044c \u0433\u0440\u0430\u0432\u0438\u0442\u0430\u0446\u0438\u0438", "Repair the station gravitation panel");
+        register(REPAIR_OXYGEN_PANEL, QuestObjectiveKind.REPAIR_OXYGEN_PANEL, "\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u043f\u0430\u043d\u0435\u043b\u044c \u043a\u0438\u0441\u043b\u043e\u0440\u043e\u0434\u0430", "Repair the station oxygen panel");
     }
 
     public static QuestDefinition register(String id, QuestObjectiveKind kind, String playerText, String samText) {

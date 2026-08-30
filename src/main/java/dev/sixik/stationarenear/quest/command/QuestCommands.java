@@ -78,7 +78,15 @@ public final class QuestCommands {
                         .then(Commands.literal("set")
                                 .then(Commands.argument("amount", DoubleArgumentType.doubleArg())
                                         .executes(context -> setBalance(context.getSource(), DoubleArgumentType.getDouble(context, "amount"))))))
+                .then(Commands.literal("difficulty")
+                        .then(Commands.literal("reset").executes(context -> resetDifficulty(context.getSource())))
+                        .then(Commands.literal("get").executes(context -> showDifficulty(context.getSource())))
+                        .then(Commands.literal("set")
+                                .then(Commands.argument("count", IntegerArgumentType.integer(0))
+                                        .executes(context -> setDifficulty(context.getSource(), IntegerArgumentType.getInteger(context, "count"))))))
                 .then(Commands.literal("quests")
+                        .then(Commands.literal("reset").executes(context -> resetQuests(context.getSource())))
+                        .then(Commands.literal("reset_all").executes(context -> resetAllQuestsAndDifficulty(context.getSource())))
                         .then(Commands.literal("reload").executes(context -> reloadDirector(context.getSource())))
                         .then(Commands.literal("start")
                                 .executes(context -> startTestQuest(context.getSource(), "", 0))
@@ -120,6 +128,50 @@ public final class QuestCommands {
                                                         .then(Commands.argument("count", IntegerArgumentType.integer(0))
                                                                 .executes(context -> startTestQuest(context.getSource(), getIdArgument(context, "director"), IntegerArgumentType.getInteger(context, "count")))))))
                                 .then(Commands.literal("stop").executes(context -> stopTestQuest(context.getSource()))))));
+    }
+
+    private static int resetDifficulty(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        QuestSavedData data = QuestSavedData.get(level);
+        data.resetDifficulty();
+        source.sendSuccess(() -> Component.literal("Reset difficulty (completed missions count = 0)."), true);
+        return 1;
+    }
+
+    private static int setDifficulty(CommandSourceStack source, int count) {
+        ServerLevel level = source.getLevel();
+        QuestSavedData data = QuestSavedData.get(level);
+        data.setCompletedMissionCount(count);
+        source.sendSuccess(() -> Component.literal("Set difficulty completed missions count to " + count), true);
+        return 1;
+    }
+
+    private static int showDifficulty(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        QuestSavedData data = QuestSavedData.get(level);
+        int count = data.completedMissionCount();
+        source.sendSuccess(() -> Component.literal("Current difficulty: " + count + " completed missions."), false);
+        return count;
+    }
+
+    private static int resetQuests(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        QuestSavedData data = QuestSavedData.get(level);
+        data.resetQuests();
+        QuestTestScenario.stop(level);
+        dev.sixik.stationarenear.quest.runtime.AutoQuestManager.scheduleNextQuest(dev.sixik.stationarenear.quest.config.QuestConfig.QUEST_INTERVAL_SECONDS.get());
+        source.sendSuccess(() -> Component.literal("Reset all quests and completed quest records."), true);
+        return 1;
+    }
+
+    private static int resetAllQuestsAndDifficulty(CommandSourceStack source) {
+        ServerLevel level = source.getLevel();
+        QuestSavedData data = QuestSavedData.get(level);
+        data.resetAll();
+        QuestTestScenario.stop(level);
+        dev.sixik.stationarenear.quest.runtime.AutoQuestManager.scheduleNextQuest(dev.sixik.stationarenear.quest.config.QuestConfig.QUEST_INTERVAL_SECONDS.get());
+        source.sendSuccess(() -> Component.literal("Reset all quests, completed quest records, and difficulty."), true);
+        return 1;
     }
 
     private static int showBalance(CommandSourceStack source) {

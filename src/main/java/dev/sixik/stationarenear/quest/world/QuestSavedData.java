@@ -88,6 +88,31 @@ public class QuestSavedData extends SavedData {
         setDirty();
     }
 
+    public void setCompletedMissionCount(int count) {
+        completedMissionCount = Math.max(0, count);
+        setDirty();
+    }
+
+    public void resetDifficulty() {
+        completedMissionCount = 0;
+        setDirty();
+    }
+
+    public void resetQuests() {
+        stations.clear();
+        completedQuestIds.clear();
+        currentStationId = null;
+        setDirty();
+    }
+
+    public void resetAll() {
+        stations.clear();
+        completedQuestIds.clear();
+        completedMissionCount = 0;
+        currentStationId = null;
+        setDirty();
+    }
+
     public boolean isQuestCompleted(String questId) {
         return completedQuestIds.contains(normalizeQuestId(questId));
     }

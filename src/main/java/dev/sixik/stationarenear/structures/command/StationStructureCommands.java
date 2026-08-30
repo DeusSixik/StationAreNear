@@ -1,16 +1,23 @@
 package dev.sixik.stationarenear.structures.command;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.suggestion.Suggestions;
-import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
+import dev.sixik.stationarenear.ship.data.ShipSystemType;
+import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
+import dev.sixik.stationarenear.ship.runtime.ShipDoorController;
+import dev.sixik.stationarenear.ship.runtime.ShipManager;
 import dev.sixik.stationarenear.structures.config.StationStructureConfig;
 import dev.sixik.stationarenear.structures.config.StationStructureConfigManager;
 import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
+import dev.sixik.stationarenear.structures.data.StationInstance;
+import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
 import dev.sixik.stationarenear.structures.generation.StationGenerationResult;
@@ -20,14 +27,14 @@ import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
 import dev.sixik.stationarenear.structures.item.StationStructureToolItem;
 import dev.sixik.stationarenear.structures.network.StationStructureNetwork;
 import dev.sixik.stationarenear.structures.registry.StationStructureItems;
+import dev.sixik.stationarenear.structures.util.NbtPos;
 import dev.sixik.stationarenear.structures.util.StationStructureIds;
+import dev.sixik.stationarenear.structures.util.TagsConstants;
 import dev.sixik.stationarenear.structures.world.StationSavedData;
 import dev.sixik.stationarenear.structures.world.StationStructureLibraryData;
-import dev.sixik.stationarenear.structures.util.NbtPos;
-import dev.sixik.stationarenear.structures.util.TagsConstants;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
@@ -37,13 +44,14 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.BlockIgnoreProcessor;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -52,6 +60,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -152,6 +161,8 @@ public final class StationStructureCommands {
                                                                                 parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
                                                                         ))))))))
                         .then(generateAtCommand())
+                        .then(generateAtStokeCommand())
+                        .then(generateAtDockCommand())
                         .then(spawnPoolCommand())
                         .then(Commands.literal("list_generated")
                                 .executes(context -> listGenerated(context.getSource())))
@@ -165,6 +176,63 @@ public final class StationStructureCommands {
                         .then(configurationCommand())));
     }
 
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> generateAtDockCommand() {
+        return generateAtStokeCommand();
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> generateAtStokeCommand() {
+        var requiredArgument = Commands.literal("required")
+                .then(Commands.argument(TagsConstants.Keys.REQUIRED_PIECES, StringArgumentType.greedyString())
+                        .suggests(StationStructureCommands::suggestPieces)
+                        .executes(context -> generateAtStoke(
+                                context.getSource(),
+                                StringArgumentType.getString(context, "pool_or_config"),
+                                FloatArgumentType.getFloat(context, "danger"),
+                                IntegerArgumentType.getInteger(context, "pieces"),
+                                parseRequiredPieces(context.getSource(), StringArgumentType.getString(context, TagsConstants.Keys.REQUIRED_PIECES))
+                        )));
+
+        var piecesArgument = Commands.argument("pieces", IntegerArgumentType.integer(1))
+                .executes(context -> generateAtStoke(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "pool_or_config"),
+                        FloatArgumentType.getFloat(context, "danger"),
+                        IntegerArgumentType.getInteger(context, "pieces"),
+                        RequiredPieceSpec.empty()
+                ))
+                .then(requiredArgument);
+
+        var dangerArgument = Commands.argument("danger", FloatArgumentType.floatArg(0.0F, 1.0F))
+                .executes(context -> generateAtStoke(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "pool_or_config"),
+                        FloatArgumentType.getFloat(context, "danger"),
+                        -1,
+                        RequiredPieceSpec.empty()
+                ))
+                .then(piecesArgument);
+
+        var poolOrConfigArgument = Commands.argument("pool_or_config", StringArgumentType.word())
+                .suggests(StationStructureCommands::suggestPoolsAndConfigs)
+                .executes(context -> generateAtStoke(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "pool_or_config"),
+                        0.5F,
+                        -1,
+                        RequiredPieceSpec.empty()
+                ))
+                .then(dangerArgument);
+
+        return Commands.literal("generate_at_stoke")
+                .executes(context -> generateAtStoke(
+                        context.getSource(),
+                        "",
+                        0.5F,
+                        -1,
+                        RequiredPieceSpec.empty()
+                ))
+                .then(poolOrConfigArgument);
+    }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> configurationCommand() {
         return Commands.literal("config")
@@ -288,8 +356,6 @@ public final class StationStructureCommands {
                                                 .then(maxRoomsArgument)))));
     }
 
-
-
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> spawnPoolCommand() {
         var rotationArgument = Commands.argument("rotation", StringArgumentType.word())
                 .suggests(StationStructureCommands::suggestRotations)
@@ -362,7 +428,7 @@ public final class StationStructureCommands {
             return 0;
         }
 
-        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates = spawnPoolCandidates(library, pool.get(), danger);
+        List<StationPieceDefinition> candidates = spawnPoolCandidates(library, pool.get(), danger);
         if (candidates.isEmpty()) {
             source.sendFailure(Component.literal("Pool has no pieces for danger=" + danger + ": " + poolId));
             return 0;
@@ -377,8 +443,8 @@ public final class StationStructureCommands {
             return 0;
         }
 
-        dev.sixik.stationarenear.structures.data.StationPieceDefinition piece = selectWeightedSpawnPiece(loadableCandidates.pieces(), level.getRandom());
-        Optional<StructureTemplate> template = level.getStructureManager().get(piece.template());
+        StationPieceDefinition piece = selectWeightedSpawnPiece(loadableCandidates.pieces(), level.getRandom());
+        Optional<StructureTemplate> template = StationStructureFileStorage.getOrLoadTemplate(level, piece.template());
         if (template.isEmpty()) {
             source.sendFailure(Component.literal("Template not found after reload for piece " + piece.id() + ": " + piece.template()));
             return 0;
@@ -400,63 +466,68 @@ public final class StationStructureCommands {
         return 1;
     }
 
-    private static List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> spawnPoolCandidates(StationStructureLibraryData library, StationPoolDefinition pool, float danger) {
-        java.util.Set<ResourceLocation> ids = new java.util.LinkedHashSet<>();
-        ids.addAll(pool.roomPieces());
-        ids.addAll(pool.startPieces());
-        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates = new ArrayList<>();
-        for (ResourceLocation id : ids) {
-            library.piece(id)
-                    .filter(piece -> piece.canSpawnAtDanger(danger))
-                    .ifPresent(candidates::add);
+    private static List<StationPieceDefinition> spawnPoolCandidates(StationStructureLibraryData library, StationPoolDefinition pool, float danger) {
+        List<StationPieceDefinition> candidates = new ArrayList<>();
+        Set<ResourceLocation> pieceIds = new java.util.LinkedHashSet<>(pool.startPieces());
+        pieceIds.addAll(pool.roomPieces());
+        for (ResourceLocation pieceId : pieceIds) {
+            library.piece(pieceId).ifPresent(piece -> {
+                if (piece.canSpawnAtDanger(danger)) {
+                    candidates.add(piece);
+                }
+            });
         }
         return candidates;
     }
-    private static LoadableSpawnPoolCandidates loadableSpawnPoolCandidates(ServerLevel level, List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates) {
-        List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> loadable = new ArrayList<>();
-        Set<ResourceLocation> missingTemplates = new java.util.LinkedHashSet<>();
-        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
-            if (level.getStructureManager().get(candidate.template()).isPresent()) {
-                loadable.add(candidate);
+
+    private static LoadableSpawnPoolCandidates loadableSpawnPoolCandidates(ServerLevel level, List<StationPieceDefinition> pieces) {
+        List<StationPieceDefinition> loadable = new ArrayList<>();
+        Set<ResourceLocation> missing = new java.util.LinkedHashSet<>();
+        for (var piece : pieces) {
+            if (StationStructureFileStorage.getOrLoadTemplate(level, piece.template()).isPresent()) {
+                loadable.add(piece);
             } else {
-                missingTemplates.add(candidate.template());
+                missing.add(piece.template());
             }
         }
-        return new LoadableSpawnPoolCandidates(loadable, missingTemplates);
+        return new LoadableSpawnPoolCandidates(loadable, missing);
     }
 
-    private static String formatMissingTemplates(Set<ResourceLocation> missingTemplates) {
-        if (missingTemplates.isEmpty()) {
+    private static String formatMissingTemplates(Set<ResourceLocation> templates) {
+        if (templates.isEmpty()) {
             return "none";
         }
-        List<String> values = missingTemplates.stream()
-                .map(ResourceLocation::toString)
-                .sorted()
-                .limit(12)
-                .toList();
-        String suffix = missingTemplates.size() > values.size() ? " ... +" + (missingTemplates.size() - values.size()) : "";
-        return String.join(", ", values) + suffix;
+        List<String> list = new ArrayList<>();
+        for (ResourceLocation template : templates) {
+            list.add(template.toString());
+        }
+        return String.join(", ", list);
     }
 
-
-    private static dev.sixik.stationarenear.structures.data.StationPieceDefinition selectWeightedSpawnPiece(List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> candidates, RandomSource random) {
+    private static StationPieceDefinition selectWeightedSpawnPiece(
+            List<StationPieceDefinition> pieces,
+            RandomSource random
+    ) {
         int totalWeight = 0;
-        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
-            totalWeight += Math.max(1, candidate.weight());
+        for (var piece : pieces) {
+            totalWeight += Math.max(1, piece.weight());
         }
         int roll = random.nextInt(Math.max(1, totalWeight));
-        for (dev.sixik.stationarenear.structures.data.StationPieceDefinition candidate : candidates) {
-            roll -= Math.max(1, candidate.weight());
-            if (roll < 0) {
-                return candidate;
+        int current = 0;
+        for (var piece : pieces) {
+            current += Math.max(1, piece.weight());
+            if (roll < current) {
+                return piece;
             }
         }
-        return candidates.get(0);
+        return pieces.get(0);
     }
 
-    private static Optional<Rotation> parseRotation(String rotationText) {
-        String normalized = rotationText == null ? "" : rotationText.trim().toLowerCase(java.util.Locale.ROOT);
-        return switch (normalized) {
+    private static Optional<Rotation> parseRotation(String text) {
+        if (text == null) {
+            return Optional.empty();
+        }
+        return switch (text.toLowerCase()) {
             case "none", "0", "north", "n" -> Optional.of(Rotation.NONE);
             case "90", "cw90", "clockwise_90", "east", "e" -> Optional.of(Rotation.CLOCKWISE_90);
             case "180", "cw180", "clockwise_180", "south", "s" -> Optional.of(Rotation.CLOCKWISE_180);
@@ -489,6 +560,19 @@ public final class StationStructureCommands {
 
     private static CompletableFuture<Suggestions> suggestPools(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         List<String> suggestions = new ArrayList<>();
+        for (var pool : StationStructureLibraryData.get(context.getSource().getLevel()).pools()) {
+            suggestions.add(pool.id().toString());
+            suggestions.add(pool.id().getPath());
+        }
+        return SharedSuggestionProvider.suggest(suggestions, builder);
+    }
+
+    private static CompletableFuture<Suggestions> suggestPoolsAndConfigs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        List<String> suggestions = new ArrayList<>();
+        for (StationStructureConfig config : StationStructureConfigManager.configurations()) {
+            suggestions.add(config.id().toString());
+            suggestions.add(config.id().getPath());
+        }
         for (var pool : StationStructureLibraryData.get(context.getSource().getLevel()).pools()) {
             suggestions.add(pool.id().toString());
             suggestions.add(pool.id().getPath());
@@ -560,11 +644,11 @@ public final class StationStructureCommands {
         tag.putString(StationStructureToolItem.KEY_CONNECTOR_DIRECTION, direction.getSerializedName());
         tag.putString(StationStructureToolItem.KEY_CONNECTOR_TAGS, tags);
         tag.putString(StationStructureToolItem.KEY_CONNECTOR_ACCEPTS, accepts);
-        source.sendSuccess(() -> Component.literal("Configured station connector " + name), false);
+        source.sendSuccess(() -> Component.literal("Configured connector parameters for tool"), false);
         return 1;
     }
 
-    private static int addConnector(CommandSourceStack source, String name, BlockPos position, String directionName, String tags, String accepts, int priority) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int addConnector(CommandSourceStack source, String name, BlockPos pos, String directionName, String tags, String accepts, int priority) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         Direction direction = Direction.byName(directionName);
         if (direction == null) {
             source.sendFailure(Component.literal("Unknown direction: " + directionName));
@@ -572,25 +656,27 @@ public final class StationStructureCommands {
         }
 
         ItemStack stack = heldTool(source.getPlayerOrException());
-        CompoundTag tag = stack.getOrCreateTag();
-        ListTag connectors = tag.getList(StationStructureToolItem.KEY_CONNECTORS, Tag.TAG_COMPOUND);
+        CompoundTag root = stack.getOrCreateTag();
+        ListTag list = root.getList(StationStructureToolItem.KEY_CONNECTORS, Tag.TAG_COMPOUND);
+
         CompoundTag connector = new CompoundTag();
         connector.putString("name", name);
-        connector.put("worldPosition", NbtPos.save(position));
+        connector.put("worldPosition", NbtPos.save(pos));
         connector.putString("direction", direction.getSerializedName());
         connector.putString(TagsConstants.Keys.TAGS, tags);
         connector.putString("accepts", accepts);
         connector.putInt("priority", priority);
-        connectors.add(connector);
-        tag.put(StationStructureToolItem.KEY_CONNECTORS, connectors);
-        source.sendSuccess(() -> Component.literal("Added station connector " + name + " at " + position.toShortString()), false);
-        return connectors.size();
+        list.add(connector);
+        root.put(StationStructureToolItem.KEY_CONNECTORS, list);
+
+        source.sendSuccess(() -> Component.literal("Added connector '" + name + "' to tool metadata (total: " + list.size() + ")"), false);
+        return list.size();
     }
 
     private static int addTriggerZone(CommandSourceStack source, String id, String type, BlockPos min, BlockPos max) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ItemStack stack = heldTool(source.getPlayerOrException());
-        CompoundTag tag = stack.getOrCreateTag();
-        ListTag triggerZones = tag.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
+        CompoundTag root = stack.getOrCreateTag();
+        ListTag list = root.getList(StationStructureToolItem.KEY_TRIGGER_ZONES, Tag.TAG_COMPOUND);
 
         BlockPos normalizedMin = new BlockPos(
                 Math.min(min.getX(), max.getX()),
@@ -603,68 +689,71 @@ public final class StationStructureCommands {
                 Math.max(min.getZ(), max.getZ())
         );
 
-        CompoundTag triggerZone = new CompoundTag();
-        triggerZone.putString("id", id);
-        triggerZone.putString("type", type);
-        triggerZone.put("worldMin", NbtPos.save(normalizedMin));
-        triggerZone.put("worldMax", NbtPos.save(normalizedMax));
-        triggerZone.put("data", new CompoundTag());
-        triggerZones.add(triggerZone);
-        tag.put(StationStructureToolItem.KEY_TRIGGER_ZONES, triggerZones);
-        source.sendSuccess(() -> Component.literal("Added station trigger zone " + id), false);
-        return triggerZones.size();
+        CompoundTag zone = new CompoundTag();
+        zone.putString("id", id);
+        zone.putString("type", type);
+        zone.put("worldMin", NbtPos.save(normalizedMin));
+        zone.put("worldMax", NbtPos.save(normalizedMax));
+        zone.put("data", new CompoundTag());
+        list.add(zone);
+        root.put(StationStructureToolItem.KEY_TRIGGER_ZONES, list);
+
+        source.sendSuccess(() -> Component.literal("Added trigger zone '" + id + "' (" + type + ") to tool metadata (total: " + list.size() + ")"), false);
+        return list.size();
     }
 
-    private static int configureStartPiece(CommandSourceStack source, boolean value) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int configureStartPiece(CommandSourceStack source, boolean startPiece) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ItemStack stack = heldTool(source.getPlayerOrException());
-        stack.getOrCreateTag().putBoolean(StationStructureToolItem.KEY_START_PIECE, value);
-        source.sendSuccess(() -> Component.literal("Station start piece: " + value), false);
+        CompoundTag tag = stack.getOrCreateTag();
+        tag.putBoolean(StationStructureToolItem.KEY_START_PIECE, startPiece);
+        source.sendSuccess(() -> Component.literal("Set start_piece=" + startPiece + " on tool"), false);
         return 1;
     }
 
-    private static int configureWeight(CommandSourceStack source, int value) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int configureWeight(CommandSourceStack source, int weight) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ItemStack stack = heldTool(source.getPlayerOrException());
-        stack.getOrCreateTag().putInt(StationStructureToolItem.KEY_WEIGHT, value);
-        source.sendSuccess(() -> Component.literal("Station piece weight: " + value), false);
+        CompoundTag tag = stack.getOrCreateTag();
+        tag.putInt(StationStructureToolItem.KEY_WEIGHT, Math.max(1, weight));
+        source.sendSuccess(() -> Component.literal("Set weight=" + Math.max(1, weight) + " on tool"), false);
         return 1;
     }
-
 
     private static int showStructureConfigPaths(CommandSourceStack source) {
-        source.sendSuccess(() -> Component.literal("Structure Configuration: " + StationStructureFileStorage.structureConfigurationsDirectory()), false);
-        source.sendSuccess(() -> Component.literal("Structures: " + StationStructureFileStorage.structuresDirectory()), false);
+        source.sendSuccess(() -> Component.literal("Structure Config directory: " + StationStructureFileStorage.structureConfigurationsDirectory()), false);
+        source.sendSuccess(() -> Component.literal("Structure Export directory: " + StationStructureFileStorage.structuresDirectory()), false);
         return 1;
     }
 
     private static int reloadStructureConfigs(CommandSourceStack source) {
-        int configs = StationStructureConfigManager.reload();
-        int structures = StationStructureFileStorage.loadExternalStructures(source.getLevel());
-        source.sendSuccess(() -> Component.literal("Reloaded structure configs=" + configs + " external_structures=" + structures), false);
-        return configs;
-    }
-
-    private static int loadExternalStructures(CommandSourceStack source) {
-        int structures = StationStructureFileStorage.loadExternalStructures(source.getLevel());
-        source.sendSuccess(() -> Component.literal("Loaded external station structures: " + structures), false);
-        return structures;
+        int loaded = StationStructureConfigManager.reload();
+        source.sendSuccess(() -> Component.literal("Reloaded structure configs: " + loaded), false);
+        return loaded;
     }
 
     private static int listStructureConfigs(CommandSourceStack source) {
-        if (StationStructureConfigManager.configurations().isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No structure generation configs loaded. Use /stationarenear structures config reload"), false);
+        Collection<StationStructureConfig> configs = StationStructureConfigManager.configurations();
+        if (configs.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No structure configs loaded."), false);
             return 0;
         }
-        for (StationStructureConfig config : StationStructureConfigManager.configurations()) {
+
+        for (StationStructureConfig config : configs) {
             source.sendSuccess(() -> Component.literal(
-                    config.id() + " pool=" + config.pool()
-                            + " floors=" + config.maxFloors()
-                            + " rooms=" + config.minRooms() + "-" + config.maxRooms()
-                            + " danger_multiply=" + config.minDangerMultiplier() + "-" + config.maxDangerMultiplier()
-                            + " quest_only=" + config.questOnly()
-                            + " required=" + config.requiredRoomsTotal()
+                    "Config: " + config.id()
+                            + " pool=" + config.pool()
+                            + " maxFloors=" + config.maxFloors()
+                            + " minRooms=" + config.minRooms()
+                            + " maxRooms=" + config.maxRooms()
+                            + " danger=" + config.minDangerMultiplier() + ".." + config.maxDangerMultiplier()
             ), false);
         }
-        return StationStructureConfigManager.configurations().size();
+        return configs.size();
+    }
+
+    private static int loadExternalStructures(CommandSourceStack source) {
+        int loaded = StationStructureFileStorage.loadExternalStructures(source.getLevel());
+        source.sendSuccess(() -> Component.literal("Loaded external structure templates: " + loaded), false);
+        return loaded;
     }
 
     private static int generateConfig(CommandSourceStack source, String configText) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -766,6 +855,129 @@ public final class StationStructureCommands {
         return result.station().map(station -> station.pieces().size()).orElse(1);
     }
 
+    private static int generateAtStoke(
+            CommandSourceStack source,
+            String poolOrConfigText,
+            float danger,
+            int pieceCount,
+            RequiredPieceSpec requiredPieces
+    ) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        ServerLevel level = source.getLevel();
+        BlockPos playerPos = player.blockPosition();
+
+        Optional<BlockPos> terminalOptional = findNearbyTerminal(level, playerPos, 64);
+        BlockPos doorCenter;
+        Direction stationDirection;
+        BlockPos terminalPos = null;
+
+        if (terminalOptional.isPresent()) {
+            terminalPos = terminalOptional.get();
+            BlockState terminalState = level.getBlockState(terminalPos);
+            var dockingAnchor = ShipDockingAnchorResolver.resolve(level, terminalPos, terminalState);
+            doorCenter = dockingAnchor.doorCenter();
+            stationDirection = dockingAnchor.stationDirection();
+        } else {
+            doorCenter = playerPos;
+            stationDirection = player.getDirection();
+        }
+
+        StationStructureFileStorage.loadExternalStructures(level);
+        StationGenerationSettings settings;
+        long seed = level.getRandom().nextLong();
+
+        if (poolOrConfigText == null || poolOrConfigText.isBlank()) {
+            Collection<StationStructureConfig> configs = StationStructureConfigManager.configurations();
+            if (!configs.isEmpty()) {
+                settings = configs.iterator().next().createSettings(level.getRandom(), seed);
+            } else {
+                ResourceLocation defaultPool = StationStructureIds.pool("space_station");
+                settings = new StationGenerationSettings(defaultPool, danger, true, pieceCount > 0 ? pieceCount : 16, seed);
+            }
+        } else {
+            Optional<StationStructureConfig> config = StationStructureConfigManager.get(poolOrConfigText);
+            if (config.isPresent()) {
+                settings = config.get().createSettings(level.getRandom(), seed);
+                if (pieceCount > 0) {
+                    settings = new StationGenerationSettings(
+                            settings.pool(),
+                            settings.missionDanger(),
+                            settings.randomStation(),
+                            settings.maxFloors(),
+                            pieceCount,
+                            pieceCount,
+                            settings.seed(),
+                            settings.requiredPieces(),
+                            settings.requiredPieceTags(),
+                            settings.questElementSpawnSkips(),
+                            settings.customData()
+                    );
+                }
+            } else {
+                ResourceLocation pool = StationStructureIds.pool(poolOrConfigText);
+                settings = new StationGenerationSettings(pool, danger, true, pieceCount > 0 ? pieceCount : 16, seed);
+            }
+        }
+
+        if (!requiredPieces.isEmpty()) {
+            settings = settings.withRequiredPieces(requiredPieces.pieces(), requiredPieces.tags());
+        }
+
+        StationGenerationResult result = new StationGenerator().generateDockedStation(
+                level,
+                doorCenter,
+                stationDirection,
+                settings
+        );
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal("Docked generation failed at " + doorCenter + " dir " + stationDirection + ": " + result.message()));
+            return 0;
+        }
+
+        if (terminalPos != null) {
+            ShipManager.setDocking(level, terminalPos, true);
+            if (ShipManager.state(level, terminalPos).hasModule(ShipSystemType.AUTO_DOORS)) {
+                ShipDoorController.setOpen(level, terminalPos, true);
+            }
+        }
+
+        final BlockPos finalTerminalPos = terminalPos;
+        final BlockPos finalDoorCenter = doorCenter;
+        final Direction finalStationDirection = stationDirection;
+        result.station().ifPresent(station -> {
+            if (finalTerminalPos != null) {
+                station.customData().putLong("navigationTerminalPos", finalTerminalPos.asLong());
+            }
+            source.sendSuccess(() -> Component.literal(
+                    "Generated and docked station " + station.id()
+                            + " pool=" + station.pool()
+                            + " pieces=" + station.pieces().size()
+                            + " at " + finalDoorCenter + " facing " + finalStationDirection
+            ), true);
+        });
+
+        return result.station().map(station -> station.pieces().size()).orElse(1);
+    }
+
+    private static Optional<BlockPos> findNearbyTerminal(ServerLevel level, BlockPos center, int radius) {
+        BlockPos min = center.offset(-radius, -radius / 2, -radius);
+        BlockPos max = center.offset(radius, radius / 2, radius);
+        BlockPos best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (BlockPos pos : BlockPos.betweenClosed(min, max)) {
+            if (!level.getBlockState(pos).is(SolarNavigationBlocks.SOLAR_NAVIGATION_TERMINAL.get())) {
+                continue;
+            }
+            double distance = pos.distSqr(center);
+            if (distance < bestDistance) {
+                best = pos.immutable();
+                bestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
     private static RequiredPieceSpec parseRequiredPieces(CommandSourceStack source, String text) {
         Map<ResourceLocation, Integer> requiredPieces = new LinkedHashMap<>();
         Map<String, Integer> requiredTags = new LinkedHashMap<>();
@@ -816,7 +1028,7 @@ public final class StationStructureCommands {
     }
 
     private record LoadableSpawnPoolCandidates(
-            List<dev.sixik.stationarenear.structures.data.StationPieceDefinition> pieces,
+            List<StationPieceDefinition> pieces,
             Set<ResourceLocation> missingTemplates
     ) {
     }
@@ -831,7 +1043,7 @@ public final class StationStructureCommands {
     }
 
     private static int listGenerated(CommandSourceStack source) {
-        List<dev.sixik.stationarenear.structures.data.StationInstance> stations = new ArrayList<>(StationSavedData.get(source.getLevel()).stations());
+        List<StationInstance> stations = new ArrayList<>(StationSavedData.get(source.getLevel()).stations());
         if (stations.isEmpty()) {
             source.sendSuccess(() -> Component.literal("No generated stations saved in this dimension."), false);
             return 0;
@@ -861,11 +1073,11 @@ public final class StationStructureCommands {
     private static int clearGenerated(CommandSourceStack source, String stationText) {
         ServerLevel level = source.getLevel();
         StationSavedData data = StationSavedData.get(level);
-        List<dev.sixik.stationarenear.structures.data.StationInstance> targets = new ArrayList<>();
+        List<StationInstance> targets = new ArrayList<>();
         if (stationText.equalsIgnoreCase("all")) {
             targets.addAll(data.stations());
         } else {
-            Optional<dev.sixik.stationarenear.structures.data.StationInstance> station = findStation(data, stationText);
+            Optional<StationInstance> station = findStation(data, stationText);
             if (station.isEmpty()) {
                 source.sendFailure(Component.literal("Generated station not found: " + stationText));
                 return 0;
@@ -884,7 +1096,7 @@ public final class StationStructureCommands {
         return targets.size();
     }
 
-    private static Optional<dev.sixik.stationarenear.structures.data.StationInstance> findStation(StationSavedData data, String stationText) {
+    private static Optional<StationInstance> findStation(StationSavedData data, String stationText) {
         try {
             UUID id = UUID.fromString(stationText);
             return data.station(id);
@@ -895,7 +1107,7 @@ public final class StationStructureCommands {
         }
     }
 
-    private static BoundingBox aggregateBounds(dev.sixik.stationarenear.structures.data.StationInstance station) {
+    private static BoundingBox aggregateBounds(StationInstance station) {
         BoundingBox result = null;
         for (var piece : station.pieces()) {
             BoundingBox bounds = piece.bounds();
@@ -944,4 +1156,3 @@ public final class StationStructureCommands {
         return stack;
     }
 }
-

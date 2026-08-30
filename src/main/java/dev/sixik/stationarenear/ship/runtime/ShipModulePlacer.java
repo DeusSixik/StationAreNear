@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchor;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
@@ -122,7 +123,7 @@ public final class ShipModulePlacer {
 
             if (!candidates.isEmpty()) {
                 StationPieceDefinition pieceDef = candidates.get(level.getRandom().nextInt(candidates.size()));
-                Optional<StructureTemplate> templateOpt = level.getStructureManager().get(pieceDef.template());
+                Optional<StructureTemplate> templateOpt = StationStructureFileStorage.getOrLoadTemplate(level, pieceDef.template());
                 if (templateOpt.isPresent()) {
                     StructureTemplate template = templateOpt.get();
                     Rotation rotation = rotationForTemplate(template, direction, target.data());

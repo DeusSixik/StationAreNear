@@ -13,6 +13,7 @@ import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorSavedData;
 import dev.sixik.stationarenear.ship.runtime.ShipDecompressionEffects;
 import dev.sixik.stationarenear.ship.world.ShipControlLockSavedData;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationPoolDefinition;
 import dev.sixik.stationarenear.structures.editor.StationStructureEditorStick;
@@ -278,6 +279,7 @@ public final class ShipCommands {
     private static CompletableFuture<Suggestions> suggestSpaceShipPieces(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         List<String> suggestions = new ArrayList<>();
         StationStructureLibraryData library = StationStructureLibraryData.get(context.getSource().getLevel());
+        StationStructureFileStorage.loadExternalDefinitions(library);
         library.pool(SPACE_SHIP_POOL).ifPresent(pool -> {
             for (ResourceLocation id : allPoolPieces(pool)) {
                 suggestions.add(id.toString());
@@ -307,6 +309,7 @@ public final class ShipCommands {
     private static int spawnSpaceShip(CommandSourceStack source, BlockPos origin, String templateText) {
         ServerLevel level = source.getLevel();
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        StationStructureFileStorage.loadExternalDefinitions(library);
         Optional<StationPieceDefinition> piece = resolveSpaceShipPiece(library, templateText);
         if (piece.isEmpty()) {
             source.sendFailure(Component.literal("No stationarenear:space_ship template found. Save a ship piece into pool space_ship first."));
@@ -314,7 +317,7 @@ public final class ShipCommands {
         }
 
         StationPieceDefinition definition = piece.get();
-        Optional<StructureTemplate> template = level.getStructureManager().get(definition.template());
+        Optional<StructureTemplate> template = StationStructureFileStorage.getOrLoadTemplate(level, definition.template());
         if (template.isEmpty()) {
             source.sendFailure(Component.literal("Missing structure template file: " + definition.template()));
             return 0;

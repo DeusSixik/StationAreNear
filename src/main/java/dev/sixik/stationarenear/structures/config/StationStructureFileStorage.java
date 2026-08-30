@@ -112,6 +112,26 @@ public final class StationStructureFileStorage {
         return loaded.get();
     }
 
+    public static Optional<StructureTemplate> getOrLoadTemplate(ServerLevel level, ResourceLocation templateId) {
+        Optional<StructureTemplate> existing = level.getStructureManager().get(templateId);
+        if (existing.isPresent()) {
+            return existing;
+        }
+
+        Path path = templatePath(templateId);
+        if (Files.isRegularFile(path)) {
+            try {
+                loadTemplate(level, templateId, path);
+                return level.getStructureManager().get(templateId);
+            } catch (IOException | RuntimeException exception) {
+                StationAreNear.LOGGER.warn("Failed to on-demand load external station template {} from {}", templateId, path, exception);
+            }
+        }
+
+        loadExternalStructures(level);
+        return level.getStructureManager().get(templateId);
+    }
+
     public static int loadExternalStructures(ServerLevel level) {
         ensureDirectories();
         if (!Files.isDirectory(STRUCTURES)) {
@@ -187,11 +207,15 @@ public final class StationStructureFileStorage {
         }
         normalized = normalized.substring(0, normalized.length() - ".nbt".length());
 
-        String namespace = StationAreNear.MODID;
-        String templatePath = normalized;
-        String namespacePrefix = StationAreNear.MODID + "/";
-        if (normalized.startsWith(namespacePrefix)) {
-            templatePath = normalized.substring(namespacePrefix.length());
+        int slashIndex = normalized.indexOf('/');
+        String namespace;
+        String templatePath;
+        if (slashIndex > 0) {
+            namespace = normalized.substring(0, slashIndex);
+            templatePath = normalized.substring(slashIndex + 1);
+        } else {
+            namespace = StationAreNear.MODID;
+            templatePath = normalized;
         }
 
         ResourceLocation id = ResourceLocation.tryParse(namespace + ":" + templatePath);

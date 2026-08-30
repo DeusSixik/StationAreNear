@@ -4,6 +4,7 @@ import dev.sixik.stationarenear.navigation.block.SolarNavigationTerminalBlock;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.ship.docking.ShipDockingAnchorResolver;
 import dev.sixik.stationarenear.ship.world.ShipWorldSpawnSavedData;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.StationPieceDefinition;
 import dev.sixik.stationarenear.structures.data.StationTriggerZone;
 import dev.sixik.stationarenear.structures.generation.StationPlacementUtil;
@@ -39,6 +40,7 @@ public final class ShipWorldSpawnManager {
         }
 
         StationStructureLibraryData library = StationStructureLibraryData.get(level);
+        StationStructureFileStorage.loadExternalDefinitions(library);
         Optional<StationPieceDefinition> pieceOpt = library.pieces().stream()
                 .filter(p -> p.pool().equals(SHIP_POOL))
                 .findFirst();
@@ -48,7 +50,7 @@ public final class ShipWorldSpawnManager {
         }
 
         StationPieceDefinition definition = pieceOpt.get();
-        Optional<StructureTemplate> templateOpt = level.getStructureManager().get(definition.template());
+        Optional<StructureTemplate> templateOpt = StationStructureFileStorage.getOrLoadTemplate(level, definition.template());
         if (templateOpt.isEmpty()) {
             return;
         }

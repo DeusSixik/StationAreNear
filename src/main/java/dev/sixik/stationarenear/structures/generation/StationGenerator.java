@@ -356,7 +356,7 @@ public class StationGenerator {
     private void preloadTemplates(ServerLevel level, StationStructureLibraryData library, float danger) {
         for (StationPieceDefinition definition : library.pieces()) {
             if (definition.canSpawnAtDanger(danger)) {
-                templateCache.computeIfAbsent(definition.template(), id -> level.getStructureManager().get(id));
+                templateCache.computeIfAbsent(definition.template(), id -> StationStructureFileStorage.getOrLoadTemplate(level, id));
             }
         }
     }
@@ -436,6 +436,9 @@ public class StationGenerator {
                     + ", openConnectors=" + openConnectors.size());
             return null;
         }
+
+        int targetDoorPieces = Math.max(1, targetPieces / 4);
+        extendDoorPassageCompartments(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), settings, targetDoorPieces, pieces, parentIndexes, sourceConnectors, pieceUsage, tagUsage);
 
         if (!extendSidePassages(level, library, pool, openConnectors, danger, random, occupied, reservedClearances, boundary, minAllowedY, maxAllowedY, settings.maxFloors(), settings, pieces, parentIndexes, sourceConnectors, pieceUsage, tagUsage)) {
             diagnostics.recordFailure("could not route required passage connections: pieces=" + pieces.size()
@@ -906,6 +909,154 @@ public class StationGenerator {
             }
         }
         return roomLinks;
+    }
+
+    private boolean isDoorPassageConnector(StationConnector connector) {
+        if (connector == null) {
+            return false;
+        }
+        if (connector.requiresPassage()) {
+            return true;
+        }
+        if (connector.width() <= 1 && connector.height() <= 2) {
+            return true;
+        }
+        if (connector.width() * connector.height() <= 2) {
+            return true;
+        }
+        String sizes = connector.acceptedSizes();
+        if (sizes != null && (sizes.contains("1x2") || sizes.contains("1x1") || sizes.contains("2x1") || sizes.contains("1x3"))) {
+            return true;
+        }
+        for (String tag : connector.tags()) {
+            if (tag.contains("door") || tag.contains("1x2") || tag.contains("small") || tag.contains("passage")) {
+                return true;
+            }
+        }
+        for (String accept : connector.accepts()) {
+            if (accept.contains("door") || accept.contains("1x2") || accept.contains("small") || accept.contains("passage")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void extendDoorPassageCompartments(
+            ServerLevel level,
+            StationStructureLibraryData library,
+            StationPoolDefinition pool,
+            List<StationConnector> openConnectors,
+            float danger,
+            RandomSource random,
+            List<BoundingBox> occupied,
+            List<BoundingBox> reservedClearances,
+            StationBoundary boundary,
+            int minAllowedY,
+            int maxAllowedY,
+            int maxFloors,
+            StationGenerationSettings settings,
+            int targetDoorPieces,
+            List<PlacedStationPiece> pieces,
+            IntArrayList parentIndexes,
+            List<StationConnector> sourceConnectors,
+            Object2IntMap<ResourceLocation> pieceUsage,
+            Object2IntMap<String> tagUsage
+    ) {
+        if (targetDoorPieces <= 0) {
+            return;
+        }
+
+        boolean allowVerticalConnections = allowVerticalConnections(maxFloors);
+        List<StationPieceDefinition> candidateRooms = candidateRoomDefinitions(library, pool, settings, danger);
+        int doorPiecesPlaced = 0;
+
+        while (doorPiecesPlaced < targetDoorPieces) {
+            pruneUnusableOpenConnectors(openConnectors, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections);
+            List<StationConnector> doorConnectors = new ObjectArrayList<>();
+            for (StationConnector connector : openConnectors) {
+                if (isDoorPassageConnector(connector) && isUsableConnector(connector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections)) {
+                    doorConnectors.add(connector);
+                }
+            }
+            if (doorConnectors.isEmpty()) {
+                break;
+            }
+
+            StationConnector openConnector = doorConnectors.get(random.nextInt(doorConnectors.size()));
+            BlockPos target = openConnector.position().relative(openConnector.direction());
+            Direction requiredDirection = openConnector.direction().getOpposite();
+
+            List<PlacementCandidate> validPlacements = new ObjectArrayList<>();
+            for (StationPieceDefinition definition : candidateRooms) {
+                if (!pieceAllowedForFloors(definition, maxFloors)) {
+                    continue;
+                }
+                Optional<StructureTemplate> template = template(definition);
+                if (template.isEmpty()) {
+                    continue;
+                }
+
+                for (StationConnector candidateConnector : definition.connectors()) {
+                    if (!openConnector.isCompatibleWith(candidateConnector)) {
+                        continue;
+                    }
+
+                    Rotation rotation = StationPlacementUtil.rotationBetween(candidateConnector.direction(), requiredDirection);
+                    if (rotation == null) {
+                        continue;
+                    }
+
+                    BlockPos origin = target.subtract(StationPlacementUtil.transform(candidateConnector.position(), rotation));
+                    PlacedStationPiece piece = buildPlacedPiece(definition, template.get(), origin, rotation, danger, candidateConnector);
+                    if (!insideFloorLimit(piece.bounds(), minAllowedY, maxAllowedY)
+                            || !boundary.allowsBounds(piece.bounds())
+                            || StationPlacementUtil.intersectsAny(piece.bounds(), collisionBounds(occupied, reservedClearances))
+                            || !exteriorSideAllowed(definition, piece, rotation, occupied, reservedClearances)) {
+                        continue;
+                    }
+
+                    List<BoundingBox> occupiedWithCandidate = new ObjectArrayList<>(occupied);
+                    occupiedWithCandidate.add(piece.bounds());
+                    List<BoundingBox> reservedWithCandidate = new ObjectArrayList<>(reservedClearances);
+                    reserveExteriorClearance(definition, piece, reservedWithCandidate);
+                    List<BoundingBox> candidateCollisionBounds = collisionBounds(occupiedWithCandidate, reservedWithCandidate);
+                    if (!requiredPassageConnectorsUsable(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections)
+                            || hasUnfillableOpenConnector(piece.openConnectors(), openConnectors, openConnector, collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections)) {
+                        continue;
+                    }
+
+                    List<StationConnector> usable = usableOpenConnectors(piece.openConnectors(), candidateCollisionBounds, boundary, allowVerticalConnections);
+                    int secondaryConnections = secondaryConnectorClosureCount(piece, openConnectors, openConnector);
+                    int usageCount = pieceUsage.getOrDefault(definition.id(), 0);
+                    int score = definition.weight() * 10
+                            + (usable.isEmpty() ? 6_000 : 8_000)
+                            + secondaryConnections * SECONDARY_CONNECTION_SCORE_BONUS
+                            + Math.max(0, 1000 - usageCount * 300)
+                            + random.nextInt(64);
+
+                    validPlacements.add(new PlacementCandidate(openConnector, piece, score));
+                }
+            }
+
+            PlacementCandidate selected = selectWeightedCandidate(validPlacements, random);
+            if (selected == null) {
+                break;
+            }
+
+            int parentIndex = indexOfConnectorOwner(pieces, selected.sourceConnector());
+            openConnectors.remove(selected.sourceConnector());
+            markConnectorConsumed(pieces, selected.sourceConnector());
+            PlacedStationPiece placedPiece = consumeSecondaryConnectorClosures(pieces, openConnectors, selected.piece(), selected.sourceConnector());
+            pieces.add(placedPiece);
+            parentIndexes.add(parentIndex);
+            sourceConnectors.add(selected.sourceConnector());
+            occupied.add(placedPiece.bounds());
+            reserveExteriorClearance(library, placedPiece, reservedClearances);
+            incrementPieceUsage(pieceUsage, placedPiece);
+            incrementTagUsage(library, tagUsage, placedPiece);
+            openConnectors.addAll(usableOpenConnectors(placedPiece.openConnectors(), collisionBounds(occupied, reservedClearances), boundary, allowVerticalConnections));
+            doorPiecesPlaced++;
+        }
     }
 
     private boolean extendSidePassages(

@@ -47,19 +47,49 @@ public final class StationMapSnapshotFactory {
     private StationMapSnapshotFactory() {
     }
 
-    public static Optional<StationMapSnapshot> create(ServerLevel level, BlockPos terminalPos) {
-        Optional<ShipDockingAnchor> anchor = ShipDockingAnchorSavedData.get(level)
-                .anchor(terminalPos)
-                .or(() -> ShipDockingAnchorResolver.bindNearbyShip(level, terminalPos));
-        if (anchor.isEmpty()) {
+    public static Optional<StationInstance> findStationForMap(ServerLevel level, BlockPos terminalPos) {
+        StationSavedData stationData = StationSavedData.get(level);
+        if (stationData.stations().isEmpty()) {
             return Optional.empty();
         }
 
-        Set<Long> relatedTerminals = ShipIntegrityScanner.relatedTerminalPositions(level, terminalPos, anchor.get());
-        Optional<StationInstance> dockedStation = StationSavedData.get(level).stations().stream()
-                .filter(station -> station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS))
-                .filter(station -> relatedTerminals.contains(station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)))
-                .findFirst();
+        Optional<ShipDockingAnchor> anchor = ShipDockingAnchorSavedData.get(level)
+                .anchor(terminalPos)
+                .or(() -> ShipDockingAnchorResolver.bindNearbyShip(level, terminalPos));
+
+        if (anchor.isPresent()) {
+            Set<Long> relatedTerminals = ShipIntegrityScanner.relatedTerminalPositions(level, terminalPos, anchor.get());
+            for (StationInstance station : stationData.stations()) {
+                if (station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)
+                        && relatedTerminals.contains(station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS))) {
+                    return Optional.of(station);
+                }
+            }
+
+            BlockPos shipDoor = anchor.get().anchorPos();
+            for (StationInstance station : stationData.stations()) {
+                if (station.shuttleDoorCenter().distSqr(shipDoor) <= 36.0) {
+                    return Optional.of(station);
+                }
+            }
+        }
+
+        for (StationInstance station : stationData.stations()) {
+            for (PlacedStationPiece piece : station.pieces()) {
+                if (piece.bounds().isInside(terminalPos) || piece.selectionBounds().isInside(terminalPos)) {
+                    return Optional.of(station);
+                }
+            }
+        }
+
+        BlockPos searchCenter = anchor.map(ShipDockingAnchor::anchorPos).orElse(terminalPos);
+        return stationData.stations().stream()
+                .filter(s -> s.shuttleDoorCenter().distSqr(searchCenter) <= 512.0 * 512.0)
+                .min(Comparator.comparingDouble(s -> s.shuttleDoorCenter().distSqr(searchCenter)));
+    }
+
+    public static Optional<StationMapSnapshot> create(ServerLevel level, BlockPos terminalPos) {
+        Optional<StationInstance> dockedStation = findStationForMap(level, terminalPos);
         if (dockedStation.isEmpty()) {
             return Optional.empty();
         }
@@ -160,18 +190,7 @@ public final class StationMapSnapshotFactory {
 
 
     public static Optional<StationMapData> createData(ServerLevel level, BlockPos terminalPos) {
-        Optional<ShipDockingAnchor> anchor = ShipDockingAnchorSavedData.get(level)
-                .anchor(terminalPos)
-                .or(() -> ShipDockingAnchorResolver.bindNearbyShip(level, terminalPos));
-        if (anchor.isEmpty()) {
-            return Optional.empty();
-        }
-
-        Set<Long> relatedTerminals = ShipIntegrityScanner.relatedTerminalPositions(level, terminalPos, anchor.get());
-        Optional<StationInstance> dockedStation = StationSavedData.get(level).stations().stream()
-                .filter(station -> station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS))
-                .filter(station -> relatedTerminals.contains(station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)))
-                .findFirst();
+        Optional<StationInstance> dockedStation = findStationForMap(level, terminalPos);
         if (dockedStation.isEmpty()) {
             return Optional.empty();
         }
@@ -230,6 +249,11 @@ public final class StationMapSnapshotFactory {
     }
 
     private static boolean hasPlacedBlocks(ServerLevel level, BoundingBox bounds) {
+        int midX = (bounds.minX() + bounds.maxX()) / 2;
+        int midZ = (bounds.minZ() + bounds.maxZ()) / 2;
+        if (!level.hasChunk(midX >> 4, midZ >> 4)) {
+            return true;
+        }
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
             for (int y = bounds.minY(); y <= bounds.maxY(); y++) {

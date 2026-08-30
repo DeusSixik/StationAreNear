@@ -150,11 +150,13 @@ public final class ShipIntegrityScanner {
     private static boolean isDocked(ServerLevel level, BlockPos terminalPos, ShipDockingAnchor anchor) {
         Set<Long> relatedTerminals = relatedTerminalPositions(level, terminalPos, anchor);
         for (StationInstance station : StationSavedData.get(level).stations()) {
-            if (!station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)) {
-                continue;
+            if (station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS)) {
+                long navigationTerminal = station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS);
+                if (relatedTerminals.contains(navigationTerminal)) {
+                    return true;
+                }
             }
-            long navigationTerminal = station.customData().getLong(SolarNavigationStationCleaner.KEY_NAVIGATION_TERMINAL_POS);
-            if (relatedTerminals.contains(navigationTerminal)) {
+            if (anchor != null && station.shuttleDoorCenter().distSqr(anchor.anchorPos()) <= 36.0) {
                 return true;
             }
         }

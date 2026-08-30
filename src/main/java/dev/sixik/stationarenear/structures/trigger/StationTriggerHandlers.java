@@ -5,6 +5,7 @@ import dev.sixik.stationarenear.quest.block.EnergyPanelBlock;
 import dev.sixik.stationarenear.quest.registry.QuestBlocks;
 import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
 import dev.sixik.stationarenear.ship.registry.ShipBlocks;
+import dev.sixik.stationarenear.structures.config.StationStructureFileStorage;
 import dev.sixik.stationarenear.structures.data.PlacedStationPiece;
 import dev.sixik.stationarenear.structures.data.PlacedTriggerZone;
 import dev.sixik.stationarenear.structures.data.StationInstance;
@@ -422,7 +423,7 @@ public final class StationTriggerHandlers {
         while (!remaining.isEmpty()) {
             StationPieceDefinition definition = selectWeighted(remaining, random);
             remaining.remove(definition);
-            Optional<StructureTemplate> template = event.getLevel().getStructureManager().get(definition.template());
+            Optional<StructureTemplate> template = StationStructureFileStorage.getOrLoadTemplate(event.getLevel(), definition.template());
             if (template.isEmpty()) {
                 continue;
             }
@@ -440,7 +441,7 @@ public final class StationTriggerHandlers {
 
     private static Optional<ObjectPlacement> selectObjectZonePlacement(StationStructureSpawnTriggerEvent event, List<StationPieceDefinition> candidates, RandomSource random) {
         StationPieceDefinition definition = selectWeighted(candidates, random);
-        Optional<StructureTemplate> template = event.getLevel().getStructureManager().get(definition.template());
+        Optional<StructureTemplate> template = StationStructureFileStorage.getOrLoadTemplate(event.getLevel(), definition.template());
         if (template.isEmpty()) {
             return Optional.empty();
         }

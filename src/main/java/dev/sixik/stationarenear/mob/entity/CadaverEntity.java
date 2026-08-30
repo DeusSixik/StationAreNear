@@ -1,9 +1,12 @@
 package dev.sixik.stationarenear.mob.entity;
 
+import dev.sixik.stationarenear.ship.block.PressureTightDoorBlock;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -15,8 +18,12 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -66,6 +73,9 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
     public CadaverEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
         xpReward = 8;
+        if (getNavigation() instanceof GroundPathNavigation groundNav) {
+            groundNav.setCanOpenDoors(true);
+        }
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -77,9 +87,17 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
     }
 
     @Override
+    protected PathNavigation createNavigation(Level level) {
+        GroundPathNavigation nav = new GroundPathNavigation(this, level);
+        nav.setCanOpenDoors(true);
+        return nav;
+    }
+
+    @Override
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
-        goalSelector.addGoal(1, new CadaverAttackGoal(this));
+        goalSelector.addGoal(1, new CadaverOpenDoorGoal(this));
+        goalSelector.addGoal(2, new CadaverAttackGoal(this));
         goalSelector.addGoal(5, new RandomStrollGoal(this, 0.55D));
         goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 7.0F));
     }
@@ -144,6 +162,32 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         }
         tickAggressiveTargeting();
         setRunning(isValidTarget(getTarget()));
+    }
+
+    public void tryOpenDoorsNearby() {
+        if (isUnhiding() || level().isClientSide()) {
+            return;
+        }
+        AABB reach = getBoundingBox().inflate(0.8D, 0.2D, 0.8D);
+        BlockPos min = new BlockPos(Mth.floor(reach.minX), Mth.floor(reach.minY), Mth.floor(reach.minZ));
+        BlockPos max = new BlockPos(Mth.floor(reach.maxX), Mth.floor(reach.maxY), Mth.floor(reach.maxZ));
+        for (BlockPos pos : BlockPos.betweenClosed(min, max)) {
+            openDoorAt(pos);
+        }
+    }
+
+    private void openDoorAt(BlockPos pos) {
+        BlockState state = level().getBlockState(pos);
+        if (state.getBlock() instanceof PressureTightDoorBlock) {
+            if (!PressureTightDoorBlock.isOpen(state) && !PressureTightDoorBlock.isBroken(state)) {
+                PressureTightDoorBlock.setOpen(level(), pos, true);
+            }
+        } else if (state.getBlock() instanceof DoorBlock doorBlock) {
+            if (!doorBlock.isOpen(state)) {
+                doorBlock.setOpen(this, level(), state, pos, true);
+                level().levelEvent(null, 1006, pos, 0);
+            }
+        }
     }
 
     @Override
@@ -243,7 +287,6 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         getLookControl().setLookAt(target, 30.0F, 30.0F);
     }
 
-
     private void tickHiddenStalking() {
         Player target = hiddenStalkTarget();
         if (!isValidHiddenStalkTarget(target)) {
@@ -255,6 +298,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         if (target == null) {
             return;
         }
+        tryOpenDoorsNearby();
         getLookControl().setLookAt(target, 30.0F, 30.0F);
         if (distanceToSqr(target) > HIDDEN_STALK_STOP_DISTANCE_SQR) {
             getNavigation().moveTo(target, HIDDEN_STALK_SPEED);
@@ -315,7 +359,6 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         setRunning(isValidTarget(getTarget()));
         pendingTargetId = null;
     }
-
 
     private void tickAggressiveTargeting() {
         LivingEntity target = getTarget();
@@ -381,6 +424,30 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
         return player != null && !player.isCreative() && !player.isSpectator();
     }
 
+    private static final class CadaverOpenDoorGoal extends Goal {
+        private final CadaverEntity cadaver;
+
+        private CadaverOpenDoorGoal(CadaverEntity cadaver) {
+            this.cadaver = cadaver;
+            setFlags(EnumSet.noneOf(Flag.class));
+        }
+
+        @Override
+        public boolean canUse() {
+            return !cadaver.isUnhiding();
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            return canUse();
+        }
+
+        @Override
+        public void tick() {
+            cadaver.tryOpenDoorsNearby();
+        }
+    }
+
     private static final class CadaverAttackGoal extends Goal {
         private final CadaverEntity cadaver;
         private int attackCooldown;
@@ -409,6 +476,7 @@ public class CadaverEntity extends PathfinderMob implements GeoEntity {
             cadaver.setRunning(true);
             cadaver.getLookControl().setLookAt(target, 30.0F, 30.0F);
             cadaver.getNavigation().moveTo(target, 1.2D);
+            cadaver.tryOpenDoorsNearby();
             if (attackCooldown > 0) {
                 attackCooldown--;
             }

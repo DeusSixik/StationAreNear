@@ -240,7 +240,7 @@ public class StationStructureToolItem extends Item {
         return library.piece(templateId).isPresent()
                 || library.savedTemplateSelections().containsKey(templateId)
                 || StationStructureFileStorage.templateExists(templateId)
-                || level.getStructureManager().get(templateId).isPresent();
+                || StationStructureFileStorage.getOrLoadTemplate(level, templateId).isPresent();
     }
 
     private static StationConnector defaultConnector(CompoundTag tag, BlockPos connectorLocalPos, Direction connectorDirection) {

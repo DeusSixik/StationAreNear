@@ -106,8 +106,8 @@ public final class SpannerRhythmMinigameScreen {
 
     public static final class SpannerRhythmMinigameWidget extends WidgetBase {
         private static final float HIT_ZONE = 0.22f;
-        private static final float MARKER_SPEED = 1.12f;
-        private static final int REQUIRED_HITS = 18;
+        private static final float MARKER_SPEED = 1.45f;
+        private static final int REQUIRED_HITS = 9;
         private static final float MAX_ANGLE = (float) Math.toRadians(62.0f);
         private static final MutableColor WHITE = MutableColor.rgba(1.0f, 1.0f, 1.0f, 1.0f);
         private static final MutableColor ZONE_IDLE = MutableColor.rgba(0.22f, 0.32f, 0.42f, 0.28f);

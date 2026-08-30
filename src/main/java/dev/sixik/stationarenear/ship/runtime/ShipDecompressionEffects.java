@@ -64,8 +64,42 @@ public final class ShipDecompressionEffects {
     }
 
     public static void forceEjectPlayers(ServerLevel level, BlockPos terminalPos) {
-        ShipDoorController.setOpen(level, terminalPos, true);
-        shipAnchor(level, terminalPos).ifPresent(anchor -> ejectPlayersInShip(level, anchor));
+        if (terminalPos != null) {
+            ShipDoorController.setOpen(level, terminalPos, true);
+        }
+        Optional<ShipDockingAnchor> anchor = terminalPos != null ? shipAnchor(level, terminalPos) : Optional.empty();
+        if (anchor.isPresent()) {
+            ejectPlayersInShip(level, anchor.get());
+        } else {
+            for (ShipDockingAnchor shipAnchor : ShipDockingAnchorSavedData.get(level).anchors()) {
+                if (shipAnchor.terminalPos() != null) {
+                    ShipDoorController.setOpen(level, shipAnchor.terminalPos(), true);
+                }
+                ejectPlayersInShip(level, shipAnchor);
+            }
+            for (ServerPlayer player : level.players()) {
+                if (!ignored(player)) {
+                    Optional<ShipDockingAnchor> playerAnchor = ShipDockingAnchorResolver.bindNearbyShip(level, player.blockPosition());
+                    if (playerAnchor.isPresent()) {
+                        ejectPlayer(level, playerAnchor.get(), player);
+                    } else {
+                        directEjectPlayer(level, player);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void directEjectPlayer(ServerLevel level, ServerPlayer player) {
+        Vec3 velocity = new Vec3(0.0D, 1.2D, 1.8D).normalize().scale(EJECTION_SPEED);
+        player.setNoGravity(true);
+        player.setDeltaMovement(velocity);
+        player.hurtMarked = true;
+        long until = level.getGameTime() + NO_GRAVITY_TICKS;
+        UUID uuid = player.getUUID();
+        if (NO_GRAVITY_UNTIL.getLong(uuid) < until) {
+            NO_GRAVITY_UNTIL.put(uuid, until);
+        }
     }
 
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {

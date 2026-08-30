@@ -83,7 +83,7 @@ public final class RetroTerminalScreen {
         RetroConsole console = new RetroConsole(terminalPos, snapshot, history);
         currentConsole = console;
         Widget root = root(console);
-        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Station Terminal"), root, context) {
+        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.translatable("screen.stationarenear.terminal.window_title"), root, context) {
             @Override
             public void tick() {
                 super.tick();
@@ -259,12 +259,12 @@ public final class RetroTerminalScreen {
             super();
             this.terminalPos = terminalPos;
             this.snapshot = snapshot == null ? ShipTerminalSnapshot.EMPTY : snapshot;
-            title("STATION TERMINAL / COMMAND CONSOLE");
+            title(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.terminal.title"));
             prompt("/");
             font(MinecraftFonts.defaultFace(), 18.0f);
             maxOutputLines(512);
             registerTerminalCommands();
-            appendInfo("Type / or press Tab to show commands: " + TerminalCommandCatalog.summary() + ".");
+            appendInfo(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.terminal.type_prompt_hint", TerminalCommandCatalog.summary()));
             applyServerHistory(history);
         }
 
@@ -409,7 +409,7 @@ public final class RetroTerminalScreen {
 
         @Override
         protected void configureCloseButton(Button closeButton) {
-            closeButton.text("EXIT");
+            closeButton.text(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.terminal.exit"));
             closeButton.themeEnabled(false);
             closeButton.background().set(0.010f, 0.045f, 0.020f, 0.95f);
             closeButton.borderColor().set(BORDER);
@@ -454,7 +454,7 @@ public final class RetroTerminalScreen {
 
         @Override
         protected void configureInputField(ConsoleInputField inputField) {
-            inputField.placeholder("enter command...");
+            inputField.placeholder(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.terminal.placeholder"));
             inputField.font(font, fontSize + 1.0f);
             inputField.visualOnlyTextChanges(true);
             inputField.themeEnabled(false);
@@ -499,7 +499,7 @@ public final class RetroTerminalScreen {
 
         @Override
         protected String initialOutputLine() {
-            return "The service is provided by HELICORP";
+            return net.minecraft.client.resources.language.I18n.get("screen.stationarenear.terminal.service_info");
         }
 
         private void registerTerminalCommands() {

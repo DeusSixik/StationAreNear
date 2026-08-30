@@ -60,7 +60,7 @@ public final class SpannerRhythmMinigameScreen {
             if (closeAction[0] != null) closeAction[0].run();
         });
 
-        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Spanner Rhythm Minigame"), root(minigame), context) {
+        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.translatable("screen.stationarenear.minigame.spanner_rhythm"), root(minigame), context) {
             @Override
             public void onClose() {
                 Minecraft.getInstance().setScreen(previous);

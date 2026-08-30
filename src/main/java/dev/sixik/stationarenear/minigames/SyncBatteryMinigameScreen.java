@@ -70,7 +70,7 @@ public final class SyncBatteryMinigameScreen {
             if (closeAction[0] != null) closeAction[0].run();
         });
 
-        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Sync Battery Minigame"), root(minigame), context) {
+        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.translatable("screen.stationarenear.minigame.sync_battery"), root(minigame), context) {
             @Override
             public void onClose() {
                 Minecraft.getInstance().setScreen(previous);

@@ -170,15 +170,7 @@ public final class StationEditorModeOverlay {
 
 
     private static String russianTitle(StationEditorWandMode mode) {
-        return switch (mode) {
-            case ZONE_SELECTION -> "\u0412\u044b\u0431\u043e\u0440 \u0437\u043e\u043d\u044b \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u044b";
-            case EDIT_STRUCTURE -> "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0443";
-            case TRIGGER_MANAGER_CREATE -> "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
-            case TRIGGER_MANAGER_EDIT -> "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u043e\u0432";
-            case TRIGGER_SHAPE_POINTS -> "\u0424\u043e\u0440\u043c\u0430 \u0442\u0440\u0438\u0433\u0433\u0435\u0440\u0430";
-            case CONNECTION_MANAGER -> "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430 \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0439";
-            case STRUCTURE_COPY -> "\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u044b";
-        };
+        return net.minecraft.client.resources.language.I18n.get("overlay.stationarenear.editor_mode." + mode.name().toLowerCase(java.util.Locale.ROOT));
     }
 
 

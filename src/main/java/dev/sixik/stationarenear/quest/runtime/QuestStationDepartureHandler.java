@@ -93,6 +93,20 @@ public final class QuestStationDepartureHandler {
         removeNavigationMarker(level, station);
     }
 
+    public static void onQuestTimerExpired(QuestTimerExpiredEvent event) {
+        ServerLevel level = event.getLevel();
+        java.util.UUID stationId = event.getStationId();
+        QuestStationState state = event.getStationState();
+        if (state == null) {
+            return;
+        }
+
+        boolean isDockedAtQuestStation = StationSavedData.get(level).station(stationId).isPresent();
+        if (!isDockedAtQuestStation) {
+            failMission(level, stationId, "left_station_after_timer_expired");
+        }
+    }
+
     public static boolean failMission(ServerLevel level, java.util.UUID stationId, String reason) {
         Optional<StationInstance> stationOpt = StationSavedData.get(level).station(stationId);
         Optional<QuestStationState> stateOpt = QuestSavedData.get(level).stationIfPresent(stationId);
@@ -134,8 +148,10 @@ public final class QuestStationDepartureHandler {
         String chatText = QuestPhraseManager.format(phrase.text(), placeholders);
         String samText = QuestPhraseManager.format(phrase.sam(), placeholders);
 
+        Optional<BlockPos> resolvedTerminalPos = resolveShipTerminalPos(level, station, terminalPos);
+
         if (!chatText.isBlank()) {
-            for (ServerPlayer player : affectedPlayers(level, station, terminalPos)) {
+            for (ServerPlayer player : affectedPlayers(level, station, resolvedTerminalPos)) {
                 player.sendSystemMessage(Component.literal(chatText));
             }
         }
@@ -144,16 +160,65 @@ public final class QuestStationDepartureHandler {
             QuestAnnouncementHandler.speak(level, stationId, samText);
         }
 
-        terminalPos.ifPresent(pos -> {
+        BlockPos pos = resolvedTerminalPos.orElse(null);
+        if (pos != null) {
             ShipControlLockSavedData.get(level).lock(pos, "quest_failure:" + reason);
             SolarNavigationControlManager.forceStop(level, pos);
             ShipManager.setDocking(level, pos, false);
-            scheduleEjection(level, pos, delaySec);
-        });
+        } else {
+            SolarNavigationControlManager.forceStopAll(level);
+        }
+        scheduleEjection(level, pos, delaySec);
+
         QuestSavedData.get(level).remove(stationId);
         if (station != null) {
             removeNavigationMarker(level, station);
         }
+    }
+
+    private static Optional<BlockPos> resolveShipTerminalPos(ServerLevel level, StationInstance station, Optional<BlockPos> terminalPos) {
+        if (terminalPos != null && terminalPos.isPresent()) {
+            return terminalPos;
+        }
+        if (station != null) {
+            Optional<BlockPos> fromStation = navigationTerminalPos(station);
+            if (fromStation.isPresent()) {
+                return fromStation;
+            }
+        }
+        for (ShipDockingAnchor anchor : ShipDockingAnchorSavedData.get(level).anchors()) {
+            if (anchor.terminalPos() != null) {
+                return Optional.of(anchor.terminalPos());
+            }
+        }
+        BlockPos activeNavPos = SolarNavigationControlManager.activeTerminalPos(level);
+        if (activeNavPos != null) {
+            return Optional.of(activeNavPos);
+        }
+        BoundingBox shipBounds = dev.sixik.stationarenear.ship.world.ShipWorldSpawnSavedData.get(level).getShipBounds();
+        if (shipBounds != null) {
+            BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+            for (int x = shipBounds.minX(); x <= shipBounds.maxX(); x++) {
+                for (int y = shipBounds.minY(); y <= shipBounds.maxY(); y++) {
+                    for (int z = shipBounds.minZ(); z <= shipBounds.maxZ(); z++) {
+                        mutable.set(x, y, z);
+                        if (level.getBlockState(mutable).is(dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks.SOLAR_NAVIGATION_TERMINAL.get())
+                                || level.getBlockState(mutable).is(dev.sixik.stationarenear.terminal.registry.TerminalBlocks.TERMINAL.get())) {
+                            return Optional.of(mutable.immutable());
+                        }
+                    }
+                }
+            }
+        }
+        for (ServerPlayer player : level.players()) {
+            if (!player.isSpectator()) {
+                Optional<ShipDockingAnchor> anchor = ShipDockingAnchorResolver.bindNearbyShip(level, player.blockPosition());
+                if (anchor.isPresent() && anchor.get().terminalPos() != null) {
+                    return Optional.of(anchor.get().terminalPos());
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private static void scheduleEjection(ServerLevel level, BlockPos pos, int delaySec) {

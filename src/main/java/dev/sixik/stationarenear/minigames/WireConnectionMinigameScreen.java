@@ -63,7 +63,7 @@ public final class WireConnectionMinigameScreen {
             if (closeAction[0] != null) closeAction[0].run();
         });
 
-        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.literal("Wire Connection Minigame"), root(minigame), context) {
+        MinecraftWidgetScreen screen = new MinecraftWidgetScreen(Component.translatable("screen.stationarenear.minigame.wire_connection"), root(minigame), context) {
             @Override
             public void onClose() {
                 Minecraft.getInstance().setScreen(previous);

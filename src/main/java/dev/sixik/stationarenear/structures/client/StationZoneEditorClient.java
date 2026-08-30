@@ -54,7 +54,7 @@ public final class StationZoneEditorClient {
         try {
             Object screen = Class.forName("dev.sixik.unigui.backend.minecraft_impl.MinecraftWidgetScreen")
                     .getConstructor(Component.class, Widget.class)
-                    .newInstance(Component.literal("Station Structure Editor"), root);
+                    .newInstance(Component.translatable("screen.stationarenear.zone_editor.window_title"), root);
             minecraft.setScreen((Screen) screen);
         } catch (ReflectiveOperationException | ClassCastException exception) {
             minecraft.setScreen(null);
@@ -76,7 +76,7 @@ public final class StationZoneEditorClient {
         private static final MutableColor COLOR_ACCENT = MutableColor.rgba(0.45f, 0.84f, 1.0f, 1.0f);
         private static final MutableColor COLOR_WARNING = MutableColor.rgba(1.0f, 0.74f, 0.34f, 1.0f);
 
-        private final Label status = new Label("Готово. Выбери Root, connection или trigger.");
+        private final Label status = new Label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.status_ready"));
         private final Label headerSummary = new Label("");
         private final Label connectionStat = new Label("");
         private final Label triggerStat = new Label("");
@@ -132,7 +132,7 @@ public final class StationZoneEditorClient {
                     .gap(3.0f)
                     .flexGrow(1.0f)
                     .flexShrink(1.0f));
-            Label title = label("Редактор зоны станции", COLOR_TITLE);
+            Label title = label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.title"), COLOR_TITLE);
             title.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).flexGrow(0.0f).flexShrink(0.0f));
             headerSummary.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0.0f).flexShrink(0.0f));
             headerSummary.color(COLOR_MUTED);
@@ -143,9 +143,9 @@ public final class StationZoneEditorClient {
 
             HBox stats = new HBox();
             stats.layout(style -> style.size(354.0f, 58.0f).gap(6.0f).flexGrow(0.0f).flexShrink(0.0f));
-            stats.addChild(statCard("CONNECTIONS", connectionStat));
-            stats.addChild(statCard("TRIGGERS", triggerStat));
-            stats.addChild(statCard("DRAFTS", draftStat));
+            stats.addChild(statCard(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.connections"), connectionStat));
+            stats.addChild(statCard(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.triggers"), triggerStat));
+            stats.addChild(statCard(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.drafts"), draftStat));
 
             header.addChild(titleBlock);
             header.addChild(stats);
@@ -163,9 +163,9 @@ public final class StationZoneEditorClient {
             status.overflowMode(TextOverflowMode.CLIP);
             status.layout(style -> style.size(LayoutConstraints.AUTO, 26.0f).flexGrow(1.0f).flexShrink(1.0f));
 
-            Button templates = button("Templates");
-            Button clearWand = button("Clear Wand");
-            Button saveStructure = button("Save Structure");
+            Button templates = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.templates"));
+            Button clearWand = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.clear_wand"));
+            Button saveStructure = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.save_structure"));
             templates.onClick(event -> StationStructureNetwork.sendTemplateAction(new TemplateSelectionActionPacket("", "open")));
             clearWand.onClick(event -> clearWandData());
             saveStructure.onClick(event -> saveStructure());
@@ -196,7 +196,7 @@ public final class StationZoneEditorClient {
         }
 
         private Widget buildHierarchyPane() {
-            VBox pane = pane("Навигация");
+            VBox pane = pane(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.navigation"));
             pane.layout(style -> style.size(310.0f, LayoutConstraints.AUTO)
                     .padding(8.0f)
                     .gap(7.0f)
@@ -205,8 +205,8 @@ public final class StationZoneEditorClient {
 
             HBox toolbar = new HBox();
             toolbar.layout(style -> style.size(LayoutConstraints.AUTO, 30.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
-            Button addConnection = button("+ Connection");
-            Button addTrigger = button("+ Trigger");
+            Button addConnection = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.add_connection"));
+            Button addTrigger = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.zone_editor.add_trigger"));
             addConnection.onClick(event -> addConnection());
             addTrigger.onClick(event -> addTrigger(StationEditorNodeType.TRIGGER));
             toolbar.addChild(addConnection);

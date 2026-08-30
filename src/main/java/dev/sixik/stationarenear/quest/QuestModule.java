@@ -43,6 +43,7 @@ public final class QuestModule {
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.AutoQuestManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupManager::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler::onServerStopping);
+        MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.QuestStationDepartureHandler::onQuestTimerExpired);
         MinecraftForge.EVENT_BUS.addListener(QuestAnnouncementHandler::onQuestStarted);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.gravity.StationGravitationManager::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.oxygen.StationOxygenManager::onLivingBreathe);

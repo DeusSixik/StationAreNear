@@ -87,6 +87,23 @@ public final class SolarNavigationControlManager {
         return stoppedState;
     }
 
+    public static BlockPos activeTerminalPos(ServerLevel level) {
+        for (Session session : SESSIONS.values()) {
+            if (session.level != null && session.level.dimension().equals(level.dimension())) {
+                return session.terminalPos;
+            }
+        }
+        return null;
+    }
+
+    public static void forceStopAll(ServerLevel level) {
+        for (Session session : new ArrayList<>(SESSIONS.values())) {
+            if (session.level != null && session.level.dimension().equals(level.dimension())) {
+                forceStop(level, session.terminalPos);
+            }
+        }
+    }
+
     public static void tick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;

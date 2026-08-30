@@ -49,15 +49,14 @@ public final class QuestFurniturePickupOverlay {
         }
         render(event.getGuiGraphics(), minecraft.getWindow().getGuiScaledWidth(), minecraft.getWindow().getGuiScaledHeight());
     }
-
-    private static void render(GuiGraphics graphics, int screenWidth, int screenHeight) {
+    private static void render(GuiGraphics graphics, int screenWidth, int screenHeight) {
         Minecraft minecraft = Minecraft.getInstance();
         int width = 140;
         int height = 24;
         int x = (screenWidth - width) / 2;
         int y = screenHeight - 72;
         String title = customTitle.isBlank()
-                ? ("\u041f\u043e\u0434\u0431\u043e\u0440 " + Math.round(progress * 100.0F) + "%")
+                ? net.minecraft.client.resources.language.I18n.get("overlay.stationarenear.pickup_progress", Math.round(progress * 100.0F))
                 : customTitle;
 
         graphics.fill(x, y, x + width, y + height, PANEL_COLOR);

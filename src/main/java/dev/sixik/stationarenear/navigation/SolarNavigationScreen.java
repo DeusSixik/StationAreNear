@@ -106,7 +106,7 @@ public final class SolarNavigationScreen {
 
 
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(
-                Component.literal("Solar Navigation Terminal"), canvas, context) {
+                Component.translatable("screen.stationarenear.solar_navigation.title"), canvas, context) {
             @Override
             public void tick() {
                 super.tick();
@@ -223,7 +223,7 @@ public final class SolarNavigationScreen {
         private float inputSyncSeconds;
         private int lastInputMask = -1;
         private float dockMessageSeconds;
-        private String dockMessage = "Find the quest station";
+        private String dockMessage = net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.find_quest_station");
         private float dockingProgressSeconds;
         private float impactInterference;
         private long dockingTargetSeed = Long.MIN_VALUE;
@@ -622,7 +622,7 @@ public final class SolarNavigationScreen {
             if (nearest == null) {
                 resetDockingProgress();
                 if (keyboard.wasPressed(KeyCodes.SPACE)) {
-                    dockMessage = "No docking target in range";
+                    dockMessage = net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.no_target");
                     dockMessageSeconds = 1.5f;
                 }
                 return;
@@ -631,7 +631,7 @@ public final class SolarNavigationScreen {
             if (dockedStations.contains(nearest.seed())) {
                 resetDockingProgress();
                 if (keyboard.wasPressed(KeyCodes.SPACE)) {
-                    dockMessage = "Already docked: " + nearest.name();
+                    dockMessage = net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.already_docked", nearest.name());
                     dockMessageSeconds = 1.8f;
                 }
                 return;
@@ -669,8 +669,8 @@ public final class SolarNavigationScreen {
             activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.code(), station.x(), station.y()));
             SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, station.name(), station.code(), station.seed(), station.quest(), station.x(), station.y()));
             dockMessage = station.quest()
-                    ? "Docking request sent: " + station.code() + " / quest route"
-                    : "Docking request sent: " + station.code();
+                    ? net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.docking_request_quest", station.code())
+                    : net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.docking_request", station.code());
             dockMessageSeconds = 3.0f;
             velocityX = 0.0f;
             velocityY = 0.0f;
@@ -904,18 +904,17 @@ public final class SolarNavigationScreen {
             float panelH = dockMessageSeconds > 0.0f ? 134.0f : 112.0f;
             draw.addRectFilled(panelX, panelY, panelW, panelH, 8.0f, HUD_BG);
             draw.addRect(panelX, panelY, panelW, panelH, 8.0f, HUD_BORDER, 1.25f);
-            text(draw, "SOLAR NAVIGATION TERMINAL", panelX + 16.0f, panelY + 12.0f, panelW - 32.0f, 18.0f, 14.0f, CYAN);
+            text(draw, net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.hud_title"), panelX + 16.0f, panelY + 12.0f, panelW - 32.0f, 18.0f, 14.0f, CYAN);
 
             float speed = (float) Math.sqrt(renderVelocityX * renderVelocityX + renderVelocityY * renderVelocityY);
-            text(draw, "W/S thrust   A/D rotate   SPACE dock   ESC close", panelX + 16.0f, panelY + 38.0f, panelW - 32.0f, 18.0f, 11.0f, MUTED);
-            text(draw, "SPD " + Math.round(speed)
-                            + "    SEED " + Long.toHexString(seed).toUpperCase(),
+            text(draw, net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.controls"), panelX + 16.0f, panelY + 38.0f, panelW - 32.0f, 18.0f, 11.0f, MUTED);
+            text(draw, net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.speed_seed", Math.round(speed), Long.toHexString(seed).toUpperCase()),
                     panelX + 16.0f, panelY + 62.0f, panelW - 32.0f, 18.0f, 11.0f, WHITE);
 
             Station nearestQuest = nearestQuestStation();
             if (nearestQuest != null) {
                 float questDistance = (float) Math.sqrt(distanceSquared(shipX, shipY, nearestQuest.x(), nearestQuest.y()));
-                text(draw, "QUEST: dock with " + nearestQuest.name() + " / " + Math.round(questDistance) + "u",
+                text(draw, net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.quest_dock", nearestQuest.name(), Math.round(questDistance)),
                         panelX + 16.0f, panelY + 84.0f, panelW - 32.0f, 18.0f, 11.0f, colorFromArgb(nearestQuest.color()));
             }
             if (dockMessageSeconds > 0.0f) {
@@ -945,7 +944,7 @@ public final class SolarNavigationScreen {
             draw.addRectFilled(barX + 3.0f, barY + 3.0f, fillW, barH - 6.0f, 4.0f,
                     progress >= 1.0f ? CYAN : AMBER);
             text(draw,
-                    "DOCKING " + dockingTargetName + " / HOLD SPACE " + Math.round(progress * 100.0f) + "%",
+                    net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.docking_progress", dockingTargetName, Math.round(progress * 100.0f)),
                     barX + 10.0f,
                     barY + 4.0f,
                     barW - 20.0f,

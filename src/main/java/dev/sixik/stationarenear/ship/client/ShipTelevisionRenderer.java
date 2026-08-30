@@ -37,13 +37,15 @@ public class ShipTelevisionRenderer implements BlockEntityRenderer<ShipTelevisio
     private static final int LINE_HEIGHT = 11;
     private static final int BACKGROUND_COLOR = 0xEE000000;
     private static final int FULL_BRIGHT = LightTexture.FULL_BRIGHT;
-    private static final List<Component> DEFAULT_LINES = List.of(
-            Component.literal("STATION ARE NEAR"),
-            Component.literal("SHIP TV ONLINE"),
-            Component.literal("OBJECTIVES: NONE"),
-            Component.literal("PRESSURE: STABLE"),
-            Component.literal("SIGNAL: TEST MODE")
-    );
+    private List<Component> defaultLines() {
+        return List.of(
+                Component.literal(net.minecraft.client.resources.language.I18n.get("tv.stationarenear.default.title")),
+                Component.literal(net.minecraft.client.resources.language.I18n.get("tv.stationarenear.default.online")),
+                Component.literal(net.minecraft.client.resources.language.I18n.get("tv.stationarenear.default.no_objectives")),
+                Component.literal(net.minecraft.client.resources.language.I18n.get("tv.stationarenear.default.pressure_stable")),
+                Component.literal(net.minecraft.client.resources.language.I18n.get("tv.stationarenear.default.signal_test"))
+        );
+    }
 
     private final Font font;
 
@@ -106,9 +108,10 @@ public class ShipTelevisionRenderer implements BlockEntityRenderer<ShipTelevisio
         List<TelevisionLine> lines = new ArrayList<>();
         String customText = television.text();
         if (customText == null || customText.isBlank()) {
-            for (int i = 0; i < DEFAULT_LINES.size(); i++) {
+            List<Component> defaults = defaultLines();
+            for (int i = 0; i < defaults.size(); i++) {
                 int color = i == 0 ? 0xFF66FF99 : 0xFF24E875;
-                addWrappedLine(lines, DEFAULT_LINES.get(i), maxWidth, color);
+                addWrappedLine(lines, defaults.get(i), maxWidth, color);
             }
             return lines;
         }

@@ -35,7 +35,7 @@ public final class StationTemplateSelectionClient {
             // Ебаные маппинги. Я их рот шатал.
             Object screen = Class.forName("dev.sixik.unigui.backend.minecraft_impl.MinecraftWidgetScreen")
                     .getConstructor(Component.class, Widget.class)
-                    .newInstance(Component.literal("Station Templates"), root);
+                    .newInstance(Component.translatable("screen.stationarenear.template_menu.window_title"), root);
             minecraft.setScreen((Screen) screen);
         } catch (ReflectiveOperationException | ClassCastException exception) {
             minecraft.setScreen(null);
@@ -48,7 +48,7 @@ public final class StationTemplateSelectionClient {
     private static final class TemplateMenuRoot {
         private final StackPanel viewport = new StackPanel();
         private final List<TemplateSelectionEntry> entries;
-        private final Label status = new Label("Select a template to edit, hide or delete.");
+        private final Label status = new Label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.status"));
         private ResourceLocation pendingDelete;
 
         private TemplateMenuRoot(List<TemplateSelectionEntry> entries) {
@@ -58,7 +58,7 @@ public final class StationTemplateSelectionClient {
             panel.layout(style -> style.size(620.0f, 360.0f).padding(8.0f).gap(6.0f).align(Alignment.CENTER, Alignment.CENTER));
             viewport.addChild(panel);
 
-            Label title = new Label("Template Selections");
+            Label title = new Label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.title"));
             title.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(0).flexShrink(0.0f));
             status.layout(style -> style.size(LayoutConstraints.AUTO, 20.0f).flexGrow(0).flexShrink(0.0f));
             panel.addChild(title);
@@ -66,7 +66,7 @@ public final class StationTemplateSelectionClient {
 
             TabControl tabs = new TabControl();
             tabs.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).flexGrow(1.0f).flexShrink(1.0f));
-            tabs.addTab("Templates", new ScrollView(listPane()));
+            tabs.addTab(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.tab_templates"), new ScrollView(listPane()));
             tabs.silentSelectTab(0);
             panel.addChild(tabs);
         }
@@ -79,30 +79,30 @@ public final class StationTemplateSelectionClient {
             VBox list = new VBox();
             list.layout(style -> style.size(LayoutConstraints.AUTO, LayoutConstraints.AUTO).padding(4.0f).gap(4.0f).flexGrow(1.0f).flexShrink(1.0f));
             if (entries.isEmpty()) {
-                list.addChild(label("No station templates saved yet."));
+                list.addChild(label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.empty")));
                 return list;
             }
             for (TemplateSelectionEntry entry : entries) {
                 HBox row = new HBox();
                 row.layout(style -> style.size(LayoutConstraints.AUTO, 28.0f).gap(6.0f).flexGrow(0).flexShrink(0.0f));
-                Checkbox visible = new Checkbox("Show");
+                Checkbox visible = new Checkbox(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.show"));
                 visible.silentChecked(StationEditorClientState.templateSelectionVisible(entry.template()));
                 visible.layout(style -> style.size(70.0f, 22.0f).flexGrow(0).flexShrink(0.0f));
                 visible.onCheckedChanged(event -> StationEditorClientState.templateSelectionVisible(entry.template(), event.newValue()));
 
                 Label name = label(entry.template().toString() + " [" + entry.source() + (entry.hasBounds() ? "]" : ", not spawned]"));
                 name.layout(style -> style.size(LayoutConstraints.AUTO, 22.0f).flexGrow(1.0f).flexShrink(1.0f));
-                Button edit = button("Edit");
+                Button edit = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.edit"));
                 edit.onClick(event -> StationStructureNetwork.sendTemplateAction(new TemplateSelectionActionPacket(entry.template().toString(), "edit")));
-                Button delete = button("Delete");
+                Button delete = button(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.delete"));
                 delete.onClick(event -> {
                     if (entry.template().equals(pendingDelete)) {
                         StationStructureNetwork.sendTemplateAction(new TemplateSelectionActionPacket(entry.template().toString(), "delete"));
                         status.text("Deleting " + entry.template() + "...");
                     } else {
                         pendingDelete = entry.template();
-                        delete.text("Confirm Delete");
-                        status.text("Click Confirm Delete to remove " + entry.template() + ". Generated instances can still stay visible.");
+                        delete.text(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.confirm_delete_btn"));
+                        status.text(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.template_menu.confirm_delete", entry.template()));
                     }
                 });
 

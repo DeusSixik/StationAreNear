@@ -249,7 +249,7 @@ public final class StationMapScreen {
         shell.spacing(14.0f);
         shell.layout(style -> style.sizePercent(100.0f, 100.0f).flexGrow(1.0f).flexShrink(1.0f));
 
-        Label title = label("STATION MAP / " + map.stationCode(), 18.0f, COLOR_TITLE);
+        Label title = label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.header", map.stationCode()), 18.0f, COLOR_TITLE);
         title.layout(style -> style.height(28.0f).flexShrink(0.0f));
         shell.addChild(title);
 
@@ -340,10 +340,10 @@ public final class StationMapScreen {
         private final Map<String, String> pieceBindings = new LinkedHashMap<>();
 
         public StationMapMarkers() {
-            define(new RoomMarker("ship", "SHIP", "Текущая позиция", COLOR_SHIP, COLOR_SHIP_BORDER));
-            define(new RoomMarker("room", "ROOM", "Обычный сегмент станции", COLOR_ROOM, COLOR_ROOM_BORDER));
-            define(new RoomMarker("quest", "ЗАДАНИЕ", "Зона активного задания", COLOR_TREASURE, COLOR_TREASURE_BORDER));
-            define(new RoomMarker("lift", "LIFT", "Переход между этажами", COLOR_ELEVATOR, COLOR_ELEVATOR_BORDER));
+            define(new RoomMarker("ship", "SHIP", net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.marker.ship"), COLOR_SHIP, COLOR_SHIP_BORDER));
+            define(new RoomMarker("room", "ROOM", net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.marker.room"), COLOR_ROOM, COLOR_ROOM_BORDER));
+            define(new RoomMarker("quest", net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.marker.quest_title"), net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.marker.quest"), COLOR_TREASURE, COLOR_TREASURE_BORDER));
+            define(new RoomMarker("lift", "LIFT", net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.marker.lift"), COLOR_ELEVATOR, COLOR_ELEVATOR_BORDER));
         }
 
         public StationMapMarkers define(String markerId, MutableColor color, String title, String description) {
@@ -453,7 +453,7 @@ public final class StationMapScreen {
             HBox floorSelector = new HBox();
             floorSelector.spacing(10.0f);
             floorSelector.layout(style -> style.height(30.0f).alignItems(Align.CENTER).flexGrow(0.0f).flexShrink(0.0f));
-            Label floorLabel = label("Уровень карты", 11.5f, COLOR_MUTED);
+            Label floorLabel = label(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.floor_label"), 11.5f, COLOR_MUTED);
             floorLabel.layout(style -> style.height(30.0f).flexGrow(1.0f).flexShrink(1.0f));
             floorDropBox.layout(style -> style.width(108.0f).height(30.0f).flexGrow(0.0f).flexShrink(0.0f));
             floorSelector.addChild(floorLabel);
@@ -681,9 +681,8 @@ public final class StationMapScreen {
                     if (connection.floor() == floor) connections++;
                 }
             }
-            return "Станция " + snapshot.stationCode()
-                    + ": " + visible + " сегментов, "
-                    + connections + " точек стыковки. Dock Y=" + snapshot.dockY() + ".";
+            return net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.summary",
+                    snapshot.stationCode(), visible, connections, snapshot.dockY());
         }
 
         private List<RoomMarker> legendMarkers(int floor) {
@@ -739,7 +738,7 @@ public final class StationMapScreen {
             float y = layoutBounds().y() + 16.0f;
             draw.addRectFilled(x, y, 182.0f, 34.0f, 5.0f, MutableColor.rgba(0.018f, 0.026f, 0.038f, 0.90f));
             draw.addRect(x, y, 182.0f, 34.0f, 5.0f, MutableColor.rgba(0.28f, 0.48f, 0.72f, 0.72f), 1.0f);
-            draw.addText("FLOOR " + activeFloor + " / " + snapshot.stationCode(), x + 10.0f, y + 7.0f, 162.0f, 20.0f, COLOR_TITLE);
+            draw.addText(net.minecraft.client.resources.language.I18n.get("screen.stationarenear.station_map.floor_title", activeFloor, snapshot.stationCode()), x + 10.0f, y + 7.0f, 162.0f, 20.0f, COLOR_TITLE);
         }
 
         private void drawQuestHighlight(DrawScope draw, float x, float y, float w, float h, float radius) {

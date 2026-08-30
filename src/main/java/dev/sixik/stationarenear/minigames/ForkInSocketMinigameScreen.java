@@ -80,7 +80,7 @@ public final class ForkInSocketMinigameScreen {
         }
 
         MinecraftWidgetScreen screen = new MinecraftWidgetScreen(
-                Component.literal("Fork In Socket Minigame"),
+                Component.translatable("screen.stationarenear.minigame.fork_in_socket"),
                 root(minigame),
                 context
         ) {

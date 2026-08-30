@@ -104,6 +104,7 @@ public final class DirectorStationSpawnHandler {
             return;
         }
         consume(offer, 1);
+        event.getZone().data().putBoolean("placeGravitationPanel", true);
         event.getZone().data().putBoolean("broken", true);
         event.getZone().data().putBoolean("brokenGravitation", true);
     }
@@ -114,6 +115,7 @@ public final class DirectorStationSpawnHandler {
             return;
         }
         consume(offer, 1);
+        event.getZone().data().putBoolean("placeOxygenPanel", true);
         event.getZone().data().putBoolean("broken", true);
         event.getZone().data().putBoolean("brokenOxygen", true);
     }

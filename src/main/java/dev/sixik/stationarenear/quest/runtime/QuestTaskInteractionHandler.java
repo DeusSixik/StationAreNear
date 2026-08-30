@@ -572,9 +572,10 @@ public final class QuestTaskInteractionHandler {
     }
 
     private static boolean contains(PlacedStationPiece piece, BlockPos pos) {
-        return pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
+        return (pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
                 && pos.getY() >= piece.selectionBounds().minY() && pos.getY() <= piece.selectionBounds().maxY()
-                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ();
+                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ())
+                || piece.bounds().isInside(pos);
     }
 
     private record StationPieceContext(StationInstance station, PlacedStationPiece piece) {

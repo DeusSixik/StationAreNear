@@ -35,6 +35,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.EventPriority;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -253,35 +254,117 @@ public final class StationTriggerHandlers {
                 || hasTriggerTag(zone, "oxygen_system");
     }
 
+    public static Optional<PlacedTriggerZone> selectGravitationPanelTrigger(StationInstance station) {
+        List<PlacedTriggerZone> zones = selectGravitationPanelTriggers(station, 1);
+        return zones.isEmpty() ? Optional.empty() : Optional.of(zones.get(0));
+    }
+
+    public static List<PlacedTriggerZone> selectGravitationPanelTriggers(StationInstance station, int count) {
+        if (count <= 0) {
+            return List.of();
+        }
+        List<PlacedTriggerZone> zones = new ArrayList<>();
+        for (PlacedStationPiece piece : station.pieces()) {
+            for (PlacedTriggerZone zone : piece.triggerZones()) {
+                if (isGravitationPanelTrigger(zone)) {
+                    zones.add(zone);
+                }
+            }
+        }
+        if (zones.isEmpty()) {
+            return List.of();
+        }
+        zones.sort(java.util.Comparator.comparing(PlacedTriggerZone::id));
+        java.util.Collections.shuffle(zones, new java.util.Random(station.seed() ^ 0x68417101L));
+        return zones.subList(0, Math.min(count, zones.size()));
+    }
+
+    public static Optional<PlacedTriggerZone> selectOxygenPanelTrigger(StationInstance station) {
+        List<PlacedTriggerZone> zones = selectOxygenPanelTriggers(station, 1);
+        return zones.isEmpty() ? Optional.empty() : Optional.of(zones.get(0));
+    }
+
+    public static List<PlacedTriggerZone> selectOxygenPanelTriggers(StationInstance station, int count) {
+        if (count <= 0) {
+            return List.of();
+        }
+        List<PlacedTriggerZone> zones = new ArrayList<>();
+        for (PlacedStationPiece piece : station.pieces()) {
+            for (PlacedTriggerZone zone : piece.triggerZones()) {
+                if (isOxygenPanelTrigger(zone)) {
+                    zones.add(zone);
+                }
+            }
+        }
+        if (zones.isEmpty()) {
+            return List.of();
+        }
+        zones.sort(java.util.Comparator.comparing(PlacedTriggerZone::id));
+        java.util.Collections.shuffle(zones, new java.util.Random(station.seed() ^ 0x0276E101L));
+        return zones.subList(0, Math.min(count, zones.size()));
+    }
+
+    public static boolean placeGravitationPanel(ServerLevel level, StationInstance station, PlacedTriggerZone zone, boolean broken) {
+        BlockPos pos = centerPos(zone);
+        Direction facing = panelFacing(zone.data(), station.stationDirection());
+        level.setBlock(pos, QuestBlocks.GRAVITATION_PANEL.get().defaultBlockState()
+                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.FACING, facing)
+                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.BROKEN, broken), 3);
+        dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onPanelPlaced(level, pos, broken);
+        return true;
+    }
+
+    public static boolean placeOxygenPanel(ServerLevel level, StationInstance station, PlacedTriggerZone zone, boolean broken) {
+        BlockPos pos = centerPos(zone);
+        Direction facing = panelFacing(zone.data(), station.stationDirection());
+        level.setBlock(pos, QuestBlocks.OXYGEN_PANEL.get().defaultBlockState()
+                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.FACING, facing)
+                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.BROKEN, broken), 3);
+        dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onPanelPlaced(level, pos, broken);
+        return true;
+    }
+
     public static void placeGravitationPanel(StationStructureSpawnTriggerEvent event) {
         CompoundTag data = event.getZone().data();
+        if (event.getTriggerType() != StationStructureTriggerType.OBJECT_PLACER) {
+            if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeGravitationPanel") && !data.getBoolean("place")) {
+                return;
+            }
+        }
         boolean isBroken = dev.sixik.stationarenear.structures.gravity.StationGravitationManager.hasGravitationFailureOffer(event.getStation())
                 || (data.contains("broken") && data.getBoolean("broken"))
                 || (data.contains("brokenGravitation") && data.getBoolean("brokenGravitation"))
                 || hasTriggerTag(event.getZone(), "broken_gravity")
                 || hasTriggerTag(event.getZone(), "broken_gravitation");
 
-        BlockPos pos = centerPos(event.getZone());
-        Direction facing = panelFacing(data, event.getStation().stationDirection());
-        event.getLevel().setBlock(pos, QuestBlocks.GRAVITATION_PANEL.get().defaultBlockState()
-                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.FACING, facing)
-                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.BROKEN, isBroken), 3);
-        dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onPanelPlaced(event.getLevel(), pos, isBroken);
+        if (data.contains("pool") && !data.getString("pool").isBlank()) {
+            String requiredTag = isBroken ? "broken_gravity" : "gravitation_panel";
+            if (placeObject(event, true, requiredTag)) {
+                return;
+            }
+        }
+        placeGravitationPanel(event.getLevel(), event.getStation(), event.getZone(), isBroken);
     }
 
     public static void placeOxygenPanel(StationStructureSpawnTriggerEvent event) {
         CompoundTag data = event.getZone().data();
+        if (event.getTriggerType() != StationStructureTriggerType.OBJECT_PLACER) {
+            if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeOxygenPanel") && !data.getBoolean("place")) {
+                return;
+            }
+        }
         boolean isBroken = dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.hasOxygenFailureOffer(event.getStation())
                 || (data.contains("broken") && data.getBoolean("broken"))
                 || (data.contains("brokenOxygen") && data.getBoolean("brokenOxygen"))
                 || hasTriggerTag(event.getZone(), "broken_oxygen");
 
-        BlockPos pos = centerPos(event.getZone());
-        Direction facing = panelFacing(data, event.getStation().stationDirection());
-        event.getLevel().setBlock(pos, QuestBlocks.OXYGEN_PANEL.get().defaultBlockState()
-                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.FACING, facing)
-                .setValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.BROKEN, isBroken), 3);
-        dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onPanelPlaced(event.getLevel(), pos, isBroken);
+        if (data.contains("pool") && !data.getString("pool").isBlank()) {
+            String requiredTag = isBroken ? "broken_oxygen" : "oxygen_panel";
+            if (placeObject(event, true, requiredTag)) {
+                return;
+            }
+        }
+        placeOxygenPanel(event.getLevel(), event.getStation(), event.getZone(), isBroken);
     }
 
     private static boolean isEnergySwitchTrigger(PlacedTriggerZone zone) {

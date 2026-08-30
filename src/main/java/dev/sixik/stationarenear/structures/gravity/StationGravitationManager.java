@@ -20,6 +20,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
@@ -39,8 +40,26 @@ public final class StationGravitationManager {
 
         for (PlacedStationPiece piece : station.pieces()) {
             for (PlacedTriggerZone zone : piece.triggerZones()) {
-                if (zone.data().contains("brokenGravitation") && zone.data().getBoolean("brokenGravitation")) {
+                if ((zone.data().contains("brokenGravitation") && zone.data().getBoolean("brokenGravitation"))
+                        || (zone.data().contains("broken") && zone.data().getBoolean("broken"))
+                        || hasTriggerTag(zone, "broken_gravity")
+                        || hasTriggerTag(zone, "broken_gravitation")) {
                     brokenFound = true;
+                }
+            }
+            var bounds = piece.selectionBounds();
+            for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+                for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                    for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                        BlockPos checkPos = new BlockPos(x, y, z);
+                        BlockState checkState = level.getBlockState(checkPos);
+                        if (checkState.is(dev.sixik.stationarenear.quest.registry.QuestBlocks.GRAVITATION_PANEL.get())) {
+                            state.panelPositions().add(checkPos);
+                            if (checkState.getValue(dev.sixik.stationarenear.quest.block.WallMountedPanelBlock.BROKEN)) {
+                                brokenFound = true;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -197,8 +216,24 @@ public final class StationGravitationManager {
     }
 
     private static boolean contains(PlacedStationPiece piece, BlockPos pos) {
-        return pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
+        return (pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
                 && pos.getY() >= piece.selectionBounds().minY() && pos.getY() <= piece.selectionBounds().maxY()
-                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ();
+                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ())
+                || piece.bounds().isInside(pos);
+    }
+
+    private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
+        String tags = zone.data().contains(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                ? zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                : zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAG);
+        if (tags == null || tags.isBlank()) {
+            return false;
+        }
+        for (String tag : tags.split(",")) {
+            if (requiredTag.equalsIgnoreCase(tag.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

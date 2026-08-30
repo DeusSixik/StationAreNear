@@ -39,7 +39,9 @@ public final class StationOxygenManager {
 
         for (PlacedStationPiece piece : station.pieces()) {
             for (PlacedTriggerZone zone : piece.triggerZones()) {
-                if (zone.data().contains("brokenOxygen") && zone.data().getBoolean("brokenOxygen")) {
+                if ((zone.data().contains("brokenOxygen") && zone.data().getBoolean("brokenOxygen"))
+                        || (zone.data().contains("broken") && zone.data().getBoolean("broken"))
+                        || hasTriggerTag(zone, "broken_oxygen")) {
                     brokenFound = true;
                 }
             }
@@ -126,23 +128,14 @@ public final class StationOxygenManager {
         }
 
         StationOxygenState state = stateOpt.get();
-        boolean inHazardZone = false;
+        boolean inHazardZone = state.isBroken();
 
-        if (state.panelPositions().isEmpty()) {
-            for (PlacedStationPiece piece : station.pieces()) {
-                if (contains(piece, player.blockPosition())) {
-                    inHazardZone = true;
-                    break;
-                }
-            }
-        } else {
+        if (!inHazardZone) {
             for (BlockPos panelPos : state.panelPositions()) {
                 BlockState panelState = level.getBlockState(panelPos);
                 if (panelState.is(QuestBlocks.OXYGEN_PANEL.get()) && panelState.getValue(WallMountedPanelBlock.BROKEN)) {
-                    if (player.distanceToSqr(Vec3.atCenterOf(panelPos)) <= ZONE_RADIUS_SQR) {
-                        inHazardZone = true;
-                        break;
-                    }
+                    inHazardZone = true;
+                    break;
                 }
             }
         }
@@ -200,8 +193,24 @@ public final class StationOxygenManager {
     }
 
     private static boolean contains(PlacedStationPiece piece, BlockPos pos) {
-        return pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
+        return (pos.getX() >= piece.selectionBounds().minX() && pos.getX() <= piece.selectionBounds().maxX()
                 && pos.getY() >= piece.selectionBounds().minY() && pos.getY() <= piece.selectionBounds().maxY()
-                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ();
+                && pos.getZ() >= piece.selectionBounds().minZ() && pos.getZ() <= piece.selectionBounds().maxZ())
+                || piece.bounds().isInside(pos);
+    }
+
+    private static boolean hasTriggerTag(PlacedTriggerZone zone, String requiredTag) {
+        String tags = zone.data().contains(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                ? zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAGS)
+                : zone.data().getString(dev.sixik.stationarenear.structures.util.TagsConstants.Keys.TAG);
+        if (tags == null || tags.isBlank()) {
+            return false;
+        }
+        for (String tag : tags.split(",")) {
+            if (requiredTag.equalsIgnoreCase(tag.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

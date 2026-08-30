@@ -232,17 +232,23 @@ public final class QuestTestScenario {
         EnergyPanelPlan energyPanelPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_ELECTRIC_PANEL)
                 ? spawnRepairEnergyPanel(level, station)
                 : new EnergyPanelPlan(false, "");
+        EnergyPanelPlan gravitationPanelPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_GRAVITATION_PANEL)
+                ? spawnRepairGravitationPanel(level, station, activeTargetCount(pendingState, StationQuests.REPAIR_GRAVITATION_PANEL))
+                : new EnergyPanelPlan(false, "");
+        EnergyPanelPlan oxygenPanelPlan = hasActiveObjective(pendingState, StationQuests.REPAIR_OXYGEN_PANEL)
+                ? spawnRepairOxygenPanel(level, station, activeTargetCount(pendingState, StationQuests.REPAIR_OXYGEN_PANEL))
+                : new EnergyPanelPlan(false, "");
         QuestSpawnPlan spawnPlan = trashRequired > 0
                 ? spawnPseudoTrash(level, station, questTriggers, objectZoneTriggers, trashRequired, TEST_TRASH_EXTRA)
                 : new QuestSpawnPlan(0, 0, 0, "", List.of());
 
-        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan, placeItems);
+        movePendingQuestToStation(level, station, questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan, gravitationPanelPlan, oxygenPanelPlan, placeItems);
         return true;
     }
 
-    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan, Map<String, String> placeItems) {
+    private static void movePendingQuestToStation(ServerLevel level, StationInstance station, List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan, EnergyPanelPlan gravitationPanelPlan, EnergyPanelPlan oxygenPanelPlan, Map<String, String> placeItems) {
         QuestSavedData data = QuestSavedData.get(level);
-        Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan);
+        Map<String, String> targets = triggerTargets(questTriggers, fridgePlan, microwavePlan, sinkPlan, spawnPlan, doorPlan, energyPanelPlan, gravitationPanelPlan, oxygenPanelPlan);
         QuestStationState source = data.stationIfPresent(PENDING_STATION_ID)
                 .orElseGet(() -> createPendingState(level, station));
         QuestStationState moved = source.copyFor(station.id(), targets);
@@ -278,6 +284,24 @@ public final class QuestTestScenario {
         if (!energyPanelPlan.placed()) {
             moved.objective(StationQuests.REPAIR_ELECTRIC_PANEL).ifPresent(objective -> moved.put(objective.complete(null)));
         }
+        if (!gravitationPanelPlan.placed()) {
+            moved.objective(StationQuests.REPAIR_GRAVITATION_PANEL).ifPresent(objective -> moved.put(objective.complete(null)));
+        } else {
+            moved.objective(StationQuests.REPAIR_GRAVITATION_PANEL).ifPresent(objective -> {
+                CompoundTag progress = objective.progress();
+                putTargetTriggerIds(progress, gravitationPanelPlan.targetTriggerIds());
+                moved.put(objective.withDisplay(Math.max(1, gravitationPanelPlan.targetTriggerIds().size()), objective.text()).withProgress(progress));
+            });
+        }
+        if (!oxygenPanelPlan.placed()) {
+            moved.objective(StationQuests.REPAIR_OXYGEN_PANEL).ifPresent(objective -> moved.put(objective.complete(null)));
+        } else {
+            moved.objective(StationQuests.REPAIR_OXYGEN_PANEL).ifPresent(objective -> {
+                CompoundTag progress = objective.progress();
+                putTargetTriggerIds(progress, oxygenPanelPlan.targetTriggerIds());
+                moved.put(objective.withDisplay(Math.max(1, oxygenPanelPlan.targetTriggerIds().size()), objective.text()).withProgress(progress));
+            });
+        }
         String code = station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE);
         if (!code.isBlank()) {
             moved.displayStationCode(code);
@@ -288,6 +312,7 @@ public final class QuestTestScenario {
         dev.sixik.stationarenear.structures.lamps.StationLampManager.onQuestStarted(level, station);
         dev.sixik.stationarenear.structures.gravity.StationGravitationManager.onQuestStarted(level, station);
         dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.onQuestStarted(level, station);
+        dev.sixik.stationarenear.quest.runtime.QuestPlacementZoneManager.sync(level);
     }
 
     private static QuestStationState createPendingState(ServerLevel level, StationInstance station) {
@@ -407,7 +432,7 @@ public final class QuestTestScenario {
                 .orElse(0);
     }
 
-    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan) {
+    private static Map<String, String> triggerTargets(List<PlacedTriggerZone> questTriggers, PlaceTargetPlan fridgePlan, PlaceTargetPlan microwavePlan, PlaceTargetPlan sinkPlan, QuestSpawnPlan spawnPlan, DoorSpawnPlan doorPlan, EnergyPanelPlan energyPanelPlan, EnergyPanelPlan gravitationPanelPlan, EnergyPanelPlan oxygenPanelPlan) {
         Map<String, String> targets = new LinkedHashMap<>();
         targets.put(StationQuests.CLEAR_TRASH, spawnPlan.targetTriggerId().isBlank() ? triggerId(questTriggers, 0) : spawnPlan.targetTriggerId());
         targets.put(StationQuests.PLACE_FRIDGE, fridgePlan.targetTriggerId());
@@ -416,6 +441,8 @@ public final class QuestTestScenario {
         targets.put(StationQuests.REPAIR_BLOCKS, triggerId(questTriggers, 2));
         targets.put(StationQuests.REPAIR_DOORS, doorPlan.targetTriggerId());
         targets.put(StationQuests.REPAIR_ELECTRIC_PANEL, energyPanelPlan.targetTriggerId());
+        targets.put(StationQuests.REPAIR_GRAVITATION_PANEL, gravitationPanelPlan.targetTriggerId());
+        targets.put(StationQuests.REPAIR_OXYGEN_PANEL, oxygenPanelPlan.targetTriggerId());
         return targets;
     }
 
@@ -428,6 +455,8 @@ public final class QuestTestScenario {
         texts.put(StationQuests.REPAIR_BLOCKS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0431\u043b\u043e\u043a \u0448\u043f\u0430\u0442\u043b\u0451\u0432\u043a\u043e\u0439", "Repair the marked block with putty."));
         texts.put(StationQuests.REPAIR_DOORS, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u0441\u043b\u043e\u043c\u0430\u043d\u043d\u0443\u044e \u0433\u0435\u0440\u043c\u043e\u0434\u0432\u0435\u0440\u044c \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u043d\u043e\u0439 \u0448\u0435\u0441\u0442\u0435\u0440\u043d\u0451\u0439", "Repair the pressure door with engineering gear."));
         texts.put(StationQuests.REPAIR_ELECTRIC_PANEL, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0449\u0438\u0442\u043e\u043a", "Repair the electrical panel with engineering gear."));
+        texts.put(StationQuests.REPAIR_GRAVITATION_PANEL, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u043f\u0430\u043d\u0435\u043b\u044c \u0433\u0440\u0430\u0432\u0438\u0442\u0430\u0446\u0438\u0438", "Repair the station gravitation panel."));
+        texts.put(StationQuests.REPAIR_OXYGEN_PANEL, new QuestLocalization("\u041f\u043e\u0447\u0438\u043d\u0438\u0442\u0435 \u043f\u0430\u043d\u0435\u043b\u044c \u043a\u0438\u0441\u043b\u043e\u0440\u043e\u0434\u0430", "Repair the station oxygen panel."));
         texts.putAll(DirectorConfigManager.questLocalizations());
         return texts;
     }
@@ -878,8 +907,42 @@ public final class QuestTestScenario {
         if (target.isEmpty()) {
             return new EnergyPanelPlan(false, "");
         }
-        boolean placed = StationTriggerHandlers.placeEnergyPanel(level, station, target.get(), false);
+        boolean placed = StationTriggerHandlers.placeEnergyPanel(level, station, target.get(), true);
         return new EnergyPanelPlan(placed, placed ? target.get().id() : "");
+    }
+
+    private static EnergyPanelPlan spawnRepairGravitationPanel(ServerLevel level, StationInstance station, int requiredCount) {
+        int targetCount = Math.max(1, requiredCount);
+        List<PlacedTriggerZone> zones = StationTriggerHandlers.selectGravitationPanelTriggers(station, targetCount);
+        if (zones.isEmpty()) {
+            return new EnergyPanelPlan(false, "");
+        }
+        List<String> targetIds = new ArrayList<>();
+        for (PlacedTriggerZone zone : zones) {
+            if (StationTriggerHandlers.placeGravitationPanel(level, station, zone, true)) {
+                targetIds.add(zone.id());
+            }
+        }
+        return targetIds.isEmpty()
+                ? new EnergyPanelPlan(false, "")
+                : new EnergyPanelPlan(true, targetIds.get(0), targetIds);
+    }
+
+    private static EnergyPanelPlan spawnRepairOxygenPanel(ServerLevel level, StationInstance station, int requiredCount) {
+        int targetCount = Math.max(1, requiredCount);
+        List<PlacedTriggerZone> zones = StationTriggerHandlers.selectOxygenPanelTriggers(station, targetCount);
+        if (zones.isEmpty()) {
+            return new EnergyPanelPlan(false, "");
+        }
+        List<String> targetIds = new ArrayList<>();
+        for (PlacedTriggerZone zone : zones) {
+            if (StationTriggerHandlers.placeOxygenPanel(level, station, zone, true)) {
+                targetIds.add(zone.id());
+            }
+        }
+        return targetIds.isEmpty()
+                ? new EnergyPanelPlan(false, "")
+                : new EnergyPanelPlan(true, targetIds.get(0), targetIds);
     }
 
     private static DoorSpawnPlan spawnBrokenRepairDoor(ServerLevel level, StationInstance station, List<PlacedTriggerZone> doorTriggers, int requiredCount) {
@@ -1079,6 +1142,15 @@ public final class QuestTestScenario {
         }
     }
 
-    private record EnergyPanelPlan(boolean placed, String targetTriggerId) {
+    private record EnergyPanelPlan(boolean placed, String targetTriggerId, List<String> targetTriggerIds) {
+
+        private EnergyPanelPlan(boolean placed, String targetTriggerId) {
+            this(placed, targetTriggerId, targetTriggerId == null || targetTriggerId.isBlank() ? List.of() : List.of(targetTriggerId));
+        }
+
+        private EnergyPanelPlan {
+            targetTriggerIds = targetTriggerIds == null ? List.of() : List.copyOf(targetTriggerIds);
+            targetTriggerId = targetTriggerId == null || targetTriggerId.isBlank() ? primaryTarget(targetTriggerIds) : targetTriggerId;
+        }
     }
 }

@@ -27,6 +27,7 @@ public final class QuestClientEvents {
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientTick);
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onClientLogout);
         MinecraftForge.EVENT_BUS.addListener(QuestFurniturePickupOverlay::onRenderGui);
+        MinecraftForge.EVENT_BUS.addListener(QuestPlacementZoneRenderer::onRenderLevelStage);
         MinecraftForge.EVENT_BUS.addListener(QuestClientEvents::onRenderInventoryEffects);
     }
 
@@ -85,6 +86,7 @@ public final class QuestClientEvents {
     private static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         activePickupHit = null;
         QuestFurniturePickupOverlay.hide();
+        QuestPlacementZoneClientState.clear();
     }
 
     private static void stopHolding() {

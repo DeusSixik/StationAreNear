@@ -49,5 +49,6 @@ public final class QuestModule {
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.structures.oxygen.StationOxygenManager::onLivingBreathe);
         MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.quest.runtime.StationRadiationManager::onPlayerTick);
         MinecraftForge.EVENT_BUS.register(QuestTaskInteractionHandler.class);
+        MinecraftForge.EVENT_BUS.register(dev.sixik.stationarenear.quest.runtime.QuestPlacementZoneManager.class);
     }
 }

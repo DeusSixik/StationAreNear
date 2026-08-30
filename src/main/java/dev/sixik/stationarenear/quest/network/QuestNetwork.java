@@ -63,6 +63,11 @@ public final class QuestNetwork {
                 .decoder(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket::decode)
                 .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.ForkInSocketSuccessPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.quest.network.packet.SyncQuestPlacementZonesPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(dev.sixik.stationarenear.quest.network.packet.SyncQuestPlacementZonesPacket::encode)
+                .decoder(dev.sixik.stationarenear.quest.network.packet.SyncQuestPlacementZonesPacket::decode)
+                .consumerMainThread(dev.sixik.stationarenear.quest.network.packet.SyncQuestPlacementZonesPacket::handle)
+                .add();
     }
 
     public static void sendForkInSocketMiss() {
@@ -95,5 +100,9 @@ public final class QuestNetwork {
 
     public static void syncFurniturePickupProgress(ServerPlayer player, float progress, boolean visible, String title) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new QuestFurniturePickupProgressPacket(progress, visible, title));
+    }
+
+    public static void syncPlacementZones(ServerPlayer player, java.util.List<dev.sixik.stationarenear.quest.data.QuestPlacementZoneHint> hints) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new dev.sixik.stationarenear.quest.network.packet.SyncQuestPlacementZonesPacket(hints));
     }
 }

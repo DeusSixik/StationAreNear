@@ -60,7 +60,8 @@ public final class SamTextSanitizer {
         if (text == null) {
             return "";
         }
-        String normalized = text
+        String transliterated = SamRussianTransliterator.transliterate(text);
+        String normalized = transliterated
                 .replace('\u2018', '\'')
                 .replace('\u2019', '\'')
                 .replace('\u201C', '"')

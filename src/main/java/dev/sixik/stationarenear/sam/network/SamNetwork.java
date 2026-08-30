@@ -3,6 +3,7 @@ package dev.sixik.stationarenear.sam.network;
 import dev.sixik.stationarenear.StationAreNear;
 import dev.sixik.stationarenear.sam.SamVoice;
 import dev.sixik.stationarenear.sam.network.packet.PlaySamSpeechPacket;
+import dev.sixik.stationarenear.sam.network.packet.StopSamSpeechPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
@@ -32,6 +33,11 @@ public final class SamNetwork {
                 .decoder(PlaySamSpeechPacket::decode)
                 .consumerMainThread(PlaySamSpeechPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(StopSamSpeechPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(StopSamSpeechPacket::encode)
+                .decoder(StopSamSpeechPacket::decode)
+                .consumerMainThread(StopSamSpeechPacket::handle)
+                .add();
     }
 
     public static void play(ServerLevel level, Vec3 position, String text, SamVoice voice) {
@@ -43,5 +49,21 @@ public final class SamNetwork {
                 SPEECH_RANGE,
                 level.dimension()
         )), packet);
+    }
+
+    public static void stop(ServerLevel level, Vec3 position) {
+        StopSamSpeechPacket packet = new StopSamSpeechPacket();
+        CHANNEL.send(PacketDistributor.NEAR.with(PacketDistributor.TargetPoint.p(
+                position.x(),
+                position.y(),
+                position.z(),
+                SPEECH_RANGE,
+                level.dimension()
+        )), packet);
+    }
+
+    public static void stop(ServerLevel level) {
+        StopSamSpeechPacket packet = new StopSamSpeechPacket();
+        CHANNEL.send(PacketDistributor.DIMENSION.with(level::dimension), packet);
     }
 }

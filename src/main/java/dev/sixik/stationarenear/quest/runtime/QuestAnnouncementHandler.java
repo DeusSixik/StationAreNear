@@ -35,20 +35,69 @@ public final class QuestAnnouncementHandler {
     }
 
     public static void onQuestStarted(QuestStartedEvent event) {
-        String text = SamTextSanitizer.normalizeForNetwork(event.getAnnouncementText());
+        ServerLevel level = event.getLevel();
+        dev.sixik.stationarenear.quest.world.QuestSavedData questData = dev.sixik.stationarenear.quest.world.QuestSavedData.get(level);
+        dev.sixik.stationarenear.quest.data.QuestStationState station = questData.stationIfPresent(event.getStationId()).orElse(null);
+        String stationCode = station != null && !station.displayStationCode().isBlank()
+                ? station.displayStationCode()
+                : dev.sixik.stationarenear.navigation.StationCodeGenerator.code(event.getStationId());
+
+        long durationMillis = event.getDurationMillis();
+        long totalSeconds = Math.max(0L, (durationMillis + 999L) / 1000L);
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        String timeStr = String.format(java.util.Locale.ROOT, "%02d:%02d", minutes, seconds);
+
+        Map<String, String> placeholders = Map.of(
+                "station", stationCode,
+                "time", timeStr,
+                "reward", String.format(java.util.Locale.ROOT, "%.0f", event.getMoneyReward())
+        );
+
+        dev.sixik.stationarenear.quest.config.QuestPhraseManager.PhraseEntry phrase = dev.sixik.stationarenear.quest.config.QuestPhraseManager.getQuestStartPhrase(level.getRandom());
+        String chatText = dev.sixik.stationarenear.quest.config.QuestPhraseManager.format(phrase.text(), placeholders);
+        String samRawText = dev.sixik.stationarenear.quest.config.QuestPhraseManager.format(phrase.sam(), placeholders);
+        if (samRawText.isBlank()) {
+            samRawText = event.getAnnouncementText();
+        }
+
+        if (!chatText.isBlank()) {
+            for (net.minecraft.server.level.ServerPlayer player : level.players()) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(chatText));
+            }
+        }
+
+        speak(level, event.getStationId(), samRawText);
+    }
+
+    public static void speak(ServerLevel level, java.util.UUID contextId, String rawText) {
+        String text = SamTextSanitizer.normalizeForNetwork(rawText);
         if (text.isBlank()) {
             return;
         }
 
-        for (Vec3 position : shipSamSpeakerPositions(event.getLevel())) {
-            long seed = event.getLevel().getSeed()
-                    ^ event.getStationId().getMostSignificantBits()
-                    ^ event.getStationId().getLeastSignificantBits()
+        List<Vec3> positions = new ArrayList<>(shipSamSpeakerPositions(level));
+        if (positions.isEmpty()) {
+            for (dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity television : dev.sixik.stationarenear.ship.runtime.ShipTelevisionManager.shipTelevisions(level)) {
+                positions.add(Vec3.atCenterOf(television.getBlockPos()));
+            }
+        }
+        if (positions.isEmpty()) {
+            for (net.minecraft.server.level.ServerPlayer player : level.players()) {
+                positions.add(player.position());
+            }
+        }
+
+        java.util.UUID id = contextId == null ? java.util.UUID.randomUUID() : contextId;
+        for (Vec3 position : positions) {
+            long seed = level.getSeed()
+                    ^ id.getMostSignificantBits()
+                    ^ id.getLeastSignificantBits()
                     ^ SAM_SPEAK_TRIGGER_ID.hashCode()
                     ^ Double.doubleToLongBits(position.x())
                     ^ Long.rotateLeft(Double.doubleToLongBits(position.y()), 17)
                     ^ Long.rotateLeft(Double.doubleToLongBits(position.z()), 31);
-            SamNetwork.play(event.getLevel(), position, text, SamVoice.random(seed));
+            SamNetwork.play(level, position, text, SamVoice.random(seed));
         }
     }
 

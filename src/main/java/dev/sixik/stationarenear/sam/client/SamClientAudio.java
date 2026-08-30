@@ -56,6 +56,8 @@ public final class SamClientAudio {
     private static boolean registered;
     private static boolean pausedByMinecraft;
 
+    private static final java.util.concurrent.atomic.AtomicInteger SPEECH_GENERATION = new java.util.concurrent.atomic.AtomicInteger();
+
     private SamClientAudio() {
     }
 
@@ -72,23 +74,42 @@ public final class SamClientAudio {
         if (phrase.isBlank()) {
             return;
         }
-        SYNTHESIS_EXECUTOR.execute(() -> synthesizeAndPlay(phrase, voice, position));
+        int gen = SPEECH_GENERATION.get();
+        SYNTHESIS_EXECUTOR.execute(() -> {
+            if (SPEECH_GENERATION.get() != gen) {
+                return;
+            }
+            synthesizeAndPlay(phrase, voice, position, gen);
+        });
     }
 
-    private static void synthesizeAndPlay(String text, SamVoice voice, Vec3 position) {
+    private static void synthesizeAndPlay(String text, SamVoice voice, Vec3 position, int gen) {
         try {
             SamSynthesizer localSynthesizer = synthesizer();
             ByteArrayOutputStream combinedPcm = new ByteArrayOutputStream();
             for (String chunk : SamTextSanitizer.splitForSynthesis(text)) {
+                if (SPEECH_GENERATION.get() != gen) {
+                    return;
+                }
                 byte[] pcm = localSynthesizer.synthesizePcm(chunk, voice.toConfig());
                 combinedPcm.writeBytes(pcm);
                 writeSilence(combinedPcm, 90);
             }
             byte[] pcm = combinedPcm.toByteArray();
-            Minecraft.getInstance().execute(() -> playPcm(pcm, position));
+            Minecraft.getInstance().execute(() -> {
+                if (SPEECH_GENERATION.get() != gen) {
+                    return;
+                }
+                playPcm(pcm, position);
+            });
         } catch (RuntimeException exception) {
             StationAreNear.LOGGER.warn("Failed to synthesize SAM phrase `{}`", text, exception);
         }
+    }
+
+    public static void stop() {
+        SPEECH_GENERATION.incrementAndGet();
+        Minecraft.getInstance().execute(SamClientAudio::stopAllSources);
     }
 
     private static void writeSilence(ByteArrayOutputStream output, int milliseconds) {

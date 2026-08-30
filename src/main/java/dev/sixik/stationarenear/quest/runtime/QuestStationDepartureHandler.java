@@ -1,10 +1,12 @@
 package dev.sixik.stationarenear.quest.runtime;
 
+import dev.sixik.stationarenear.navigation.StationCodeGenerator;
 import dev.sixik.stationarenear.navigation.data.SolarNavigationQuestMarker;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationSavedData;
 import dev.sixik.stationarenear.navigation.world.SolarNavigationStationCleaner;
 import dev.sixik.stationarenear.quest.api.QuestApi;
+import dev.sixik.stationarenear.quest.config.QuestPhraseManager;
 import dev.sixik.stationarenear.quest.data.QuestStationState;
 import dev.sixik.stationarenear.quest.event.PlayerQuestMissionCompletedEvent;
 import dev.sixik.stationarenear.quest.event.QuestMissionCompletedEvent;
@@ -21,16 +23,31 @@ import dev.sixik.stationarenear.terminal.shop.PlayerBalanceSavedData;
 import dev.sixik.stationarenear.structures.data.StationInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public final class QuestStationDepartureHandler {
+
+    private static final List<PendingEjection> PENDING_EJECTIONS = new ArrayList<>();
+
+    private record PendingEjection(ResourceKey<Level> dimension, BlockPos terminalPos, long executeGameTime) {
+    }
 
     private QuestStationDepartureHandler() {
     }
@@ -77,17 +94,80 @@ public final class QuestStationDepartureHandler {
 
     private static void failMission(ServerLevel level, StationInstance station, QuestStationState state, Optional<BlockPos> terminalPos, String reason) {
         QuestApi.fail(level, station.id(), reason);
-        for (ServerPlayer player : affectedPlayers(level, station, terminalPos)) {
-            player.displayClientMessage(Component.literal("Mission failed. Ship controls locked."), false);
+
+        int delaySec = QuestPhraseManager.getEjectionDelaySeconds();
+        String stationCode = state != null && !state.displayStationCode().isBlank()
+                ? state.displayStationCode()
+                : (station != null && station.customData().contains(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE)
+                ? station.customData().getString(SolarNavigationStationCleaner.KEY_NAVIGATION_STATION_CODE)
+                : StationCodeGenerator.code(station.id()));
+
+        Map<String, String> placeholders = Map.of(
+                "station", stationCode,
+                "delay", String.valueOf(delaySec),
+                "reason", reason
+        );
+
+        QuestPhraseManager.PhraseEntry phrase = QuestPhraseManager.getFailedEjectionPhrase(level.getRandom());
+        String chatText = QuestPhraseManager.format(phrase.text(), placeholders);
+        String samText = QuestPhraseManager.format(phrase.sam(), placeholders);
+
+        if (!chatText.isBlank()) {
+            for (ServerPlayer player : affectedPlayers(level, station, terminalPos)) {
+                player.sendSystemMessage(Component.literal(chatText));
+            }
         }
+
+        if (!samText.isBlank()) {
+            QuestAnnouncementHandler.speak(level, station.id(), samText);
+        }
+
         terminalPos.ifPresent(pos -> {
             ShipControlLockSavedData.get(level).lock(pos, "quest_failure:" + reason);
             SolarNavigationControlManager.forceStop(level, pos);
             ShipManager.setDocking(level, pos, false);
-            ShipDecompressionEffects.forceEjectPlayers(level, pos);
+            scheduleEjection(level, pos, delaySec);
         });
         QuestSavedData.get(level).remove(station.id());
         removeNavigationMarker(level, station);
+    }
+
+    private static void scheduleEjection(ServerLevel level, BlockPos pos, int delaySec) {
+        if (delaySec <= 0) {
+            ShipDecompressionEffects.forceEjectPlayers(level, pos);
+            return;
+        }
+        long targetTime = level.getGameTime() + (long) delaySec * 20L;
+        PENDING_EJECTIONS.add(new PendingEjection(level.dimension(), pos, targetTime));
+    }
+
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || PENDING_EJECTIONS.isEmpty()) {
+            return;
+        }
+
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) {
+            return;
+        }
+
+        Iterator<PendingEjection> iterator = PENDING_EJECTIONS.iterator();
+        while (iterator.hasNext()) {
+            PendingEjection pending = iterator.next();
+            ServerLevel targetLevel = server.getLevel(pending.dimension());
+            if (targetLevel == null) {
+                iterator.remove();
+                continue;
+            }
+            if (targetLevel.getGameTime() >= pending.executeGameTime()) {
+                ShipDecompressionEffects.forceEjectPlayers(targetLevel, pending.terminalPos());
+                iterator.remove();
+            }
+        }
+    }
+
+    public static void onServerStopping(ServerStoppingEvent event) {
+        PENDING_EJECTIONS.clear();
     }
 
     private static Optional<BlockPos> navigationTerminalPos(StationInstance station) {

@@ -50,6 +50,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Locale;
@@ -102,6 +103,16 @@ public final class RetroTerminalScreen {
             @Override
             public boolean isPauseScreen() {
                 return false;
+            }
+
+            @Override
+            public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+                if(keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                    onClose();
+                    return true;
+                }
+
+                return super.keyPressed(keyCode, scanCode, modifiers);
             }
         };
         console.onCloseRequested(event -> screen.onClose());

@@ -81,8 +81,43 @@ public final class ShipManager {
             MinecraftForge.EVENT_BUS.post(new ShipHealthChangedEvent(level, stateTerminal, oldState, newState, damageEvent.damageSource()));
         }
 
+        if (oldState.hp() > 0.0F && newState.hp() <= 0.0F) {
+            destroyShip(level, stateTerminal, damageEvent.damageSource());
+        }
+
         updateDecompression(level, stateTerminal);
         return newState;
+    }
+
+    public static void destroyShip(ServerLevel level, BlockPos stateTerminal, String source) {
+        ShipSavedData data = ShipSavedData.get(level);
+        ShipState state = data.ship(stateTerminal);
+        MinecraftForge.EVENT_BUS.post(new dev.sixik.stationarenear.ship.event.ShipDestroyedEvent(level, stateTerminal, state, source));
+
+        ShipDockingAnchor anchor = ShipDockingAnchorSavedData.get(level)
+                .anchor(stateTerminal)
+                .or(() -> ShipDockingAnchorResolver.bindNearbyShip(level, stateTerminal))
+                .orElse(null);
+
+        double explosionX;
+        double explosionY;
+        double explosionZ;
+
+        if (anchor != null) {
+            net.minecraft.world.level.levelgen.structure.BoundingBox bounds = anchor.shipBounds();
+            int spanX = Math.max(1, bounds.maxX() - bounds.minX());
+            int spanY = Math.max(1, bounds.maxY() - bounds.minY());
+            int spanZ = Math.max(1, bounds.maxZ() - bounds.minZ());
+            explosionX = bounds.minX() + level.random.nextDouble() * spanX;
+            explosionY = bounds.minY() + level.random.nextDouble() * spanY;
+            explosionZ = bounds.minZ() + level.random.nextDouble() * spanZ;
+        } else {
+            explosionX = stateTerminal.getX() + (level.random.nextDouble() - 0.5) * 6.0;
+            explosionY = stateTerminal.getY() + (level.random.nextDouble() - 0.5) * 4.0;
+            explosionZ = stateTerminal.getZ() + (level.random.nextDouble() - 0.5) * 6.0;
+        }
+
+        level.explode(null, explosionX, explosionY, explosionZ, 8.0F, true, net.minecraft.world.level.Level.ExplosionInteraction.BLOCK);
     }
 
     public static ShipState repair(ServerLevel level, BlockPos terminalPos, float amount, String source) {

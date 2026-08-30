@@ -243,9 +243,16 @@ public final class ShipTelevisionManager {
         return televisions;
     }
 
-    private static Set<ShipTelevisionBlockEntity> shipTelevisions(ServerLevel level) {
+    public static Set<ShipTelevisionBlockEntity> shipTelevisions(ServerLevel level) {
         Set<ShipTelevisionBlockEntity> televisions = new HashSet<>();
         Set<Long> visitedMasters = new HashSet<>();
+        for (ShipTelevisionBlockEntity television : ShipTelevisionBlockEntity.loadedTelevisions()) {
+            if (television.getLevel() == level && !television.isRemoved()) {
+                if (visitedMasters.add(television.getBlockPos().asLong())) {
+                    televisions.add(television);
+                }
+            }
+        }
         for (ShipDockingAnchor anchor : ShipDockingAnchorSavedData.get(level).anchors()) {
             addTelevisions(level, anchor.shipBounds(), televisions, visitedMasters);
         }

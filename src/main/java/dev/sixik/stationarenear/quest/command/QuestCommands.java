@@ -194,7 +194,8 @@ public final class QuestCommands {
 
     private static int reloadDirector(CommandSourceStack source) {
         int count = DirectorConfigManager.reload();
-        source.sendSuccess(() -> Component.literal("Reloaded Director config: " + count + " profiles, " + DirectorConfigManager.trashBlockIds().size() + " trash block ids."), false);
+        dev.sixik.stationarenear.quest.config.QuestPhraseManager.reload();
+        source.sendSuccess(() -> Component.literal("Reloaded Director config: " + count + " profiles, " + DirectorConfigManager.trashBlockIds().size() + " trash block ids, phrases reloaded."), false);
         return count;
     }
 

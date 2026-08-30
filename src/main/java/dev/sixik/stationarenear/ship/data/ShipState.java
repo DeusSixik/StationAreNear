@@ -10,7 +10,7 @@ import java.util.List;
 
 public record ShipState(float hp, float maxHp, List<ShipSystemModule> modules, boolean decompressed, String decompressionReason, boolean isDocking) {
 
-    public static final float DEFAULT_MAX_HP = 1000.0F;
+    public static final float DEFAULT_MAX_HP = 100.0F;
 
     public ShipState {
         maxHp = Math.max(1.0F, maxHp);

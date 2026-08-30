@@ -519,6 +519,9 @@ public final class QuestTestScenario {
         return spawnPseudoTrash(level, station, questTriggers, requiredCount, extraCount);
     }
 
+    private static final int MAX_TRASH_CLUSTER_ROOMS = 5;
+    private static final int MIN_TRASH_CLUSTER_ROOMS = 4;
+
     private static QuestSpawnPlan spawnObjectZoneTrash(ServerLevel level, StationInstance station, List<QuestObjectZoneTarget> objectZoneTargets, int requiredCount, int extraCount) {
         int skip = questElementSpawnSkip(station, StationQuests.CLEAR_TRASH);
         int requiredToSpawn = Math.max(0, requiredCount - skip);
@@ -546,6 +549,26 @@ public final class QuestTestScenario {
             int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
             requiredPlaced += requiredPart;
             totalPlaced += placed;
+        }
+
+        if (totalPlaced < totalToSpawn) {
+            for (QuestObjectZoneTarget target : objectZoneTargets) {
+                if (totalPlaced >= totalToSpawn) {
+                    break;
+                }
+                if (targetTriggerIds.contains(target.zone().id())) {
+                    continue;
+                }
+                int remaining = totalToSpawn - totalPlaced;
+                int placed = StationTriggerHandlers.placeBlocksInObjectZoneForQuest(level, target.zone(), DirectorConfigManager.trashBlockStates(), remaining);
+                if (placed <= 0) {
+                    continue;
+                }
+                targetTriggerIds.add(target.zone().id());
+                int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
+                requiredPlaced += requiredPart;
+                totalPlaced += placed;
+            }
         }
 
         return new QuestSpawnPlan(requiredCount, Math.max(1, Math.min(requiredCount, requiredPlaced + skip)), requiredPlaced, primaryTarget(targetTriggerIds), targetTriggerIds);
@@ -576,6 +599,25 @@ public final class QuestTestScenario {
             int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
             requiredPlaced += requiredPart;
             totalPlaced += placed;
+        }
+
+        if (totalPlaced < totalToSpawn) {
+            for (PlacedTriggerZone zone : questTriggers) {
+                if (totalPlaced >= totalToSpawn) {
+                    break;
+                }
+                if (targetTriggerIds.contains(zone.id())) {
+                    continue;
+                }
+                int placed = spawnPseudoTrash(level, zone, totalToSpawn - totalPlaced, totalPlaced);
+                if (placed <= 0) {
+                    continue;
+                }
+                targetTriggerIds.add(zone.id());
+                int requiredPart = Math.min(placed, Math.max(0, requiredToSpawn - requiredPlaced));
+                requiredPlaced += requiredPart;
+                totalPlaced += placed;
+            }
         }
 
         if (targetTriggerIds.isEmpty()) {
@@ -772,21 +814,52 @@ public final class QuestTestScenario {
         shuffled.sort(Comparator
                 .comparingInt((PlacedTriggerZone zone) -> zoneDistance(anchor, zone))
                 .thenComparing(PlacedTriggerZone::id));
-        return shuffled;
+
+        int targetZoneCount = Math.min(shuffled.size(), Math.max(MIN_TRASH_CLUSTER_ROOMS, Math.min(MAX_TRASH_CLUSTER_ROOMS, shuffled.size())));
+        return shuffled.subList(0, targetZoneCount);
     }
 
     private static List<QuestObjectZoneTarget> clusteredObjectZoneTargets(List<QuestObjectZoneTarget> objectZoneTargets, long seed) {
-        List<QuestObjectZoneTarget> shuffled = new ArrayList<>(objectZoneTargets);
-        Collections.shuffle(shuffled, new java.util.Random(seed ^ 0x0B1EC75A11L));
-        if (shuffled.size() <= 1) {
-            return shuffled;
+        if (objectZoneTargets.isEmpty()) {
+            return List.of();
         }
 
-        QuestObjectZoneTarget anchor = shuffled.get(0);
-        shuffled.sort(Comparator
-                .comparingInt((QuestObjectZoneTarget target) -> zoneDistance(anchor.zone(), target.zone()))
-                .thenComparing(target -> target.zone().id()));
-        return shuffled;
+        Map<PlacedStationPiece, List<QuestObjectZoneTarget>> byPiece = new LinkedHashMap<>();
+        for (QuestObjectZoneTarget target : objectZoneTargets) {
+            byPiece.computeIfAbsent(target.piece(), p -> new ArrayList<>()).add(target);
+        }
+
+        List<PlacedStationPiece> pieces = new ArrayList<>(byPiece.keySet());
+        Collections.shuffle(pieces, new java.util.Random(seed ^ 0x0B1EC75A11L));
+        if (pieces.size() <= 1) {
+            return objectZoneTargets;
+        }
+
+        PlacedStationPiece anchorPiece = pieces.get(0);
+        pieces.sort(Comparator
+                .comparingInt((PlacedStationPiece p) -> pieceDistance(anchorPiece, p))
+                .thenComparing(p -> p.definitionId().toString()));
+
+        int targetRoomCount = Math.min(pieces.size(), Math.max(MIN_TRASH_CLUSTER_ROOMS, Math.min(MAX_TRASH_CLUSTER_ROOMS, pieces.size())));
+        List<PlacedStationPiece> selectedRooms = pieces.subList(0, targetRoomCount);
+
+        List<QuestObjectZoneTarget> result = new ArrayList<>();
+        for (PlacedStationPiece piece : selectedRooms) {
+            List<QuestObjectZoneTarget> targets = byPiece.get(piece);
+            if (targets != null) {
+                result.addAll(targets);
+            }
+        }
+        return result;
+    }
+
+    private static int pieceDistance(PlacedStationPiece left, PlacedStationPiece right) {
+        BoundingBox b1 = left.bounds();
+        BoundingBox b2 = right.bounds();
+        int dx = center(b1.minX(), b1.maxX()) - center(b2.minX(), b2.maxX());
+        int dy = center(b1.minY(), b1.maxY()) - center(b2.minY(), b2.maxY());
+        int dz = center(b1.minZ(), b1.maxZ()) - center(b2.minZ(), b2.maxZ());
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private static int zoneDistance(PlacedTriggerZone left, PlacedTriggerZone right) {

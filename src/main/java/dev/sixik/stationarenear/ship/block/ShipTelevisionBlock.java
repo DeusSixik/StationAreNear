@@ -1,15 +1,20 @@
 package dev.sixik.stationarenear.ship.block;
 
+import dev.sixik.stationarenear.sam.network.SamNetwork;
+import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
-import dev.sixik.stationarenear.ship.block.entity.ShipTelevisionBlockEntity;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
@@ -21,8 +26,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
@@ -114,6 +123,23 @@ public class ShipTelevisionBlock extends BaseEntityBlock {
     public boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
         BlockPos master = masterPos(pos, state);
         return partPositions(master, state.getValue(FACING)).contains(pos);
+    }
+
+    @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        if (level.isClientSide) {
+            DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> dev.sixik.stationarenear.sam.client.SamClientAudio::stop);
+            return InteractionResult.SUCCESS;
+        }
+
+        if (level instanceof ServerLevel serverLevel) {
+            BlockPos master = masterPos(pos, state);
+            Vec3 center = Vec3.atCenterOf(master);
+            SamNetwork.stop(serverLevel, center);
+            SamNetwork.stop(serverLevel);
+        }
+
+        return InteractionResult.CONSUME;
     }
 
     @Override

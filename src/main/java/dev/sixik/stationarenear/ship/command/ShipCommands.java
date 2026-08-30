@@ -73,7 +73,59 @@ public final class ShipCommands {
                         .then(controlCommand())
                         .then(shipAnchorCommand())
                         .then(televisionCommand())
+                        .then(damageCommand())
+                        .then(repairCommand())
                         .then(modulesCommand())));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> damageCommand() {
+        return Commands.literal("damage")
+                .then(Commands.argument("amount", com.mojang.brigadier.arguments.FloatArgumentType.floatArg(0.0F))
+                        .executes(context -> damageShip(context.getSource(), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(context, "amount"), null))
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> damageShip(context.getSource(), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(context, "amount"), BlockPosArgument.getLoadedBlockPos(context, "terminal_pos")))));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> repairCommand() {
+        return Commands.literal("repair")
+                .then(Commands.argument("amount", com.mojang.brigadier.arguments.FloatArgumentType.floatArg(0.0F))
+                        .executes(context -> repairShip(context.getSource(), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(context, "amount"), null))
+                        .then(Commands.argument("terminal_pos", BlockPosArgument.blockPos())
+                                .executes(context -> repairShip(context.getSource(), com.mojang.brigadier.arguments.FloatArgumentType.getFloat(context, "amount"), BlockPosArgument.getLoadedBlockPos(context, "terminal_pos")))));
+    }
+
+    private static int damageShip(CommandSourceStack source, float amount, BlockPos terminalPos) {
+        ServerLevel level = source.getLevel();
+        BlockPos target = terminalPos;
+        if (target == null) {
+            if (source.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+                target = player.blockPosition();
+            } else {
+                source.sendFailure(Component.literal("Terminal position is required."));
+                return 0;
+            }
+        }
+        BlockPos stateTerminal = dev.sixik.stationarenear.ship.runtime.ShipManager.stateTerminal(level, target);
+        dev.sixik.stationarenear.ship.data.ShipState state = dev.sixik.stationarenear.ship.runtime.ShipManager.damage(level, stateTerminal, amount, "command", source.getPlayer());
+        source.sendSuccess(() -> Component.literal(String.format(java.util.Locale.ROOT, "Damaged ship by %.1f. HP: %.1f/%.1f", amount, state.hp(), state.maxHp())), true);
+        return 1;
+    }
+
+    private static int repairShip(CommandSourceStack source, float amount, BlockPos terminalPos) {
+        ServerLevel level = source.getLevel();
+        BlockPos target = terminalPos;
+        if (target == null) {
+            if (source.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+                target = player.blockPosition();
+            } else {
+                source.sendFailure(Component.literal("Terminal position is required."));
+                return 0;
+            }
+        }
+        BlockPos stateTerminal = dev.sixik.stationarenear.ship.runtime.ShipManager.stateTerminal(level, target);
+        dev.sixik.stationarenear.ship.data.ShipState state = dev.sixik.stationarenear.ship.runtime.ShipManager.repair(level, stateTerminal, amount, "command");
+        source.sendSuccess(() -> Component.literal(String.format(java.util.Locale.ROOT, "Repaired ship by %.1f. HP: %.1f/%.1f", amount, state.hp(), state.maxHp())), true);
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> modulesCommand() {

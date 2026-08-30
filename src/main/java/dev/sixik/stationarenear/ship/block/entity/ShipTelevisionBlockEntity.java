@@ -4,12 +4,20 @@ import dev.sixik.stationarenear.quest.runtime.QuestObjectiveFormatter;
 import dev.sixik.stationarenear.ship.registry.ShipBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.WeakHashMap;
+
 public class ShipTelevisionBlockEntity extends BlockEntity {
+
+    private static final Set<ShipTelevisionBlockEntity> LOADED_TELEVISIONS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     private static final String LEGACY_TEXT_KEY = "Text";
     private static final String MANUAL_TEXT_KEY = "ManualText";
@@ -30,6 +38,31 @@ public class ShipTelevisionBlockEntity extends BlockEntity {
 
     public ShipTelevisionBlockEntity(BlockPos pos, BlockState blockState) {
         super(ShipBlocks.SHIP_TELEVISION_ENTITY.get(), pos, blockState);
+        LOADED_TELEVISIONS.add(this);
+    }
+
+    public static Set<ShipTelevisionBlockEntity> loadedTelevisions() {
+        synchronized (LOADED_TELEVISIONS) {
+            return new HashSet<>(LOADED_TELEVISIONS);
+        }
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        LOADED_TELEVISIONS.add(this);
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        LOADED_TELEVISIONS.remove(this);
+    }
+
+    @Override
+    public void clearRemoved() {
+        super.clearRemoved();
+        LOADED_TELEVISIONS.add(this);
     }
 
     public String text() {
@@ -161,6 +194,19 @@ public class ShipTelevisionBlockEntity extends BlockEntity {
     @Override
     public ClientboundBlockEntityDataPacket getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt) {
+        CompoundTag tag = pkt.getTag();
+        if (tag != null) {
+            load(tag);
+        }
+    }
+
+    @Override
+    public void handleUpdateTag(CompoundTag tag) {
+        load(tag);
     }
 
     private static String clean(String text) {

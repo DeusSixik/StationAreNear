@@ -110,5 +110,7 @@
   "tv.stationarenear.default.online": "ТЕЛЕВИЗОР КОРАБЛЯ В СЕТИ",
   "tv.stationarenear.default.no_objectives": "ЗАДАНИЯ: НЕТ",
   "tv.stationarenear.default.pressure_stable": "ДАВЛЕНИЕ: СТАБИЛЬНО",
-  "tv.stationarenear.default.signal_test": "СИГНАЛ: ТЕСТОВЫЙ РЕЖИМ"
+  "tv.stationarenear.default.signal_test": "СИГНАЛ: ТЕСТОВЫЙ РЕЖИМ",
+  "overlay.stationarenear.docking_in_progress": "Происходит стыковка...",
+  "overlay.stationarenear.docking_station": "Стыковка со станцией: %s"
 }

@@ -6,6 +6,9 @@
     "stationarenear:station_map_terminal",
     "stationarenear:fridge",
     "stationarenear:kitchen_sink",
-    "stationarenear:microwave"
+    "stationarenear:microwave",
+    "stationarenear:energy_panel",
+    "stationarenear:oxygen_panel",
+    "stationarenear:gravitation_panel"
   ]
 }

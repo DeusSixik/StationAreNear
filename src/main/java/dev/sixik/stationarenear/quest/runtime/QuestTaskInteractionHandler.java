@@ -56,6 +56,15 @@ public final class QuestTaskInteractionHandler {
         BlockState state = event.getState();
         ServerPlayer player = event.getPlayer() instanceof ServerPlayer serverPlayer ? serverPlayer : null;
 
+        if (state.is(QuestBlocks.GRAVITATION_PANEL.get()) || state.is(QuestBlocks.OXYGEN_PANEL.get()) || state.is(QuestBlocks.ENERGY_PANEL.get())) {
+            if (player != null && !player.getAbilities().instabuild) {
+                if (player.getMainHandItem().isEmpty() || !player.hasCorrectToolForDrops(state)) {
+                    event.setCanceled(true);
+                    return;
+                }
+            }
+        }
+
         if (state.is(QuestTags.HANGING_CABLES) && player != null && !player.isSpectator() && !player.getAbilities().instabuild) {
             if (dev.sixik.stationarenear.structures.lamps.StationLampManager.isPowerOn(level, event.getPos())) {
                 player.hurt(level.damageSources().lightningBolt(), 8.0F);

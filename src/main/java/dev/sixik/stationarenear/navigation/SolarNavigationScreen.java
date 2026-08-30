@@ -667,6 +667,7 @@ public final class SolarNavigationScreen {
         private void completeDock(Station station) {
             dockedStations.add(station.seed());
             activeDockedStations.add(new DockedStation(station.seed(), station.name(), station.code(), station.x(), station.y()));
+            dev.sixik.stationarenear.navigation.client.StationDockingOverlay.show(station.name(), station.code(), 8000L);
             SolarNavigationNetwork.sendDock(new DockSolarStationPacket(terminalPos, station.name(), station.code(), station.seed(), station.quest(), station.x(), station.y()));
             dockMessage = station.quest()
                     ? net.minecraft.client.resources.language.I18n.get("screen.stationarenear.solar_navigation.docking_request_quest", station.code())

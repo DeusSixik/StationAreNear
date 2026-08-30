@@ -36,5 +36,20 @@
       "stationarenear:spanner1",
       "stationarenear:spanner2"
     ]
+  },
+  "spanner1": {
+    "sounds": [
+      "stationarenear:spanner1"
+    ]
+  },
+  "spanner2": {
+    "sounds": [
+      "stationarenear:spanner2"
+    ]
+  },
+  "door_open": {
+    "sounds": [
+      "stationarenear:door_open"
+    ]
   }
 }

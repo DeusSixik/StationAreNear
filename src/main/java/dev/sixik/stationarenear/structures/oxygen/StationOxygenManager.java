@@ -142,7 +142,7 @@ public final class StationOxygenManager {
 
         if (inHazardZone) {
             event.setCanBreathe(false);
-            event.setConsumeAirAmount(1);
+            event.setConsumeAirAmount(player.tickCount % 7 == 0 ? 1 : 0);
         }
     }
 

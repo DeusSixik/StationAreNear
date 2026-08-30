@@ -173,6 +173,17 @@ public class WallMountedPanelBlock extends HorizontalDirectionalBlock {
     }
 
     @Override
+    public float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
+        if (player.isCreative()) {
+            return super.getDestroyProgress(state, player, level, pos);
+        }
+        if (player.getMainHandItem().isEmpty() || !player.hasCorrectToolForDrops(state)) {
+            return 0.0F;
+        }
+        return super.getDestroyProgress(state, player, level, pos);
+    }
+
+    @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(FACING, BROKEN);
     }

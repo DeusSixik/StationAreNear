@@ -9,6 +9,7 @@ import dev.sixik.stationarenear.navigation.network.packet.SolarNavigationAsteroi
 import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationAsteroidOffsetPacket;
 import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationQuestMarkersPacket;
 import dev.sixik.stationarenear.navigation.network.packet.SyncSolarNavigationStatePacket;
+import dev.sixik.stationarenear.navigation.network.packet.SyncStationDockingOverlayPacket;
 import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationInputPacket;
 import dev.sixik.stationarenear.navigation.network.packet.UpdateSolarNavigationStatePacket;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
@@ -86,6 +87,11 @@ public final class SolarNavigationNetwork {
                 .decoder(SyncSolarNavigationAsteroidOffsetPacket::decode)
                 .consumerMainThread(SyncSolarNavigationAsteroidOffsetPacket::handle)
                 .add();
+        CHANNEL.messageBuilder(dev.sixik.stationarenear.navigation.network.packet.SyncStationDockingOverlayPacket.class, nextPacketId++, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(dev.sixik.stationarenear.navigation.network.packet.SyncStationDockingOverlayPacket::encode)
+                .decoder(dev.sixik.stationarenear.navigation.network.packet.SyncStationDockingOverlayPacket::decode)
+                .consumerMainThread(dev.sixik.stationarenear.navigation.network.packet.SyncStationDockingOverlayPacket::handle)
+                .add();
     }
 
     public static void openTerminal(ServerPlayer player, BlockPos terminalPos, long seed) {
@@ -136,6 +142,13 @@ public final class SolarNavigationNetwork {
     public static void syncQuestMarkers(ServerLevel level) {
         SolarNavigationSavedData data = SolarNavigationSavedData.get(level);
         SyncSolarNavigationQuestMarkersPacket packet = new SyncSolarNavigationQuestMarkersPacket(List.copyOf(data.questMarkers()));
+        for (ServerPlayer player : level.players()) {
+            CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+        }
+    }
+
+    public static void syncDockingOverlay(ServerLevel level, String stationName, String stationCode, int durationSeconds) {
+        SyncStationDockingOverlayPacket packet = new SyncStationDockingOverlayPacket(stationName, stationCode, durationSeconds);
         for (ServerPlayer player : level.players()) {
             CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
         }

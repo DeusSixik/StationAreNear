@@ -326,10 +326,8 @@ public final class StationTriggerHandlers {
 
     public static void placeGravitationPanel(StationStructureSpawnTriggerEvent event) {
         CompoundTag data = event.getZone().data();
-        if (event.getTriggerType() != StationStructureTriggerType.OBJECT_PLACER) {
-            if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeGravitationPanel") && !data.getBoolean("place")) {
-                return;
-            }
+        if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeGravitationPanel")) {
+            return;
         }
         boolean isBroken = dev.sixik.stationarenear.structures.gravity.StationGravitationManager.hasGravitationFailureOffer(event.getStation())
                 || (data.contains("broken") && data.getBoolean("broken"))
@@ -348,10 +346,8 @@ public final class StationTriggerHandlers {
 
     public static void placeOxygenPanel(StationStructureSpawnTriggerEvent event) {
         CompoundTag data = event.getZone().data();
-        if (event.getTriggerType() != StationStructureTriggerType.OBJECT_PLACER) {
-            if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeOxygenPanel") && !data.getBoolean("place")) {
-                return;
-            }
+        if (!event.isForcePlaceObjectZone() && !data.getBoolean("placeOxygenPanel")) {
+            return;
         }
         boolean isBroken = dev.sixik.stationarenear.structures.oxygen.StationOxygenManager.hasOxygenFailureOffer(event.getStation())
                 || (data.contains("broken") && data.getBoolean("broken"))

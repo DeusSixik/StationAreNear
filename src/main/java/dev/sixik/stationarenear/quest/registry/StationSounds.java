@@ -17,6 +17,9 @@ public final class StationSounds {
     public static final RegistryObject<SoundEvent> ELECTRIC_SHOCK = registerSound("electric_shock");
     public static final RegistryObject<SoundEvent> METEOR_COLLIDE = registerSound("meteor_collide");
     public static final RegistryObject<SoundEvent> SPANNER = registerSound("spanner");
+    public static final RegistryObject<SoundEvent> SPANNER1 = registerSound("spanner1");
+    public static final RegistryObject<SoundEvent> SPANNER2 = registerSound("spanner2");
+    public static final RegistryObject<SoundEvent> DOOR_OPEN = registerSound("door_open");
 
     private StationSounds() {
     }

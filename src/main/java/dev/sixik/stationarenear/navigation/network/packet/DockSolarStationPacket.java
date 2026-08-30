@@ -1,5 +1,6 @@
 package dev.sixik.stationarenear.navigation.network.packet;
 
+import dev.sixik.stationarenear.navigation.network.SolarNavigationNetwork;
 import dev.sixik.stationarenear.navigation.registry.SolarNavigationBlocks;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationControlManager;
 import dev.sixik.stationarenear.navigation.server.SolarNavigationStationGenerationConfig;
@@ -82,6 +83,8 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
             ShipManager.setDocking(level, packet.terminalPos(), false);
         }
 
+        SolarNavigationNetwork.syncDockingOverlay(level, packet.stationName(), packet.stationCode(), 8);
+
         ShipDockingAnchorResolver.ResolvedDockingAnchor dockingAnchor = ShipDockingAnchorResolver.resolve(level, packet.terminalPos(), state);
         Direction stationDirection = dockingAnchor.stationDirection();
         BlockPos doorCenter = dockingAnchor.doorCenter();
@@ -116,6 +119,7 @@ public record DockSolarStationPacket(BlockPos terminalPos, String stationName, S
             if (QuestTestScenario.isTestQuestMarker(level, packet.stationSeed())) {
                 QuestTestScenario.startDockedQuest(level, station);
             }
+            SolarNavigationNetwork.syncDockingOverlay(level, packet.stationName(), packet.stationCode(), 4);
         });
         SolarNavigationControlManager.forceStop(level, packet.terminalPos());
         ShipManager.setDocking(level, packet.terminalPos(), true);

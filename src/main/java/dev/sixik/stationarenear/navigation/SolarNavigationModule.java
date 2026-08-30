@@ -19,7 +19,7 @@ public final class SolarNavigationModule {
         SolarNavigationNetwork.register();
         SolarNavigationBlocks.register(modEventBus);
         MinecraftForge.EVENT_BUS.addListener(SolarNavigationControlManager::tick);
-//        MinecraftForge.EVENT_BUS.addListener(SolarNavigationModule::test);
+        net.minecraftforge.fml.DistExecutor.unsafeRunWhenOn(net.minecraftforge.api.distmarker.Dist.CLIENT, () -> () -> MinecraftForge.EVENT_BUS.addListener(dev.sixik.stationarenear.navigation.client.StationDockingOverlay::onRenderGui));
     }
 
 

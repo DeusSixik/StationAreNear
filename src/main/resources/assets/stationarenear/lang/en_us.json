@@ -110,5 +110,7 @@
   "tv.stationarenear.default.online": "SHIP TV ONLINE",
   "tv.stationarenear.default.no_objectives": "OBJECTIVES: NONE",
   "tv.stationarenear.default.pressure_stable": "PRESSURE: STABLE",
-  "tv.stationarenear.default.signal_test": "SIGNAL: TEST MODE"
+  "tv.stationarenear.default.signal_test": "SIGNAL: TEST MODE",
+  "overlay.stationarenear.docking_in_progress": "Docking in progress...",
+  "overlay.stationarenear.docking_station": "Docking with station: %s"
 }

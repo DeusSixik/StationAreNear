@@ -69,7 +69,8 @@ public final class QuestBlocks {
     public static final RegistryObject<EnergyPanelBlock> ENERGY_PANEL = BLOCKS.register(
             "energy_panel",
             () -> new EnergyPanelBlock(BlockBehaviour.Properties.of()
-                    .strength(1.6F, 6.0F)
+                    .strength(3.0F, 1200.0F)
+                    .requiresCorrectToolForDrops()
                     .sound(SoundType.METAL)
                     .noOcclusion()
                     .isViewBlocking((state, getter, pos) -> false)
@@ -90,7 +91,8 @@ public final class QuestBlocks {
     public static final RegistryObject<WallMountedPanelBlock> OXYGEN_PANEL = BLOCKS.register(
             "oxygen_panel",
             () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
-                    .strength(1.6F, 6.0F)
+                    .strength(3.0F, 1200.0F)
+                    .requiresCorrectToolForDrops()
                     .sound(SoundType.METAL)
                     .noOcclusion()
                     .isViewBlocking((state, getter, pos) -> false)
@@ -111,7 +113,8 @@ public final class QuestBlocks {
     public static final RegistryObject<WallMountedPanelBlock> GRAVITATION_PANEL = BLOCKS.register(
             "gravitation_panel",
             () -> new WallMountedPanelBlock(BlockBehaviour.Properties.of()
-                    .strength(1.6F, 6.0F)
+                    .strength(3.0F, 1200.0F)
+                    .requiresCorrectToolForDrops()
                     .sound(SoundType.METAL)
                     .noOcclusion()
                     .isViewBlocking((state, getter, pos) -> false)

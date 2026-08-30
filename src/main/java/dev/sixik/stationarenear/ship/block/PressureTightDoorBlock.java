@@ -353,6 +353,9 @@ public class PressureTightDoorBlock extends BaseEntityBlock {
         if (blockEntity instanceof PressureTightDoorBlockEntity door) {
             door.markAnimationDirty();
         }
+        if (open) {
+            level.playSound(null, masterPos, dev.sixik.stationarenear.quest.registry.StationSounds.DOOR_OPEN.get(), net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+        }
         refreshShipIntegrity(level, masterPos);
     }
 

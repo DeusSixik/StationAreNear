@@ -206,6 +206,7 @@ public final class SpannerRhythmMinigameScreen {
                 targetAngle = side == Side.LEFT ? -MAX_ANGLE : MAX_ANGLE;
                 hitPulse = 1.0f;
                 mistakePulse = 0.0f;
+                playSpannerSound(side);
                 if (hits >= REQUIRED_HITS) {
                     completedCallback.run();
                 }
@@ -219,6 +220,13 @@ public final class SpannerRhythmMinigameScreen {
                 }
             }
             invalidate(InvalidationFlags.VISUAL);
+        }
+
+        private void playSpannerSound(Side side) {
+            net.minecraft.sounds.SoundEvent sound = side == Side.LEFT
+                    ? dev.sixik.stationarenear.quest.registry.StationSounds.SPANNER1.get()
+                    : dev.sixik.stationarenear.quest.registry.StationSounds.SPANNER2.get();
+            Minecraft.getInstance().getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(sound, 1.0f));
         }
 
         private boolean isMarkerInside(Side side) {

@@ -464,11 +464,12 @@ public final class SyncBatteryMinigameScreen {
         public static ColumnPuzzleConfig defaultPreset() {
             int columns = 5;
             int levels = 15;
-            int[] target = {14, 14, 14, 14, 14};
+            int targetLevel = ThreadLocalRandom.current().nextInt(7, 11);
+            int[] target = {targetLevel, targetLevel, targetLevel, targetLevel, targetLevel};
             int[][] buttons = {
                     {1, 1, 0, 0, 0},
                     {0, 1, 1, 0, 0},
-                    {0, 0, 1, 1, 0},
+                    {0, 0, 1, 0, 0},
                     {0, 0, 0, 1, 1},
                     {1, 0, 0, 0, 1}
             };
@@ -665,8 +666,16 @@ public final class SyncBatteryMinigameScreen {
 
         private static int[] normalizeTarget(int[] source, int levelsPerColumn) {
             int[] copy = source.clone();
+            int maxAllowed = Math.max(1, levelsPerColumn - 4);
+            int minAllowed = Math.min(maxAllowed, Math.max(3, levelsPerColumn / 3));
             for (int i = 0; i < copy.length; i++) {
-                copy[i] = mod(copy[i], levelsPerColumn);
+                int val = mod(source[i], levelsPerColumn);
+                if (val > maxAllowed) {
+                    val = maxAllowed;
+                } else if (val < minAllowed && levelsPerColumn >= 6) {
+                    val = minAllowed;
+                }
+                copy[i] = val;
             }
             return copy;
         }
